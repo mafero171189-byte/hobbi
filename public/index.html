@@ -227,7 +227,7 @@
     .timeline-date { font-size: 11px; color: var(--ink-muted); }
 
     /* Toast de errores/avisos */
-    #toastHolder { position: fixed; left: 50%; bottom: 18px; transform: translateX(-50%); z-index: 999; display: flex; flex-direction: column; gap: 8px; align-items: center; width: 100%; max-width: 480px; padding: 0 16px; pointer-events: none; }
+    #toastHolder { position: fixed; left: 50%; bottom: 18px; transform: translateX(-50%); z-index: 10000; display: flex; flex-direction: column; gap: 8px; align-items: center; width: 100%; max-width: 480px; padding: 0 16px; pointer-events: none; }
     .toast { background: var(--surface-2); border: 1px solid var(--border); color: var(--ink); font-size: 13px; padding: 10px 14px; border-radius: 10px; box-shadow: 0 4px 16px rgba(0,0,0,0.4); opacity: 0; transform: translateY(8px); transition: opacity 0.25s, transform 0.25s; max-width: 100%; text-align: center; }
     .toast.show { opacity: 1; transform: translateY(0); }
     .toast.error { border-color: var(--danger); }
@@ -955,6 +955,8 @@
     favoritos = [];
     episodiosVistos = {};
     guardarDatosLocal();
+    cerrarAjustes(); // si no, el modal queda "abierto" (con la cuenta vieja) tapado por el onboarding,
+                      // y reaparece solo apenas alguien loguea de nuevo (con otra cuenta o la misma)
     mostrarOnboarding();
   }
 
