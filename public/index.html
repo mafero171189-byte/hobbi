@@ -285,8 +285,8 @@
     <div id="googleBtnOnboarding"></div>
     <div class="onboarding-divider"><span id="onboardingDividerTexto">o con tu mail</span></div>
     <form id="onboardingEmailForm" onsubmit="return manejarSubmitEmail(event)">
-      <input type="email" id="onboardingEmail" placeholder="Email" required autocomplete="email">
-      <input type="password" id="onboardingPassword" placeholder="Contraseña" required minlength="6" autocomplete="current-password">
+      <input type="email" id="onboardingEmail" placeholder="Email" aria-label="Email" required autocomplete="email">
+      <input type="password" id="onboardingPassword" placeholder="Contraseña" aria-label="Contraseña" required minlength="6" autocomplete="current-password">
       <button type="submit" class="onboarding-email-btn" id="onboardingSubmitBtn">Iniciar sesión</button>
     </form>
     <button type="button" class="onboarding-toggle-mode" id="onboardingToggleModeBtn" onclick="toggleModoOnboarding()">¿No tenés cuenta? Registrate</button>
@@ -476,7 +476,7 @@
       agregarAFavoritos: 'Agregar a favoritos', quitarDeFavoritos: 'Quitar de favoritos',
       cerrarModal: 'Cerrar', cambiarIdiomaAria: 'Cambiar idioma',
       sesionIniciada: '✅ Sesión iniciada, favoritos sincronizados', errorLoginGoogle: 'No se pudo iniciar sesión con Google',
-      cerrarSesionTitulo: '¿Cerrar sesión?', cerrarSesionMsg: 'Vas a tener que volver a iniciar sesión para ver tus favoritos de nuevo.',
+      cerrarSesionTitulo: '¿Cerrar sesión?', cerrarSesionMsg: 'Vas a tener que volver a iniciar sesión para ver tus favoritos de nuevo.', cerrarSesionBoton: 'Cerrar sesión',
       sincronizado: '☁️ Sincronizado', errorSync: '⚠️ No se pudo sincronizar',
       onboardingTagline: 'Todas tus series y películas, en un solo lugar.',
       onboardingDivider: 'o con tu mail', onboardingEmailPlaceholder: 'Email', onboardingPasswordPlaceholder: 'Contraseña',
@@ -587,7 +587,7 @@
       agregarAFavoritos: 'Add to favorites', quitarDeFavoritos: 'Remove from favorites',
       cerrarModal: 'Close', cambiarIdiomaAria: 'Switch language',
       sesionIniciada: '✅ Signed in, favorites synced', errorLoginGoogle: "Couldn't sign in with Google",
-      cerrarSesionTitulo: 'Sign out?', cerrarSesionMsg: "You'll need to sign in again to see your favorites.",
+      cerrarSesionTitulo: 'Sign out?', cerrarSesionMsg: "You'll need to sign in again to see your favorites.", cerrarSesionBoton: 'Sign out',
       sincronizado: '☁️ Synced', errorSync: "⚠️ Couldn't sync",
       onboardingTagline: 'Every show and movie you watch, in one place.',
       onboardingDivider: 'or with your email', onboardingEmailPlaceholder: 'Email', onboardingPasswordPlaceholder: 'Password',
@@ -637,7 +637,9 @@
     document.getElementById('onboardingTagline').textContent = t('onboardingTagline');
     document.getElementById('onboardingDividerTexto').textContent = t('onboardingDivider');
     document.getElementById('onboardingEmail').placeholder = t('onboardingEmailPlaceholder');
+    document.getElementById('onboardingEmail').setAttribute('aria-label', t('onboardingEmailPlaceholder'));
     document.getElementById('onboardingPassword').placeholder = t('onboardingPasswordPlaceholder');
+    document.getElementById('onboardingPassword').setAttribute('aria-label', t('onboardingPasswordPlaceholder'));
     actualizarTextosModoOnboarding();
     document.getElementById('tSearch').textContent = t('buscar');
     document.getElementById('tFavs').textContent = t('favoritos');
@@ -835,8 +837,9 @@
   }
 
   async function cerrarSesionGoogle() {
-    const ok = await confirmarEliminar(t('cerrarSesionTitulo'), t('cerrarSesionMsg'));
+    const ok = await confirmarEliminar(t('cerrarSesionTitulo'), t('cerrarSesionMsg'), t('cerrarSesionBoton'));
     if (!ok) return;
+    clearTimeout(timeoutSyncNube); // por si había un guardado pendiente programado, lo cancelamos
     try { await fetch('/api/auth', { method: 'DELETE' }); } catch {}
     usuarioActual = null;
     actualizarChipUsuario();
@@ -939,14 +942,19 @@
     return false;
   }
 
-  window.addEventListener('load', () => {
+  window.addEventListener('load', async () => {
     if (window.google && google.accounts && google.accounts.id) {
       google.accounts.id.initialize({ client_id: GOOGLE_CLIENT_ID, callback: manejarCredencialGoogle });
       google.accounts.id.renderButton(document.getElementById('googleBtnContainer'), { theme: 'filled_black', size: 'medium', shape: 'pill', text: 'signin' });
       google.accounts.id.renderButton(document.getElementById('googleBtnOnboarding'), { theme: 'filled_black', size: 'large', shape: 'pill', text: 'signup_with' });
     }
-    mostrarOnboarding();
-    revisarSesionExistente();
+    // La pantalla de login ya se ve desde el primer render (CSS), así que no
+    // hace falta "mostrarla" a mano acá. Primero confirmamos si ya había
+    // sesión (revisarSesionExistente la cierra sola si es así) y solo si
+    // sigue sin loguear cargamos los pósters de fondo — evita pedirlos de
+    // arranque en cada visita de alguien que ya tiene la cuenta activa.
+    await revisarSesionExistente();
+    if (!usuarioActual) cargarPostersOnboarding();
   });
 
   // Si volvés a la pestaña/app después de un rato (ej: la dejaste en segundo
@@ -1279,7 +1287,7 @@
   }
 
   /* Modal de confirmación genérico. Devuelve una Promise<boolean>: true si tocaron "Eliminar". */
-  function confirmarEliminar(titulo, mensaje) {
+  function confirmarEliminar(titulo, mensaje, textoBoton = null) {
     return new Promise((resolve) => {
       const overlay = document.createElement('div');
       overlay.className = 'confirm-overlay';
@@ -1289,7 +1297,7 @@
           <div class="confirm-msg">${mensaje}</div>
           <div class="confirm-actions">
             <button class="confirm-btn cancel">${t('cancelar')}</button>
-            <button class="confirm-btn delete">${t('eliminar')}</button>
+            <button class="confirm-btn delete">${textoBoton || t('eliminar')}</button>
           </div>
         </div>
       `;
