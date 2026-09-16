@@ -119,6 +119,17 @@
     .modal-content a:hover { text-decoration: underline; }
     .modal-close { position: absolute; top: 12px; right: 12px; background: var(--surface-2); border: 1px solid var(--border); color: var(--ink); width: 32px; height: 32px; border-radius: 8px; cursor: pointer; font-size: 18px; display: flex; align-items: center; justify-content: center; }
 
+    /* ==================== MODAL DE AJUSTES ==================== */
+    .ajustes-seccion { border-top: 1px solid var(--border); padding-top: 16px; margin-top: 16px; }
+    .ajustes-seccion:first-of-type { border-top: none; padding-top: 0; margin-top: 0; }
+    .ajustes-seccion-titulo { color: var(--ink-muted); font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 10px; }
+    .ajustes-cuenta { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
+    .ajustes-cuenta img { width: 44px; height: 44px; border-radius: 50%; background: var(--surface-2); }
+    .ajustes-cuenta-nombre { color: var(--ink); font-weight: 700; font-size: 15px; }
+    .ajustes-cuenta-mail { color: var(--ink-muted); font-size: 12px; }
+    .ajustes-btn { width: 100%; background: var(--surface-2); border: 1px solid var(--border); color: var(--ink); padding: 12px; border-radius: 10px; font-size: 14px; font-weight: 600; cursor: pointer; display: flex; align-items: center; justify-content: space-between; }
+    .ajustes-btn.danger { color: var(--danger); border-color: var(--danger); }
+
     /* Buscador */
     .search-box input { width: 100%; padding: 14px; border-radius: 12px; border: 1px solid var(--border); background-color: var(--surface); color: var(--ink); font-size: 15px; outline: none; }
     .search-box input:focus { border-color: var(--gold); }
@@ -303,25 +314,15 @@
 <div class="app-container">
   <div id="offlineBanner" role="status" aria-live="polite">📡 Sin conexión a internet — mostrando datos guardados</div>
   <header>
-    <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; margin-bottom:-4px;">
-      <div id="authArea">
-        <div id="googleBtnContainer"></div>
-        <button id="userChip" class="user-chip" style="display:none;" onclick="cerrarSesionGoogle()" title="Cerrar sesión">
-          <img id="userChipFoto" src="" alt="">
-          <span id="userChipNombre"></span>
-        </button>
-      </div>
-      <div style="display:flex; gap:8px;">
-        <button id="notifBtn" class="info-btn" onclick="pedirPermisoNotificaciones()" title="Activar avisos de estrenos" aria-label="Activar avisos de estrenos">🔔</button>
-        <button class="info-btn" onclick="abrirCreditos()" title="Acerca de" aria-label="Acerca de">ℹ️</button>
-        <button id="langToggleBtn" class="lang-toggle" onclick="cambiarIdioma()" aria-label="Cambiar idioma / Switch language">🌐 ES</button>
-      </div>
+    <div style="display:flex; justify-content:flex-end; align-items:center; gap:8px; margin-bottom:-4px;">
+      <button id="notifBtn" class="info-btn" onclick="pedirPermisoNotificaciones()" title="Activar avisos de estrenos" aria-label="Activar avisos de estrenos">🔔</button>
+      <button id="ajustesBtn" class="info-btn" onclick="abrirAjustes()" title="Ajustes" aria-label="Ajustes">⚙️</button>
     </div>
     <h1>HOBBI</h1>
     <p id="appTagline" style="text-align:center; color:var(--ink-muted); font-size:12px; letter-spacing:0.5px; margin-top:-10px; margin-bottom:12px;">Control de Series</p>
     <div id="syncBadge" class="sync-badge" role="status" aria-live="polite"></div>
     <div class="nav-tabs" role="tablist">
-      <button class="tab-btn active" id="tabSearch" onclick="cambiarVista('buscar')" role="tab" aria-selected="true">🔍 <span id="tSearch">Buscar</span></button>
+      <button class="tab-btn active" id="tabSearch" onclick="cambiarVista('buscar')" role="tab" aria-selected="true">🏠 <span id="tSearch">Inicio</span></button>
       <button class="tab-btn" id="tabFavs" onclick="cambiarVista('favoritos')" role="tab" aria-selected="false">❤️ <span id="tFavs">Favoritos</span></button>
       <button class="tab-btn" id="tabCalendar" onclick="cambiarVista('calendario')" role="tab" aria-selected="false">📅 <span id="tCalendar">Calendario</span></button>
     </div>
@@ -372,6 +373,40 @@
   </div>
 
   <!-- MODAL DE CRÉDITOS -->
+  <div id="ajustesModal" class="modal-overlay" onclick="if(event.target.id === 'ajustesModal') cerrarAjustes()">
+    <div class="modal-content" style="position:relative;">
+      <button class="modal-close" onclick="cerrarAjustes()" aria-label="Cerrar">✕</button>
+      <h3 id="ajustesTitle">Ajustes</h3>
+
+      <div class="ajustes-seccion">
+        <div class="ajustes-seccion-titulo" id="ajustesTituloCuenta">Cuenta</div>
+        <div class="ajustes-cuenta">
+          <img id="ajustesFoto" src="" alt="">
+          <div>
+            <div class="ajustes-cuenta-nombre" id="ajustesNombre"></div>
+            <div class="ajustes-cuenta-mail" id="ajustesMail"></div>
+          </div>
+        </div>
+        <button class="ajustes-btn danger" onclick="cerrarSesionGoogle()" id="ajustesCerrarSesionBtn">Cerrar sesión</button>
+      </div>
+
+      <div class="ajustes-seccion">
+        <div class="ajustes-seccion-titulo" id="ajustesTituloIdioma">Idioma</div>
+        <button class="ajustes-btn" onclick="cambiarIdioma()" id="ajustesIdiomaBtn">
+          <span id="ajustesIdiomaActual">🌐 Español</span>
+          <span id="ajustesIdiomaCambiar">Cambiar a English →</span>
+        </button>
+      </div>
+
+      <div class="ajustes-seccion">
+        <button class="ajustes-btn" onclick="abrirCreditos()" id="ajustesAcercaDeBtn">
+          <span id="ajustesAcercaDeTexto">ℹ️ Acerca de</span>
+          <span>→</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
   <div id="creditosModal" class="modal-overlay" onclick="if(event.target.id === 'creditosModal') cerrarCreditos()">
     <div class="modal-content" style="position:relative;">
       <button class="modal-close" onclick="cerrarCreditos()" aria-label="Cerrar">✕</button>
@@ -397,7 +432,7 @@
 
   const I18N = {
     es: {
-      buscar: 'Buscar', favoritos: 'Favoritos', calendario: 'Calendario',
+      buscar: 'Buscar', inicio: 'Inicio', favoritos: 'Favoritos', calendario: 'Calendario',
       volver: '← Volver',
       searchPlaceholder: 'Buscar serie online...',
       filtroFavPlaceholder: '🔍 Filtrar tus favoritos...',
@@ -483,6 +518,9 @@
       cerrarModal: 'Cerrar', cambiarIdiomaAria: 'Cambiar idioma',
       sesionIniciada: '✅ Sesión iniciada, favoritos sincronizados', errorLoginGoogle: 'No se pudo iniciar sesión con Google',
       cerrarSesionTitulo: '¿Cerrar sesión?', cerrarSesionMsg: 'Vas a tener que volver a iniciar sesión para ver tus favoritos de nuevo.', cerrarSesionBoton: 'Cerrar sesión',
+      ajustesTitle: 'Ajustes', ajustesAria: 'Ajustes', ajustesTituloCuenta: 'Cuenta', ajustesTituloIdioma: 'Idioma',
+      ajustesCambiarAIngles: 'Cambiar a English →', ajustesCambiarAEspanol: 'Cambiar a Español →',
+      ajustesAcercaDe: 'ℹ️ Acerca de',
       sincronizado: '☁️ Sincronizado', errorSync: '⚠️ No se pudo sincronizar',
       onboardingTagline: 'Todas tus series y películas, en un solo lugar.',
       onboardingDivider: 'o con tu mail', onboardingEmailPlaceholder: 'Email', onboardingPasswordPlaceholder: 'Contraseña',
@@ -514,7 +552,7 @@
       creditosNote: 'Nota: Hobbi es una app no oficial hecha por un fan. TVmaze es propiedad de su comunidad y desarrolladores.'
     },
     en: {
-      buscar: 'Search', favoritos: 'Favorites', calendario: 'Calendar',
+      buscar: 'Search', inicio: 'Home', favoritos: 'Favorites', calendario: 'Calendar',
       volver: '← Back',
       searchPlaceholder: 'Search for a show online...',
       filtroFavPlaceholder: '🔍 Filter your favorites...',
@@ -594,6 +632,9 @@
       cerrarModal: 'Close', cambiarIdiomaAria: 'Switch language',
       sesionIniciada: '✅ Signed in, favorites synced', errorLoginGoogle: "Couldn't sign in with Google",
       cerrarSesionTitulo: 'Sign out?', cerrarSesionMsg: "You'll need to sign in again to see your favorites.", cerrarSesionBoton: 'Sign out',
+      ajustesTitle: 'Settings', ajustesAria: 'Settings', ajustesTituloCuenta: 'Account', ajustesTituloIdioma: 'Language',
+      ajustesCambiarAIngles: 'Switch to English →', ajustesCambiarAEspanol: 'Switch to Español →',
+      ajustesAcercaDe: 'ℹ️ About',
       sincronizado: '☁️ Synced', errorSync: "⚠️ Couldn't sync",
       onboardingTagline: 'Every show and movie you watch, in one place.',
       onboardingDivider: 'or with your email', onboardingEmailPlaceholder: 'Email', onboardingPasswordPlaceholder: 'Password',
@@ -638,7 +679,6 @@
   }
 
   function aplicarIdioma() {
-    document.getElementById('langToggleBtn').textContent = idioma === 'es' ? '🌐 ES' : '🌐 EN';
     document.getElementById('appTagline').textContent = t('tagline');
     document.getElementById('onboardingTagline').textContent = t('onboardingTagline');
     document.getElementById('onboardingDividerTexto').textContent = t('onboardingDivider');
@@ -647,7 +687,10 @@
     document.getElementById('onboardingPassword').placeholder = t('onboardingPasswordPlaceholder');
     document.getElementById('onboardingPassword').setAttribute('aria-label', t('onboardingPasswordPlaceholder'));
     actualizarTextosModoOnboarding();
-    document.getElementById('tSearch').textContent = t('buscar');
+    document.getElementById('tSearch').textContent = t('inicio');
+    document.getElementById('ajustesBtn').title = t('ajustesAria');
+    document.getElementById('ajustesBtn').setAttribute('aria-label', t('ajustesAria'));
+    document.getElementById('ajustesAcercaDeTexto') && (document.getElementById('ajustesAcercaDeTexto').textContent = t('ajustesAcercaDe'));
     document.getElementById('tFavs').textContent = t('favoritos');
     document.getElementById('tCalendar').textContent = t('calendario');
     document.getElementById('searchInput').placeholder = t('searchPlaceholder');
@@ -704,6 +747,22 @@
   }
 
   /* Modal de créditos y atribución a TVmaze */
+  function abrirAjustes() {
+    const modal = document.getElementById('ajustesModal');
+    modal.classList.add('show');
+    document.getElementById('ajustesTitle').textContent = t('ajustesTitle');
+    document.getElementById('ajustesTituloCuenta').textContent = t('ajustesTituloCuenta');
+    document.getElementById('ajustesCerrarSesionBtn').textContent = t('cerrarSesionBoton');
+    document.getElementById('ajustesTituloIdioma').textContent = t('ajustesTituloIdioma');
+    document.getElementById('ajustesIdiomaActual').textContent = idioma === 'es' ? '🌐 Español' : '🌐 English';
+    document.getElementById('ajustesIdiomaCambiar').textContent = idioma === 'es' ? t('ajustesCambiarAIngles') : t('ajustesCambiarAEspanol');
+    actualizarChipUsuario();
+  }
+
+  function cerrarAjustes() {
+    document.getElementById('ajustesModal').classList.remove('show');
+  }
+
   function abrirCreditos() {
     const modal = document.getElementById('creditosModal');
     modal.classList.add('show');
@@ -784,19 +843,20 @@
     if (texto) setTimeout(() => { if (el.textContent === texto) el.textContent = ''; }, 2500);
   }
 
+  /* Actualiza los datos de la cuenta mostrados adentro de Ajustes (avatar,
+     nombre, mail). El header ya no tiene nada de esto — con el login
+     obligatorio, si estás viendo la app es porque ya iniciaste sesión. */
   function actualizarChipUsuario() {
-    const chip = document.getElementById('userChip');
-    const btnGoogle = document.getElementById('googleBtnContainer');
-    if (usuarioActual) {
-      document.getElementById('userChipFoto').src = usuarioActual.foto || '';
-      document.getElementById('userChipFoto').alt = usuarioActual.nombre || usuarioActual.email || '';
-      document.getElementById('userChipNombre').textContent = usuarioActual.nombre || usuarioActual.email || '';
-      chip.style.display = 'flex';
-      btnGoogle.style.display = 'none';
-    } else {
-      chip.style.display = 'none';
-      btnGoogle.style.display = 'inline-block';
-    }
+    if (!usuarioActual) return;
+    const foto = document.getElementById('ajustesFoto');
+    const nombre = document.getElementById('ajustesNombre');
+    const mail = document.getElementById('ajustesMail');
+    if (!foto) return; // el modal de Ajustes todavía no se abrió ni una vez
+    foto.src = usuarioActual.foto || '';
+    foto.alt = usuarioActual.nombre || usuarioActual.email || '';
+    foto.style.display = usuarioActual.foto ? 'block' : 'none';
+    nombre.textContent = usuarioActual.nombre || usuarioActual.email || '';
+    mail.textContent = usuarioActual.email || '';
   }
 
   /* Se llama una vez al arrancar la app: revisa si ya había una sesión activa
@@ -953,7 +1013,6 @@
   window.addEventListener('load', async () => {
     if (window.google && google.accounts && google.accounts.id) {
       google.accounts.id.initialize({ client_id: GOOGLE_CLIENT_ID, callback: manejarCredencialGoogle });
-      google.accounts.id.renderButton(document.getElementById('googleBtnContainer'), { theme: 'filled_black', size: 'medium', shape: 'pill', text: 'signin' });
       google.accounts.id.renderButton(document.getElementById('googleBtnOnboarding'), { theme: 'filled_black', size: 'large', shape: 'pill', text: 'signup_with' });
     }
     // La pantalla de login ya se ve desde el primer render (CSS), así que no
