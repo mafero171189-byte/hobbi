@@ -796,7 +796,7 @@
       // (unión, sin perder nada de ningún lado), y recién ahí subimos el resultado
       // combinado. Si lo hiciéramos al revés, un dispositivo nuevo sin favoritos
       // locales pisaría (borraría) lo que ya había en la nube al hacer el primer push.
-      await sincronizarDesdeNube();
+      await sincronizarDesdeNube(true);
       await sincronizarHaciaNube(true);
       mostrarSyncBadge(t('sesionIniciada'));
     } catch {
@@ -855,17 +855,34 @@
     mostrarOnboardingSiCorresponde();
     revisarSesionExistente();
   });
-  async function sincronizarDesdeNube() {
+
+  // Si volvés a la pestaña/app después de un rato (ej: la dejaste en segundo
+  // plano y mientras tanto borraste un favorito desde el celu), traemos el
+  // estado real del servidor en vez de esperar a que recargues la página.
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden && usuarioActual) sincronizarDesdeNube();
+  });
+  /* modoMerge=true: unión con lo local (solo para el primer login, así no se
+     pierden favoritos que el usuario ya tenía como invitado en ese dispositivo).
+     modoMerge=false (default): el servidor es la fuente de verdad y REEMPLAZA
+     lo local — necesario para que un borrado hecho en otro dispositivo se vea
+     acá también (si solo sumáramos, un favorito borrado en el celu nunca
+     desaparecería de la PC). */
+  async function sincronizarDesdeNube(modoMerge = false) {
     if (!usuarioActual) return;
     try {
       const res = await fetch('/api/data');
       if (!res.ok) throw new Error('sync down falló');
       const nube = await res.json();
 
-      const idsLocales = new Set(favoritos.map(f => f.id));
-      (nube.favoritos || []).forEach(f => { if (!idsLocales.has(f.id)) favoritos.push(f); });
-
-      episodiosVistos = Object.assign({}, nube.episodiosVistos || {}, episodiosVistos);
+      if (modoMerge) {
+        const idsLocales = new Set(favoritos.map(f => f.id));
+        (nube.favoritos || []).forEach(f => { if (!idsLocales.has(f.id)) favoritos.push(f); });
+        episodiosVistos = Object.assign({}, nube.episodiosVistos || {}, episodiosVistos);
+      } else {
+        favoritos = nube.favoritos || [];
+        episodiosVistos = nube.episodiosVistos || {};
+      }
 
       if (nube.idioma && !localStorage.getItem('hobi_idioma')) {
         idioma = nube.idioma;
@@ -2461,6 +2478,11 @@
   /* Re-fetchea episodios de cada favorito (progreso, próximo estreno) salteando
      la caché. La dispara el pull-to-refresh en la pestaña Favoritos. */
   async function actualizarFavoritos(forzar = false) {
+    // Si hay sesión, primero traemos el estado real del servidor (puede que se
+    // haya agregado o borrado algo desde otro dispositivo) antes de refrescar
+    // los datos de episodios de lo que quede.
+    if (usuarioActual) await sincronizarDesdeNube();
+
     if (!favoritos.length) { renderizarFavoritos(); return; }
     mostrarEsqueletoFavoritos();
     try {
