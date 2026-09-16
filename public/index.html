@@ -63,10 +63,17 @@
        vez (o hasta que el usuario cierre sesión/borre localStorage). */
     #onboardingScreen {
       position: fixed; inset: 0; z-index: 9999;
+      /* En mobile, la barra de direcciones aparece/desaparece al hacer scroll
+         y cambia la altura visible real: con solo "inset:0" (que usa el
+         viewport "grande") queda un hueco abajo por donde se ve la app de
+         atrás. 100dvh sigue la altura visible de verdad en cada momento. */
+      height: 100vh;
+      height: 100dvh;
       background: var(--bg);
       display: flex; flex-direction: column; justify-content: flex-end;
       overflow: hidden;
     }
+    body.sin-scroll { overflow: hidden; position: fixed; inset: 0; width: 100%; }
     #onboardingPosters {
       position: absolute; inset: 0;
       display: grid; grid-template-columns: repeat(3, 1fr);
@@ -214,8 +221,7 @@
     #offlineBanner.show { display: block; }
 
     /* Botón de activar notificaciones */
-    .notif-btn { background: var(--surface); border: 1px solid var(--border); color: var(--ink-muted); font-size: 12px; font-weight: 600; padding: 10px; border-radius: 10px; text-align: center; cursor: pointer; margin-bottom: 4px; }
-    .notif-btn.on { border-color: var(--gold); color: var(--gold); background: var(--gold-dim); }
+    #notifBtn.on { border-color: var(--gold); color: var(--gold); background: var(--gold-dim); }
 
     /* Filtros de Favoritos (buscador local + estado + toggle pendientes) */
     .fav-search input { width: 100%; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--border); background: var(--surface); color: var(--ink); font-size: 13px; outline: none; }
@@ -271,7 +277,7 @@
     .season-meta { color: var(--ink-muted); font-size: 12px; line-height: 1.5; }
   </style>
 </head>
-<body>
+<body class="sin-scroll">
 
 <div id="toastHolder"></div>
 
@@ -306,6 +312,7 @@
         </button>
       </div>
       <div style="display:flex; gap:8px;">
+        <button id="notifBtn" class="info-btn" onclick="pedirPermisoNotificaciones()" title="Activar avisos de estrenos" aria-label="Activar avisos de estrenos">🔔</button>
         <button class="info-btn" onclick="abrirCreditos()" title="Acerca de" aria-label="Acerca de">ℹ️</button>
         <button id="langToggleBtn" class="lang-toggle" onclick="cambiarIdioma()" aria-label="Cambiar idioma / Switch language">🌐 ES</button>
       </div>
@@ -355,7 +362,6 @@
   <!-- VISTA DE CALENDARIO -->
   <div id="calendarView" style="display: none;">
     <div id="pullIndicator" class="pull-indicator" role="status" aria-live="polite">↓ Soltá para actualizar</div>
-    <div class="notif-btn" id="notifBtn" onclick="pedirPermisoNotificaciones()">🔔 Activar avisos de estrenos</div>
     <div id="calendarContent"></div>
   </div>
 
@@ -658,7 +664,7 @@
 
     document.querySelector('.pendientes-toggle').lastChild.textContent = ' ' + t('ocultarCompletas');
     document.getElementById('detailBackBtn').textContent = t('volver');
-    document.getElementById('notifBtn').textContent = t('activarAvisos');
+    document.getElementById('notifBtn') && actualizarBotonNotif();
     document.getElementById('offlineBanner').textContent = t('sinConexionBanner');
     document.getElementById('pullIndicator').textContent = t('soltarActualizar');
   }
@@ -874,11 +880,13 @@
   }
 
   function mostrarOnboarding() {
+    document.body.classList.add('sin-scroll');
     document.getElementById('onboardingScreen').style.display = 'flex';
     if (!document.getElementById('onboardingPosters').children.length) cargarPostersOnboarding();
   }
 
   function cerrarOnboarding() {
+    document.body.classList.remove('sin-scroll');
     const el = document.getElementById('onboardingScreen');
     if (el) el.style.display = 'none';
   }
@@ -1011,7 +1019,9 @@
           body: JSON.stringify({ favoritos, episodiosVistos, idioma })
         });
         if (!res.ok) throw new Error('sync up falló');
-        mostrarSyncBadge(t('sincronizado'));
+        // Éxito: no molestamos con un aviso cada vez (pasa todo el tiempo, con
+        // cada favorito o episodio marcado). Solo avisamos si falla, que es lo
+        // que de verdad necesita que el usuario se entere.
       } catch {
         mostrarSyncBadge(t('errorSync'), true);
       }
@@ -1127,18 +1137,26 @@
     const btn = document.getElementById('notifBtn');
     if (!btn) return;
     if (!notificacionesSoportadas()) {
-      btn.textContent = t('notifBtnNoSoportado');
+      btn.textContent = '🔕';
+      btn.title = t('notifBtnNoSoportado');
+      btn.setAttribute('aria-label', t('notifBtnNoSoportado'));
       btn.classList.remove('on');
       return;
     }
     if (Notification.permission === 'granted') {
-      btn.textContent = t('avisosActivados');
+      btn.textContent = '🔔';
+      btn.title = t('avisosActivados');
+      btn.setAttribute('aria-label', t('avisosActivados'));
       btn.classList.add('on');
     } else if (Notification.permission === 'denied') {
-      btn.textContent = t('notifBtnBloqueado');
+      btn.textContent = '🔕';
+      btn.title = t('notifBtnBloqueado');
+      btn.setAttribute('aria-label', t('notifBtnBloqueado'));
       btn.classList.remove('on');
     } else {
-      btn.textContent = t('activarAvisos');
+      btn.textContent = '🔔';
+      btn.title = t('activarAvisos');
+      btn.setAttribute('aria-label', t('activarAvisos'));
       btn.classList.remove('on');
     }
   }
