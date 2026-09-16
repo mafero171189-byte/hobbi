@@ -88,7 +88,7 @@ async function handleAuthPost(request, env) {
     }
 
     const usuarioId = payload.sub;
-    const email = payload.email || '';
+    const email = String(payload.email || '').trim().toLowerCase();
     const nombre = payload.name || '';
     const foto = payload.picture || '';
 
