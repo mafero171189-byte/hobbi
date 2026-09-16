@@ -55,6 +55,53 @@
     .user-chip span { font-size: 11px; color: var(--ink-muted); max-width: 80px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .sync-badge { font-size: 10px; color: var(--ink-muted); text-align: center; margin-top: -6px; margin-bottom: 4px; min-height: 14px; }
     .sync-badge.error { color: var(--danger); }
+
+    /* ==================== ONBOARDING / PANTALLA DE BIENVENIDA ====================
+       Collage de pósters de fondo (como la referencia de Hobi) + card con el
+       nombre de la app, tagline y los dos caminos: loguearse con Google o
+       entrar sin cuenta (todo queda local en ese caso). Se muestra una sola
+       vez (o hasta que el usuario cierre sesión/borre localStorage). */
+    #onboardingScreen {
+      position: fixed; inset: 0; z-index: 9999;
+      background: var(--bg);
+      display: flex; flex-direction: column; justify-content: flex-end;
+      overflow: hidden;
+    }
+    #onboardingPosters {
+      position: absolute; inset: 0;
+      display: grid; grid-template-columns: repeat(3, 1fr);
+      gap: 3px; padding: 3px;
+      transform: scale(1.08) rotate(-2deg);
+      opacity: 0.9;
+    }
+    #onboardingPosters img {
+      width: 100%; height: 100%; object-fit: cover; border-radius: 6px;
+      background: var(--surface);
+      aspect-ratio: 2 / 3;
+    }
+    .onboarding-scrim {
+      position: absolute; inset: 0;
+      background: linear-gradient(180deg, var(--bg) 0%, transparent 18%, transparent 42%, var(--bg) 78%, var(--bg) 100%);
+    }
+    .onboarding-card {
+      position: relative; z-index: 1;
+      padding: 28px 24px 36px;
+      display: flex; flex-direction: column; align-items: center; gap: 10px;
+      text-align: center;
+    }
+    .onboarding-card h1 { font-family: 'Bebas Neue', -apple-system, sans-serif; color: var(--gold); font-size: 44px; letter-spacing: 3px; font-weight: 400; text-shadow: 0 0 24px var(--gold-dim); }
+    .onboarding-card p { color: var(--ink); font-size: 15px; font-weight: 600; line-height: 1.4; max-width: 320px; margin-bottom: 10px; }
+    #googleBtnOnboarding { margin-top: 4px; }
+    .onboarding-divider { display: flex; align-items: center; gap: 10px; width: 100%; max-width: 280px; color: var(--ink-dim); font-size: 12px; margin: 12px 0; }
+    .onboarding-divider::before, .onboarding-divider::after { content: ''; flex: 1; height: 1px; background: var(--border); }
+    #onboardingEmailForm { display: flex; flex-direction: column; gap: 8px; width: 100%; max-width: 280px; }
+    #onboardingEmailForm input { background: var(--surface); border: 1px solid var(--border); color: var(--ink); padding: 13px 14px; border-radius: 10px; font-size: 14px; width: 100%; }
+    #onboardingEmailForm input::placeholder { color: var(--ink-dim); }
+    #onboardingEmailForm input:focus { outline: none; border-color: var(--gold); }
+    .onboarding-email-btn { background: var(--gold); color: var(--gold-ink); border: none; padding: 13px; border-radius: 10px; font-weight: 700; font-size: 14px; cursor: pointer; margin-top: 2px; }
+    .onboarding-email-btn:disabled { opacity: 0.6; }
+    .onboarding-toggle-mode { background: none; border: none; color: var(--teal); font-size: 13px; font-weight: 600; cursor: pointer; padding: 12px 6px 4px; }
+    .onboarding-error { color: var(--danger); font-size: 13px; min-height: 16px; max-width: 280px; }
     /* Modal de créditos */
     .modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.6); z-index: 1000; display: none; align-items: center; justify-content: center; }
     .modal-overlay.show { display: flex; }
@@ -227,6 +274,25 @@
 <body>
 
 <div id="toastHolder"></div>
+
+<!-- Pantalla de bienvenida / login obligatorio (collage de pósters + Google + email) -->
+<div id="onboardingScreen">
+  <div id="onboardingPosters"></div>
+  <div class="onboarding-scrim"></div>
+  <div class="onboarding-card">
+    <h1>HOBBI</h1>
+    <p id="onboardingTagline">Todas tus series y películas, en un solo lugar.</p>
+    <div id="googleBtnOnboarding"></div>
+    <div class="onboarding-divider"><span id="onboardingDividerTexto">o con tu mail</span></div>
+    <form id="onboardingEmailForm" onsubmit="return manejarSubmitEmail(event)">
+      <input type="email" id="onboardingEmail" placeholder="Email" required autocomplete="email">
+      <input type="password" id="onboardingPassword" placeholder="Contraseña" required minlength="6" autocomplete="current-password">
+      <button type="submit" class="onboarding-email-btn" id="onboardingSubmitBtn">Iniciar sesión</button>
+    </form>
+    <button type="button" class="onboarding-toggle-mode" id="onboardingToggleModeBtn" onclick="toggleModoOnboarding()">¿No tenés cuenta? Registrate</button>
+    <p id="onboardingError" class="onboarding-error" role="alert" aria-live="assertive"></p>
+  </div>
+</div>
 
 <div class="app-container">
   <div id="offlineBanner" role="status" aria-live="polite">📡 Sin conexión a internet — mostrando datos guardados</div>
@@ -409,8 +475,14 @@
       agregarAFavoritos: 'Agregar a favoritos', quitarDeFavoritos: 'Quitar de favoritos',
       cerrarModal: 'Cerrar', cambiarIdiomaAria: 'Cambiar idioma',
       sesionIniciada: '✅ Sesión iniciada, favoritos sincronizados', errorLoginGoogle: 'No se pudo iniciar sesión con Google',
-      cerrarSesionTitulo: '¿Cerrar sesión?', cerrarSesionMsg: 'Tus datos van a seguir guardados en este dispositivo, pero dejan de sincronizarse con tu cuenta.',
+      cerrarSesionTitulo: '¿Cerrar sesión?', cerrarSesionMsg: 'Vas a tener que volver a iniciar sesión para ver tus favoritos de nuevo.',
       sincronizado: '☁️ Sincronizado', errorSync: '⚠️ No se pudo sincronizar',
+      onboardingTagline: 'Todas tus series y películas, en un solo lugar.',
+      onboardingDivider: 'o con tu mail', onboardingEmailPlaceholder: 'Email', onboardingPasswordPlaceholder: 'Contraseña',
+      onboardingIniciarSesion: 'Iniciar sesión', onboardingRegistrarme: 'Registrarme',
+      onboardingIrARegistro: '¿No tenés cuenta? Registrate', onboardingIrALogin: '¿Ya tenés cuenta? Iniciá sesión',
+      errorLoginEmail: 'No se pudo iniciar sesión. Revisá el mail y la contraseña.',
+      errorRegistroEmail: 'No se pudo completar el registro.',
 
       // Cuenta regresiva del calendario (Upcoming)
       hora: 'Hora', horas: 'Horas', dia: 'Día', dias: 'Días',
@@ -514,8 +586,14 @@
       agregarAFavoritos: 'Add to favorites', quitarDeFavoritos: 'Remove from favorites',
       cerrarModal: 'Close', cambiarIdiomaAria: 'Switch language',
       sesionIniciada: '✅ Signed in, favorites synced', errorLoginGoogle: "Couldn't sign in with Google",
-      cerrarSesionTitulo: 'Sign out?', cerrarSesionMsg: 'Your data stays saved on this device, but stops syncing with your account.',
+      cerrarSesionTitulo: 'Sign out?', cerrarSesionMsg: "You'll need to sign in again to see your favorites.",
       sincronizado: '☁️ Synced', errorSync: "⚠️ Couldn't sync",
+      onboardingTagline: 'Every show and movie you watch, in one place.',
+      onboardingDivider: 'or with your email', onboardingEmailPlaceholder: 'Email', onboardingPasswordPlaceholder: 'Password',
+      onboardingIniciarSesion: 'Sign in', onboardingRegistrarme: 'Sign up',
+      onboardingIrARegistro: "Don't have an account? Sign up", onboardingIrALogin: 'Already have an account? Sign in',
+      errorLoginEmail: "Couldn't sign in. Check your email and password.",
+      errorRegistroEmail: "Couldn't complete the sign up.",
 
       hora: 'Hour', horas: 'Hours', dia: 'Day', dias: 'Days',
       aLasHora: (fecha, hora) => `⏰ ${fecha} at ${hora}`,
@@ -555,6 +633,11 @@
   function aplicarIdioma() {
     document.getElementById('langToggleBtn').textContent = idioma === 'es' ? '🌐 ES' : '🌐 EN';
     document.getElementById('appTagline').textContent = t('tagline');
+    document.getElementById('onboardingTagline').textContent = t('onboardingTagline');
+    document.getElementById('onboardingDividerTexto').textContent = t('onboardingDivider');
+    document.getElementById('onboardingEmail').placeholder = t('onboardingEmailPlaceholder');
+    document.getElementById('onboardingPassword').placeholder = t('onboardingPasswordPlaceholder');
+    actualizarTextosModoOnboarding();
     document.getElementById('tSearch').textContent = t('buscar');
     document.getElementById('tFavs').textContent = t('favoritos');
     document.getElementById('tCalendar').textContent = t('calendario');
@@ -717,6 +800,7 @@
       if (data.logueado) {
         usuarioActual = { email: data.email, nombre: data.nombre, foto: data.foto };
         actualizarChipUsuario();
+        cerrarOnboarding(); // ya está logueado: no tiene sentido mostrarle la bienvenida
         await sincronizarDesdeNube();
       }
     } catch {
@@ -736,10 +820,13 @@
       const data = await res.json();
       usuarioActual = { email: data.email, nombre: data.nombre, foto: data.foto };
       actualizarChipUsuario();
-      // Subimos lo que ya tenía guardado localmente y después traemos el estado
-      // combinado del servidor (por si venía de otro dispositivo).
+      cerrarOnboarding();
+      // Primero BAJAMOS lo que ya había en el servidor y lo mergeamos con lo local
+      // (unión, sin perder nada de ningún lado), y recién ahí subimos el resultado
+      // combinado. Si lo hiciéramos al revés, un dispositivo nuevo sin favoritos
+      // locales pisaría (borraría) lo que ya había en la nube al hacer el primer push.
+      await sincronizarDesdeNube(true);
       await sincronizarHaciaNube(true);
-      await sincronizarDesdeNube();
       mostrarSyncBadge(t('sesionIniciada'));
     } catch {
       mostrarToast(t('errorLoginGoogle'), 'error');
@@ -753,22 +840,142 @@
     usuarioActual = null;
     actualizarChipUsuario();
     mostrarSyncBadge('');
-    // Los datos siguen en este dispositivo (localStorage); solo dejamos de sincronizar.
+    // Como el registro es obligatorio, no dejamos datos de esta cuenta visibles
+    // antes de que alguien loguee de nuevo en este dispositivo (puede ser otra
+    // cuenta): limpiamos lo local y volvemos a mostrar la pantalla de login.
+    favoritos = [];
+    episodiosVistos = {};
+    guardarDatosLocal();
+    mostrarOnboarding();
   }
 
-  /* Trae favoritos/vistos/idioma guardados en el servidor y los mergea con lo
-     local (unión, sin perder nada que el usuario haya marcado en otro lado). */
-  async function sincronizarDesdeNube() {
+  /* ==================== ONBOARDING / LOGIN OBLIGATORIO ==================== */
+
+  const POSTERS_ONBOARDING = ['Wednesday', 'Stranger Things', 'Breaking Bad', 'Squid Game', 'The Last of Us', 'Game of Thrones', 'Loki', 'House of the Dragon', 'The Mandalorian'];
+  let modoOnboarding = 'login'; // 'login' | 'registro'
+
+  async function cargarPostersOnboarding() {
+    const contenedor = document.getElementById('onboardingPosters');
+    try {
+      const resultados = await Promise.all(POSTERS_ONBOARDING.map(nombre =>
+        fetchJSON(`https://api.tvmaze.com/search/shows?q=${encodeURIComponent(nombre)}`, 'onboarding_' + nombre.toLowerCase())
+          .then(r => r[0]?.show?.image?.medium || null)
+          .catch(() => null)
+      ));
+      const imagenes = resultados.filter(Boolean);
+      if (!imagenes.length) return; // sin conexión ni caché: queda solo el fondo liso, no rompe nada
+      contenedor.innerHTML = imagenes.map(src => `<img src="${src}" alt="" loading="eager">`).join('');
+    } catch {
+      // Si falla todo, la pantalla igual funciona (solo sin el collage de fondo).
+    }
+  }
+
+  function mostrarOnboarding() {
+    document.getElementById('onboardingScreen').style.display = 'flex';
+    if (!document.getElementById('onboardingPosters').children.length) cargarPostersOnboarding();
+  }
+
+  function cerrarOnboarding() {
+    const el = document.getElementById('onboardingScreen');
+    if (el) el.style.display = 'none';
+  }
+
+  function toggleModoOnboarding() {
+    modoOnboarding = modoOnboarding === 'login' ? 'registro' : 'login';
+    actualizarTextosModoOnboarding();
+  }
+
+  function actualizarTextosModoOnboarding() {
+    const submitBtn = document.getElementById('onboardingSubmitBtn');
+    const toggleBtn = document.getElementById('onboardingToggleModeBtn');
+    const pass = document.getElementById('onboardingPassword');
+    if (!submitBtn) return; // todavía no existe en el DOM (primera pasada de aplicarIdioma)
+    if (modoOnboarding === 'login') {
+      submitBtn.textContent = t('onboardingIniciarSesion');
+      toggleBtn.textContent = t('onboardingIrARegistro');
+      pass.setAttribute('autocomplete', 'current-password');
+    } else {
+      submitBtn.textContent = t('onboardingRegistrarme');
+      toggleBtn.textContent = t('onboardingIrALogin');
+      pass.setAttribute('autocomplete', 'new-password');
+    }
+    document.getElementById('onboardingError').textContent = '';
+  }
+
+  /* Login o registro con mail/contraseña, según el modo actual del formulario.
+     El resto del flujo (merge, push, chip de usuario) es igual al de Google. */
+  async function manejarSubmitEmail(e) {
+    e.preventDefault();
+    const email = document.getElementById('onboardingEmail').value.trim();
+    const password = document.getElementById('onboardingPassword').value;
+    const errorEl = document.getElementById('onboardingError');
+    const submitBtn = document.getElementById('onboardingSubmitBtn');
+    errorEl.textContent = '';
+
+    const endpoint = modoOnboarding === 'login' ? '/api/auth/login' : '/api/auth/register';
+    submitBtn.disabled = true;
+    try {
+      const res = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password })
+      });
+      if (!res.ok) {
+        errorEl.textContent = (await res.text()) || t(modoOnboarding === 'login' ? 'errorLoginEmail' : 'errorRegistroEmail');
+        return false;
+      }
+      const data = await res.json();
+      usuarioActual = { email: data.email, nombre: data.nombre, foto: data.foto };
+      actualizarChipUsuario();
+      cerrarOnboarding();
+      await sincronizarDesdeNube(true);
+      await sincronizarHaciaNube(true);
+      mostrarSyncBadge(t('sesionIniciada'));
+    } catch {
+      errorEl.textContent = t(modoOnboarding === 'login' ? 'errorLoginEmail' : 'errorRegistroEmail');
+    } finally {
+      submitBtn.disabled = false;
+    }
+    return false;
+  }
+
+  window.addEventListener('load', () => {
+    if (window.google && google.accounts && google.accounts.id) {
+      google.accounts.id.initialize({ client_id: GOOGLE_CLIENT_ID, callback: manejarCredencialGoogle });
+      google.accounts.id.renderButton(document.getElementById('googleBtnContainer'), { theme: 'filled_black', size: 'medium', shape: 'pill', text: 'signin' });
+      google.accounts.id.renderButton(document.getElementById('googleBtnOnboarding'), { theme: 'filled_black', size: 'large', shape: 'pill', text: 'signup_with' });
+    }
+    mostrarOnboarding();
+    revisarSesionExistente();
+  });
+
+  // Si volvés a la pestaña/app después de un rato (ej: la dejaste en segundo
+  // plano y mientras tanto borraste un favorito desde el celu), traemos el
+  // estado real del servidor en vez de esperar a que recargues la página.
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden && usuarioActual) sincronizarDesdeNube();
+  });
+  /* modoMerge=true: unión con lo local (solo para el primer login, así no se
+     pierden favoritos que el usuario ya tenía como invitado en ese dispositivo).
+     modoMerge=false (default): el servidor es la fuente de verdad y REEMPLAZA
+     lo local — necesario para que un borrado hecho en otro dispositivo se vea
+     acá también (si solo sumáramos, un favorito borrado en el celu nunca
+     desaparecería de la PC). */
+  async function sincronizarDesdeNube(modoMerge = false) {
     if (!usuarioActual) return;
     try {
       const res = await fetch('/api/data');
       if (!res.ok) throw new Error('sync down falló');
       const nube = await res.json();
 
-      const idsLocales = new Set(favoritos.map(f => f.id));
-      (nube.favoritos || []).forEach(f => { if (!idsLocales.has(f.id)) favoritos.push(f); });
-
-      episodiosVistos = Object.assign({}, nube.episodiosVistos || {}, episodiosVistos);
+      if (modoMerge) {
+        const idsLocales = new Set(favoritos.map(f => f.id));
+        (nube.favoritos || []).forEach(f => { if (!idsLocales.has(f.id)) favoritos.push(f); });
+        episodiosVistos = Object.assign({}, nube.episodiosVistos || {}, episodiosVistos);
+      } else {
+        favoritos = nube.favoritos || [];
+        episodiosVistos = nube.episodiosVistos || {};
+      }
 
       if (nube.idioma && !localStorage.getItem('hobi_idioma')) {
         idioma = nube.idioma;
@@ -806,14 +1013,6 @@
       timeoutSyncNube = setTimeout(() => hacerPush().then(resolve), 2000);
     });
   }
-
-  window.addEventListener('load', () => {
-    if (window.google && google.accounts && google.accounts.id) {
-      google.accounts.id.initialize({ client_id: GOOGLE_CLIENT_ID, callback: manejarCredencialGoogle });
-      google.accounts.id.renderButton(document.getElementById('googleBtnContainer'), { theme: 'filled_black', size: 'medium', shape: 'pill', text: 'signin' });
-    }
-    revisarSesionExistente();
-  });
 
   // Marca de tiempo por serie: última vez que el usuario entró a ver sus detalles.
   // Se usa para dejar de mostrar el badge "Nuevo" en Favoritos una vez que ya la vio,
@@ -2372,6 +2571,11 @@
   /* Re-fetchea episodios de cada favorito (progreso, próximo estreno) salteando
      la caché. La dispara el pull-to-refresh en la pestaña Favoritos. */
   async function actualizarFavoritos(forzar = false) {
+    // Si hay sesión, primero traemos el estado real del servidor (puede que se
+    // haya agregado o borrado algo desde otro dispositivo) antes de refrescar
+    // los datos de episodios de lo que quede.
+    if (usuarioActual) await sincronizarDesdeNube();
+
     if (!favoritos.length) { renderizarFavoritos(); return; }
     mostrarEsqueletoFavoritos();
     try {
