@@ -129,6 +129,10 @@
     .ajustes-cuenta-mail { color: var(--ink-muted); font-size: 12px; }
     .ajustes-btn { width: 100%; background: var(--surface-2); border: 1px solid var(--border); color: var(--ink); padding: 12px; border-radius: 10px; font-size: 14px; font-weight: 600; cursor: pointer; display: flex; align-items: center; justify-content: space-between; }
     .ajustes-btn.danger { color: var(--danger); border-color: var(--danger); }
+    .ajustes-idioma-menu { margin-top: 8px; border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+    .ajustes-idioma-opcion { width: 100%; background: var(--surface); border: none; border-bottom: 1px solid var(--border); color: var(--ink); padding: 12px 14px; font-size: 14px; cursor: pointer; display: flex; justify-content: space-between; align-items: center; }
+    .ajustes-idioma-opcion:last-child { border-bottom: none; }
+    .ajustes-idioma-opcion .check { color: var(--gold); font-weight: 700; }
 
     /* Buscador */
     .search-box input { width: 100%; padding: 14px; border-radius: 12px; border: 1px solid var(--border); background-color: var(--surface); color: var(--ink); font-size: 15px; outline: none; }
@@ -322,7 +326,7 @@
     <p id="appTagline" style="text-align:center; color:var(--ink-muted); font-size:12px; letter-spacing:0.5px; margin-top:-10px; margin-bottom:12px;">Control de Series</p>
     <div id="syncBadge" class="sync-badge" role="status" aria-live="polite"></div>
     <div class="nav-tabs" role="tablist">
-      <button class="tab-btn active" id="tabSearch" onclick="cambiarVista('buscar')" role="tab" aria-selected="true">🏠 <span id="tSearch">Inicio</span></button>
+      <button class="tab-btn active" id="tabSearch" onclick="cambiarVista('inicio')" role="tab" aria-selected="true">🏠 <span id="tSearch">Inicio</span></button>
       <button class="tab-btn" id="tabFavs" onclick="cambiarVista('favoritos')" role="tab" aria-selected="false">❤️ <span id="tFavs">Favoritos</span></button>
       <button class="tab-btn" id="tabCalendar" onclick="cambiarVista('calendario')" role="tab" aria-selected="false">📅 <span id="tCalendar">Calendario</span></button>
     </div>
@@ -392,10 +396,18 @@
 
       <div class="ajustes-seccion">
         <div class="ajustes-seccion-titulo" id="ajustesTituloIdioma">Idioma</div>
-        <button class="ajustes-btn" onclick="cambiarIdioma()" id="ajustesIdiomaBtn">
+        <button class="ajustes-btn" onclick="toggleMenuIdioma()" id="ajustesIdiomaBtn">
           <span id="ajustesIdiomaActual">🌐 Español</span>
-          <span id="ajustesIdiomaCambiar">Cambiar a English →</span>
+          <span id="ajustesIdiomaFlecha">▾</span>
         </button>
+        <div id="menuIdioma" class="ajustes-idioma-menu" style="display:none;">
+          <button class="ajustes-idioma-opcion" onclick="seleccionarIdioma('es')" id="opcionIdiomaEs">
+            <span>Español</span><span class="check" id="checkIdiomaEs">✓</span>
+          </button>
+          <button class="ajustes-idioma-opcion" onclick="seleccionarIdioma('en')" id="opcionIdiomaEn">
+            <span>English</span><span class="check" id="checkIdiomaEn"></span>
+          </button>
+        </div>
       </div>
 
       <div class="ajustes-seccion">
@@ -450,6 +462,7 @@
       avisosActivados: '🔔 Avisos de estrenos activados',
       verMas: 'Ver más →',
       estrenanPronto: 'Estrenan pronto', nuevas: 'Nuevas', populares: 'Populares',
+      estrenosMes: 'Estrenos este mes', vuelvenMes: 'Vuelven este mes',
       upcoming: 'Upcoming', proximasTemporadas: '🎬 Próximas temporadas',
       cancelar: 'Cancelar', eliminar: 'Eliminar',
       traducirBtn: '🌐 Traducir', verOriginalBtn: '↩ Ver original',
@@ -570,6 +583,7 @@
       avisosActivados: '🔔 Premiere alerts on',
       verMas: 'See more →',
       estrenanPronto: 'Coming soon', nuevas: 'New', populares: 'Popular',
+      estrenosMes: 'Premiering this month', vuelvenMes: 'Returning this month',
       upcoming: 'Upcoming', proximasTemporadas: '🎬 Upcoming seasons',
       cancelar: 'Cancel', eliminar: 'Delete',
       traducirBtn: '🌐 Translate', verOriginalBtn: '↩ Show original',
@@ -669,13 +683,27 @@
     return (I18N[idioma] && I18N[idioma][clave]) || I18N.es[clave] || clave;
   }
 
-  function cambiarIdioma() {
-    idioma = idioma === 'es' ? 'en' : 'es';
+  function toggleMenuIdioma() {
+    const menu = document.getElementById('menuIdioma');
+    menu.style.display = menu.style.display === 'none' ? 'block' : 'none';
+  }
+
+  function seleccionarIdioma(nuevoIdioma) {
+    document.getElementById('menuIdioma').style.display = 'none';
+    if (nuevoIdioma === idioma) return;
+    idioma = nuevoIdioma;
     localStorage.setItem('hobi_idioma', idioma);
     aplicarIdioma();
+    actualizarMenuIdioma();
     // Volvemos a renderizar lo que esté en pantalla para que también cambie el texto dinámico que sí traducimos.
     if (vistaActual === 'detalle' && detalleActualId) verDetalles(detalleActualId, false);
     else cambiarVista(vistaActual, false);
+  }
+
+  function actualizarMenuIdioma() {
+    document.getElementById('ajustesIdiomaActual').textContent = idioma === 'es' ? '🌐 Español' : '🌐 English';
+    document.getElementById('checkIdiomaEs').textContent = idioma === 'es' ? '✓' : '';
+    document.getElementById('checkIdiomaEn').textContent = idioma === 'en' ? '✓' : '';
   }
 
   function aplicarIdioma() {
@@ -754,8 +782,8 @@
     document.getElementById('ajustesTituloCuenta').textContent = t('ajustesTituloCuenta');
     document.getElementById('ajustesCerrarSesionBtn').textContent = t('cerrarSesionBoton');
     document.getElementById('ajustesTituloIdioma').textContent = t('ajustesTituloIdioma');
-    document.getElementById('ajustesIdiomaActual').textContent = idioma === 'es' ? '🌐 Español' : '🌐 English';
-    document.getElementById('ajustesIdiomaCambiar').textContent = idioma === 'es' ? t('ajustesCambiarAIngles') : t('ajustesCambiarAEspanol');
+    document.getElementById('menuIdioma').style.display = 'none';
+    actualizarMenuIdioma();
     actualizarChipUsuario();
   }
 
@@ -1411,21 +1439,21 @@
      físico "Atrás" de Android (que dispara el evento popstate en cualquier
      WebView, incluida una APK hecha con Capacitor/TWA) navega DENTRO de la app
      en vez de cerrarla de golpe en la primera pantalla que se le ocurra. */
-  let vistaActual = 'buscar';
+  let vistaActual = 'inicio';
 
   function cambiarVista(vista, push = true) {
     document.getElementById('detailView').style.display = 'none';
-    document.getElementById('listView').style.display = (vista === 'buscar' || vista === 'favoritos') ? 'block' : 'none';
+    document.getElementById('listView').style.display = (vista === 'inicio' || vista === 'favoritos') ? 'block' : 'none';
     document.getElementById('calendarView').style.display = vista === 'calendario' ? 'block' : 'none';
 
-    document.getElementById('tabSearch').classList.toggle('active', vista === 'buscar');
+    document.getElementById('tabSearch').classList.toggle('active', vista === 'inicio');
     document.getElementById('tabFavs').classList.toggle('active', vista === 'favoritos');
     document.getElementById('tabCalendar').classList.toggle('active', vista === 'calendario');
-    document.getElementById('tabSearch').setAttribute('aria-selected', vista === 'buscar');
+    document.getElementById('tabSearch').setAttribute('aria-selected', vista === 'inicio');
     document.getElementById('tabFavs').setAttribute('aria-selected', vista === 'favoritos');
     document.getElementById('tabCalendar').setAttribute('aria-selected', vista === 'calendario');
 
-    document.getElementById('searchBoxContainer').style.display = vista === 'buscar' ? 'block' : 'none';
+    document.getElementById('searchBoxContainer').style.display = vista === 'inicio' ? 'block' : 'none';
     document.getElementById('favsToolbar').style.display = vista === 'favoritos' ? 'flex' : 'none';
 
     if (vista === 'favoritos') renderizarFavoritos();
@@ -1445,16 +1473,16 @@
 
   /* Aplica el estado guardado en el historial (se usa al navegar con Atrás/Adelante). */
   function aplicarEstadoHistorial(state) {
-    const estado = state || { view: 'buscar' };
+    const estado = state || { view: 'inicio' };
     if (estado.view === 'detalle' && estado.showId) {
       verDetalles(estado.showId, false);
     } else {
-      cambiarVista(estado.view || 'buscar', false);
+      cambiarVista(estado.view || 'inicio', false);
     }
   }
 
   window.addEventListener('popstate', (e) => aplicarEstadoHistorial(e.state));
-  history.replaceState({ view: 'buscar' }, '', '#buscar'); // punto de partida: un back más allá de esto cierra la app
+  history.replaceState({ view: 'inicio' }, '', '#inicio'); // punto de partida: un back más allá de esto cierra la app
   actualizarBandaOffline(); // por si la app arranca sin conexión
   mostrarPlaceholderBusqueda(); // pantalla inicial: "Buscá una serie para empezar"
 
@@ -1501,16 +1529,32 @@
     return copia.slice(0, cantidad);
   }
 
+  /* Pide varias fechas de a lotes, no todas juntas: si el rango es "todo lo que
+     queda del mes" (hasta 30 días), tirar 30 pedidos en paralelo de una podría
+     chocar con el límite de pedidos por segundo de TVMaze. De a 8 es prudente
+     y sigue siendo rápido gracias a la caché de 3hs por día. */
+  async function fetchEnLotes(items, fn, tamanoLote = 8) {
+    const resultados = [];
+    for (let i = 0; i < items.length; i += tamanoLote) {
+      const lote = items.slice(i, i + tamanoLote);
+      resultados.push(...await Promise.all(lote.map(fn)));
+    }
+    return resultados;
+  }
+
   async function obtenerNuevasYProximos() {
     const hoy = new Date();
     const fechasPasadas = [];
-    const fechasFuturas = [];
     for (let i = 1; i <= 5; i++) {
       const d = new Date(hoy); d.setDate(d.getDate() - i);
       fechasPasadas.push(formatearFechaISO(d));
     }
-    for (let i = 0; i <= 6; i++) {
-      const d = new Date(hoy); d.setDate(d.getDate() + i);
+
+    // Desde hoy hasta el último día del mes actual: con esto separamos series
+    // nuevas ("Estrenos") de temporadas que regresan ("Vuelven este mes").
+    const finDeMes = new Date(hoy.getFullYear(), hoy.getMonth() + 1, 0);
+    const fechasFuturas = [];
+    for (let d = new Date(hoy); d <= finDeMes; d.setDate(d.getDate() + 1)) {
       fechasFuturas.push(formatearFechaISO(d));
     }
 
@@ -1518,7 +1562,7 @@
 
     const [episodiosPasados, episodiosFuturos] = await Promise.all([
       Promise.all(fechasPasadas.map(traerDia)),
-      Promise.all(fechasFuturas.map(traerDia))
+      fetchEnLotes(fechasFuturas, traerDia, 8)
     ]);
 
     // /schedule/web no siempre trae el show en "ep.show" directo como /schedule:
@@ -1565,19 +1609,31 @@
         .sort((a, b) => new Date(b.airstamp || b.airdate) - new Date(a.airstamp || a.airdate))
     );
 
-    // Estrenan pronto: el próximo capítulo E1 de cualquier temporada (nueva serie o vuelta de una).
-    const pronto = sinDuplicados(
-      episodiosFuturos.flat().flatMap(normalizarEntradaWeb)
-        .filter((ep) => ep.number === 1)
+    const futurosE1 = episodiosFuturos.flat().flatMap(normalizarEntradaWeb).filter((ep) => ep.number === 1);
+
+    // Estrenos: series totalmente nuevas (T1E1) que salen el resto de este mes.
+    const estrenos = sinDuplicados(
+      futurosE1.filter((ep) => ep.season === 1)
         .sort((a, b) => new Date(a.airstamp || a.airdate) - new Date(b.airstamp || b.airdate))
     );
 
-    return { nuevas, pronto };
+    // Vuelven este mes: series que ya existían y arrancan una temporada nueva (T2+, E1).
+    const vuelven = sinDuplicados(
+      futurosE1.filter((ep) => ep.season > 1)
+        .sort((a, b) => new Date(a.airstamp || a.airdate) - new Date(b.airstamp || b.airdate))
+    );
+
+    return { nuevas, estrenos, vuelven };
   }
 
   /* Guarda la última tanda completa de cada categoría para que "Ver más" no tenga que volver a pedir nada. */
-  let catalogoDescubrimiento = { pronto: [], nuevas: [], populares: [] };
-  const CATEGORIAS_DESCUBRIMIENTO = { pronto: { emoji: '🔜', clave: 'estrenanPronto' }, nuevas: { emoji: '🆕', clave: 'nuevas' }, populares: { emoji: '🔥', clave: 'populares' } };
+  let catalogoDescubrimiento = { estrenos: [], vuelven: [], nuevas: [], populares: [] };
+  const CATEGORIAS_DESCUBRIMIENTO = {
+    estrenos: { emoji: '🆕', clave: 'estrenosMes' },
+    vuelven: { emoji: '🔁', clave: 'vuelvenMes' },
+    nuevas: { emoji: '✨', clave: 'nuevas' },
+    populares: { emoji: '🔥', clave: 'populares' }
+  };
 
   function tituloConEmoji(id) {
     const cat = CATEGORIAS_DESCUBRIMIENTO[id];
@@ -1651,9 +1707,9 @@
 
   async function cargarDescubrimiento() {
     try {
-      const [popularesPool, { nuevas, pronto }] = await Promise.all([
+      const [popularesPool, { nuevas, estrenos, vuelven }] = await Promise.all([
         obtenerPopulares().catch(() => []),
-        obtenerNuevasYProximos().catch(() => ({ nuevas: [], pronto: [] }))
+        obtenerNuevasYProximos().catch(() => ({ nuevas: [], estrenos: [], vuelven: [] }))
       ]);
       const populares = elegirAlAzar(popularesPool, 24);
 
@@ -1662,7 +1718,8 @@
       if (!holder) return;
 
       holder.innerHTML = '';
-      renderizarRailDescubrimiento(holder, 'pronto', ordenarHollywoodPrimero(pronto.map(ep => ep.show)));
+      renderizarRailDescubrimiento(holder, 'estrenos', ordenarHollywoodPrimero(estrenos.map(ep => ep.show)));
+      renderizarRailDescubrimiento(holder, 'vuelven', ordenarHollywoodPrimero(vuelven.map(ep => ep.show)));
       renderizarRailDescubrimiento(holder, 'nuevas', ordenarHollywoodPrimero(nuevas.map(ep => ep.show)));
       renderizarRailDescubrimiento(holder, 'populares', ordenarHollywoodPrimero(populares));
 
