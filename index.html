@@ -1,0 +1,2283 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Hobbi: Control de Series</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      /* Fondo: negro azulado, como una sala de cine */
+      --bg: #0a0a13;
+      --bg-glow: #1a1a2e;
+      --surface: #15151f;
+      --surface-2: #1c1c2c;
+      --border: #27273b;
+
+      /* Dorado marquesina: marca, favoritos, novedades, "renovada" */
+      --gold: #f2a93b;
+      --gold-dim: #f2a93b22;
+      --gold-ink: #241a06;
+
+      /* Turquesa "en vivo": todo lo que está pasando ahora (emisión, progreso, visto) */
+      --teal: #2dd7c4;
+      --teal-dim: #2dd7c422;
+
+      /* Rojo: solo para eliminar/errores, nunca decorativo */
+      --danger: #ef4757;
+      --danger-dim: #ef475722;
+
+      --ink: #ffffff;
+      --ink-muted: #8b8ba3;
+      --ink-dim: #5a5a72;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+    body { background: radial-gradient(ellipse 100% 40% at 50% -5%, var(--bg-glow) 0%, var(--bg) 60%) var(--bg); color: var(--ink); padding: 16px; display: flex; justify-content: center; }
+    .app-container { width: 100%; max-width: 480px; display: flex; flex-direction: column; gap: 16px; }
+    .marquee { font-family: 'Bebas Neue', -apple-system, sans-serif; letter-spacing: 0.5px; }
+
+    /* Header y Navegación */
+    header h1 { font-family: 'Bebas Neue', -apple-system, sans-serif; color: var(--gold); font-size: 36px; letter-spacing: 3px; font-weight: 400; text-align: center; margin-bottom: 12px; text-shadow: 0 0 24px var(--gold-dim); }
+    .nav-tabs { display: flex; gap: 6px; background: var(--surface); padding: 4px; border-radius: 12px; border: 1px solid var(--border); }
+    .tab-btn { flex: 1; padding: 10px 4px; border: none; background: transparent; color: var(--ink-muted); font-weight: 600; font-size: 13px; border-radius: 8px; cursor: pointer; text-align: center; }
+    .tab-btn.active { background: var(--gold); color: var(--gold-ink); }
+    .lang-toggle { background: var(--surface); border: 1px solid var(--border); color: var(--ink-muted); font-size: 11px; font-weight: 700; padding: 5px 10px; border-radius: 20px; cursor: pointer; }
+    .info-btn { background: var(--surface); border: 1px solid var(--border); color: var(--ink-muted); font-size: 14px; padding: 5px 8px; border-radius: 6px; cursor: pointer; width: 30px; height: 30px; display: flex; align-items: center; justify-content: center; }
+    /* Modal de créditos */
+    .modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.6); z-index: 1000; display: none; align-items: center; justify-content: center; }
+    .modal-overlay.show { display: flex; }
+    .modal-content { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 24px; max-width: 90%; max-height: 80vh; overflow-y: auto; }
+    .modal-content h3 { color: var(--gold); font-size: 20px; margin-bottom: 16px; }
+    .modal-content p { color: var(--ink-muted); font-size: 13px; line-height: 1.6; margin-bottom: 12px; }
+    .modal-content a { color: var(--teal); text-decoration: none; }
+    .modal-content a:hover { text-decoration: underline; }
+    .modal-close { position: absolute; top: 12px; right: 12px; background: var(--surface-2); border: 1px solid var(--border); color: var(--ink); width: 32px; height: 32px; border-radius: 8px; cursor: pointer; font-size: 18px; display: flex; align-items: center; justify-content: center; }
+
+    /* Buscador */
+    .search-box input { width: 100%; padding: 14px; border-radius: 12px; border: 1px solid var(--border); background-color: var(--surface); color: var(--ink); font-size: 15px; outline: none; }
+    .search-box input:focus { border-color: var(--gold); }
+
+    /* Orden de favoritos */
+    .filter-row { display: flex; gap: 8px; }
+    .filter-row select { flex: 1; padding: 8px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface); color: var(--ink); font-size: 12px; }
+
+    /* Cards de Series */
+    .series-list { display: flex; flex-direction: column; gap: 12px; }
+    .card { background-color: var(--surface); border-radius: 14px; padding: 12px; display: flex; flex-direction: column; gap: 8px; border: 1px solid var(--border); border-left: 4px solid var(--border); position: relative; overflow: hidden; }
+    .card.live { border-left-color: var(--teal); }
+    .card.renewed { border-left-color: var(--gold); }
+    .card.paused { border-left-color: var(--ink-muted); }
+    .card.ended { border-left-color: var(--border); }
+    .card-top { display: flex; gap: 12px; align-items: center; }
+    .card img { width: 60px; height: 85px; object-fit: cover; border-radius: 8px; background-color: var(--bg); cursor: pointer; flex-shrink: 0; }
+    .card-info { flex: 1; cursor: pointer; min-width: 0; }
+    .card-info h3 { font-size: 16px; margin-bottom: 4px; }
+    .card-info .status { font-size: 11px; color: var(--teal); font-weight: bold; margin-bottom: 6px; }
+    .card-info .status.ended { color: var(--ink-dim); }
+    .card-info .status.paused { color: var(--ink-muted); }
+    .card-info .status.renewed { color: var(--gold); }
+    .fav-btn { background: none; border: none; font-size: 22px; cursor: pointer; padding: 4px; flex-shrink: 0; }
+    .icon-btn { display: flex; align-items: center; justify-content: center; width: 30px; height: 30px; background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px; text-decoration: none; flex-shrink: 0; cursor: pointer; }
+
+    /* Barra de Progreso */
+    .progress-bar-bg { background: var(--surface-2); border-radius: 6px; height: 8px; width: 100%; overflow: hidden; margin-top: 6px; }
+    .progress-bar-fill { background: var(--teal); height: 100%; width: 0%; transition: width 0.3s; }
+    .progress-text { font-size: 11px; color: var(--ink-muted); margin-top: 3px; }
+
+    .next-air { font-size: 11px; color: var(--ink-muted); margin-top: 4px; }
+
+    /* Detalle de Serie */
+    .back-btn { background: var(--surface-2); color: var(--ink); border: none; padding: 8px 14px; border-radius: 8px; cursor: pointer; margin-bottom: 12px; font-weight: bold; }
+    .detail-header { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 10px; background: var(--surface); padding: 20px 16px; border-radius: 14px; margin-bottom: 16px; border: 1px solid var(--border); position: relative; }
+    .detail-header .detail-poster { width: 160px; height: 230px; object-fit: cover; border-radius: 12px; box-shadow: 0 8px 28px rgba(0,0,0,0.5); }
+    .detail-header .detail-rating { font-size: 13px; font-weight: 700; color: var(--gold); display: flex; align-items: center; gap: 5px; }
+    .detail-header h2 { font-size: 20px; }
+    .detail-header .detail-tags { font-size: 12px; color: var(--ink-muted); }
+    .detail-header .fav-btn { position: absolute; top: 12px; right: 12px; }
+    .synopsis { color: var(--ink-muted); font-size: 13px; line-height: 1.6; margin-bottom: 16px; }
+    .synopsis p { margin-bottom: 8px; }
+    .synopsis p:last-child { margin-bottom: 0; }
+    .translate-btn { display: inline-block; font-size: 12px; color: var(--teal); font-weight: 700; cursor: pointer; }
+    .schedule-badge { background: var(--teal-dim); color: var(--teal); border: 1px solid var(--teal); padding: 6px 10px; border-radius: 8px; font-size: 12px; font-weight: bold; margin-top: 6px; display: inline-block; }
+    .schedule-badge.muted { background: var(--surface-2); color: var(--ink-muted); border: 1px solid var(--border); }
+    .schedule-badge.renewed { background: var(--gold-dim); color: var(--gold); border: 1px solid var(--gold); }
+
+    /* Acordeón e Ítems de Episodios */
+    details { background: var(--surface); border-radius: 10px; margin-bottom: 10px; border: 1px solid var(--border); overflow: hidden; }
+    summary { padding: 14px; font-weight: bold; cursor: pointer; background: var(--surface-2); list-style: none; display: flex; justify-content: space-between; align-items: center; }
+    summary::-webkit-details-marker { display: none; }
+    .season-actions { display: flex; gap: 8px; align-items: center; }
+    .mark-season-btn { background: var(--surface-2); color: var(--ink-muted); border: none; padding: 4px 8px; border-radius: 6px; font-size: 11px; cursor: pointer; }
+    .mark-season-btn:hover { background: var(--teal); color: var(--gold-ink); }
+
+    .episode-item { padding: 10px 14px; border-bottom: 1px solid var(--border); font-size: 13px; display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+    .episode-item:last-child { border-bottom: none; }
+    .episode-left { display: flex; align-items: center; gap: 10px; flex: 1; }
+    .ep-checkbox { width: 18px; height: 18px; accent-color: var(--teal); cursor: pointer; }
+    .ep-checkbox:disabled { opacity: 0.35; cursor: not-allowed; }
+    .episode-item.future-episode { opacity: 0.78; }
+    .episode-item.future-episode .ep-title { color: var(--ink-muted); }
+    .ep-title.watched { text-decoration: line-through; color: var(--ink-dim); }
+    .mark-season-btn.active { background: var(--teal); color: var(--gold-ink); box-shadow: 0 0 0 1px #2dd7c455; }
+    .mark-season-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+    .ep-date { color: var(--ink-muted); font-size: 11px; white-space: nowrap; }
+
+    /* Tarjetas del Calendario */
+    .calendar-card { background: var(--surface); border-radius: 12px; padding: 12px; border-left: 4px solid var(--gold); margin-bottom: 10px; border-top: 1px solid var(--border); border-right: 1px solid var(--border); border-bottom: 1px solid var(--border); }
+    .calendar-date { font-size: 12px; color: var(--gold); font-weight: bold; margin-bottom: 4px; }
+
+    /* Línea de tiempo de próximos estrenos (píldora dorada, luces de marquesina) */
+    .timeline { position: relative; }
+    .timeline-track { position: absolute; left: 0; width: 64px; border-radius: 32px; background: linear-gradient(180deg, #f2a93b 0%, #d98a1f 35%, #a8630f 68%, #5c3508 100%); box-shadow: 0 0 20px var(--gold-dim); z-index: 0; }
+    .timeline-items { position: relative; z-index: 1; }
+    .timeline-item { position: relative; display: flex; align-items: flex-start; gap: 14px; margin-bottom: 20px; min-height: 74px; }
+    .timeline-item:last-child { margin-bottom: 0; }
+    .timeline-marker { width: 64px; flex-shrink: 0; display: flex; flex-direction: column; align-items: center; text-align: center; padding-top: 16px; }
+    .timeline-marker .time-value { font-family: 'Bebas Neue', -apple-system, sans-serif; font-size: 26px; letter-spacing: 0.5px; color: #fff; line-height: 1; text-shadow: 0 1px 4px rgba(0,0,0,0.4); }
+    .timeline-marker .time-unit { font-size: 10px; color: rgba(255,255,255,0.9); text-transform: uppercase; letter-spacing: 0.4px; margin-top: 3px; font-weight: 700; }
+    .timeline-dot { width: 14px; height: 14px; border-radius: 50%; background: #fff; border: 3px solid rgba(0,0,0,0.2); margin-top: 10px; box-shadow: 0 0 0 4px rgba(0,0,0,0.12); flex-shrink: 0; }
+    .timeline-card { flex: 1; min-width: 0; display: flex; gap: 12px; align-items: center; background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 10px; margin-top: 14px; cursor: pointer; }
+    .timeline-card img { width: 52px; height: 74px; object-fit: cover; border-radius: 8px; background: var(--bg); flex-shrink: 0; }
+    .timeline-card-info { min-width: 0; }
+    .timeline-card-info h4 { font-size: 15px; margin-bottom: 4px; }
+    .timeline-badge { font-size: 12px; color: var(--gold); font-weight: 600; margin-bottom: 3px; }
+    .timeline-date { font-size: 11px; color: var(--ink-muted); }
+
+    /* Toast de errores/avisos */
+    #toastHolder { position: fixed; left: 50%; bottom: 18px; transform: translateX(-50%); z-index: 999; display: flex; flex-direction: column; gap: 8px; align-items: center; width: 100%; max-width: 480px; padding: 0 16px; pointer-events: none; }
+    .toast { background: var(--surface-2); border: 1px solid var(--border); color: var(--ink); font-size: 13px; padding: 10px 14px; border-radius: 10px; box-shadow: 0 4px 16px rgba(0,0,0,0.4); opacity: 0; transform: translateY(8px); transition: opacity 0.25s, transform 0.25s; max-width: 100%; text-align: center; }
+    .toast.show { opacity: 1; transform: translateY(0); }
+    .toast.error { border-color: var(--danger); }
+    .toast.ok { border-color: var(--teal); }
+
+    /* Banda de "sin conexión" */
+    #offlineBanner { display: none; background: var(--danger-dim); color: var(--danger); border: 1px solid var(--danger); font-size: 12px; font-weight: 700; text-align: center; padding: 8px; border-radius: 10px; }
+    #offlineBanner.show { display: block; }
+
+    /* Botón de activar notificaciones */
+    .notif-btn { background: var(--surface); border: 1px solid var(--border); color: var(--ink-muted); font-size: 12px; font-weight: 600; padding: 10px; border-radius: 10px; text-align: center; cursor: pointer; margin-bottom: 4px; }
+    .notif-btn.on { border-color: var(--gold); color: var(--gold); background: var(--gold-dim); }
+
+    /* Filtros de Favoritos (buscador local + estado + toggle pendientes) */
+    .fav-search input { width: 100%; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--border); background: var(--surface); color: var(--ink); font-size: 13px; outline: none; }
+    .fav-search input:focus { border-color: var(--gold); }
+    .pendientes-toggle { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--ink-muted); cursor: pointer; user-select: none; }
+    .pendientes-toggle input { width: 16px; height: 16px; accent-color: var(--gold); cursor: pointer; }
+
+    /* Badge "Nuevo" sobre episodios ya estrenados y sin ver */
+    .badge-nuevo { display: inline-block; background: var(--danger); color: #fff; font-size: 9px; font-weight: 800; padding: 2px 6px; border-radius: 6px; margin-left: 6px; vertical-align: middle; letter-spacing: 0.3px; }
+
+    /* Swipe-to-delete en las cards de Favoritos */
+    .swipe-wrapper { position: relative; border-radius: 14px; overflow: hidden; }
+    .swipe-delete-bg { position: absolute; inset: 0; background: var(--danger); display: flex; align-items: center; justify-content: flex-end; padding-right: 22px; font-size: 22px; }
+    .swipe-wrapper .card { position: relative; transition: transform 0.2s; touch-action: pan-y; background-color: var(--surface); }
+
+    /* Pull-to-refresh del Calendario */
+    .pull-indicator { text-align: center; font-size: 12px; color: var(--ink-muted); font-weight: 700; height: 0; overflow: hidden; transition: height 0.15s; }
+
+    /* Skeleton de carga (favoritos actualizándose por pull-to-refresh) */
+    .skeleton-block { background: linear-gradient(90deg, var(--surface-2) 25%, var(--border) 50%, var(--surface-2) 75%); background-size: 200% 100%; border-radius: 6px; animation: skeleton-pulse 1.3s ease-in-out infinite; }
+    @keyframes skeleton-pulse { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+
+    /* Modal de confirmación (eliminar de favoritos) */
+    .confirm-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.7); z-index: 1000; display: flex; align-items: center; justify-content: center; padding: 24px; }
+    .confirm-box { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 20px; max-width: 320px; width: 100%; text-align: center; }
+    .confirm-title { font-size: 16px; font-weight: 800; color: var(--ink); margin-bottom: 8px; }
+    .confirm-msg { font-size: 13px; color: var(--ink-muted); line-height: 1.5; margin-bottom: 18px; }
+    .confirm-actions { display: flex; gap: 10px; }
+    .confirm-btn { flex: 1; padding: 11px; border-radius: 10px; border: none; font-weight: 700; font-size: 13px; cursor: pointer; }
+    .confirm-btn.cancel { background: var(--surface-2); color: var(--ink); }
+    .confirm-btn.delete { background: var(--danger); color: #fff; }
+
+    /* Carruseles de descubrimiento en la pantalla de Buscar */
+    .discover-section { margin-bottom: 22px; }
+    .discover-section h3 { font-size: 20px; color: var(--gold); margin-bottom: 10px; }
+    .discover-rail { display: flex; gap: 10px; overflow-x: auto; padding-bottom: 6px; scrollbar-width: none; }
+    .discover-rail::-webkit-scrollbar { display: none; }
+    .discover-item { flex-shrink: 0; width: 102px; cursor: pointer; }
+    .discover-item img { width: 102px; height: 146px; object-fit: cover; border-radius: 10px; background: var(--surface); border: 1px solid var(--border); display: block; }
+    .discover-name { font-size: 11px; color: var(--ink); margin-top: 6px; line-height: 1.3; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+    .actor-item { width: 84px; text-align: center; }
+    .actor-item img { width: 84px; height: 84px; border-radius: 50%; object-fit: cover; background: var(--surface); border: 1px solid var(--border); }
+    .ver-mas-btn { font-size: 12px; color: var(--gold); font-weight: 700; cursor: pointer; white-space: nowrap; flex-shrink: 0; }
+
+    /* Próximas temporadas */
+    .upcoming-seasons-title { font-family: 'Bebas Neue', -apple-system, sans-serif; letter-spacing: 0.5px; color: var(--gold); font-size: 22px; margin: 4px 0 12px; }
+    .season-upcoming-card { background: var(--surface); border: 1px solid var(--border); border-left: 4px solid var(--gold); border-radius: 14px; padding: 12px; margin-bottom: 10px; }
+    .season-upcoming-top { display: flex; gap: 12px; align-items: center; cursor: pointer; }
+    .season-upcoming-top img { width: 52px; height: 74px; object-fit: cover; border-radius: 8px; background: var(--bg); flex-shrink: 0; }
+    .season-upcoming-info { min-width: 0; flex: 1; }
+    .season-upcoming-info h4 { font-size: 15px; margin-bottom: 6px; }
+    .season-label { color: var(--gold); font-size: 13px; font-weight: 700; margin-bottom: 4px; }
+    .season-meta { color: var(--ink-muted); font-size: 12px; line-height: 1.5; }
+  </style>
+</head>
+<body>
+
+<div id="toastHolder"></div>
+
+<div class="app-container">
+  <div id="offlineBanner" role="status" aria-live="polite">📡 Sin conexión a internet — mostrando datos guardados</div>
+  <header>
+    <div style="display:flex; justify-content:flex-end; gap:8px; margin-bottom:-4px;">
+      <button class="info-btn" onclick="abrirCreditos()" title="Acerca de" aria-label="Acerca de">ℹ️</button>
+      <button id="langToggleBtn" class="lang-toggle" onclick="cambiarIdioma()" aria-label="Cambiar idioma / Switch language">🌐 ES</button>
+    </div>
+    <h1>HOBBI</h1>
+    <p id="appTagline" style="text-align:center; color:var(--ink-muted); font-size:12px; letter-spacing:0.5px; margin-top:-10px; margin-bottom:12px;">Control de Series</p>
+    <div class="nav-tabs" role="tablist">
+      <button class="tab-btn active" id="tabSearch" onclick="cambiarVista('buscar')" role="tab" aria-selected="true">🔍 <span id="tSearch">Buscar</span></button>
+      <button class="tab-btn" id="tabFavs" onclick="cambiarVista('favoritos')" role="tab" aria-selected="false">❤️ <span id="tFavs">Favoritos</span></button>
+      <button class="tab-btn" id="tabCalendar" onclick="cambiarVista('calendario')" role="tab" aria-selected="false">📅 <span id="tCalendar">Calendario</span></button>
+    </div>
+  </header>
+
+  <!-- VISTA DE BÚSQUEDA Y FAVORITOS -->
+  <div id="listView">
+    <div class="search-box" id="searchBoxContainer">
+      <input type="text" id="searchInput" placeholder="Buscar serie online..." oninput="debouncedSearch()">
+    </div>
+
+    <div id="pullIndicatorFavs" class="pull-indicator" role="status" aria-live="polite"></div>
+
+    <div id="favsToolbar" style="display:none; flex-direction: column; gap: 10px; margin-bottom: 12px;">
+      <div class="fav-search">
+        <input type="text" id="filtroFavoritos" placeholder="🔍 Filtrar tus favoritos..." oninput="renderizarFavoritos()">
+      </div>
+      <div class="filter-row">
+        <select id="ordenFavoritos" onchange="renderizarFavoritos()">
+          <option value="agregada">Recién agregadas</option>
+          <option value="alfabetico">Alfabético</option>
+        </select>
+        <select id="estadoFavoritos" onchange="renderizarFavoritos()">
+          <option value="todas">Todas</option>
+          <option value="emision">En emisión</option>
+          <option value="finalizada">Finalizadas</option>
+        </select>
+      </div>
+      <label class="pendientes-toggle">
+        <input type="checkbox" id="soloPendientes" onchange="renderizarFavoritos()">
+        Ocultar las que ya vi completas
+      </label>
+    </div>
+
+    <div class="series-list" id="seriesList" style="margin-top: 16px;"></div>
+  </div>
+
+  <!-- VISTA DE CALENDARIO -->
+  <div id="calendarView" style="display: none;">
+    <div id="pullIndicator" class="pull-indicator" role="status" aria-live="polite">↓ Soltá para actualizar</div>
+    <div class="notif-btn" id="notifBtn" onclick="pedirPermisoNotificaciones()">🔔 Activar avisos de estrenos</div>
+    <div id="calendarContent"></div>
+  </div>
+
+  <!-- VISTA DE DETALLE -->
+  <div id="detailView" style="display: none;">
+    <button class="back-btn" id="detailBackBtn" onclick="volverALista()">← Volver</button>
+    <div id="detailContent"></div>
+  </div>
+
+  <!-- MODAL DE CRÉDITOS -->
+  <div id="creditosModal" class="modal-overlay" onclick="if(event.target.id === 'creditosModal') cerrarCreditos()">
+    <div class="modal-content" style="position:relative;">
+      <button class="modal-close" onclick="cerrarCreditos()" aria-label="Cerrar">✕</button>
+      <h3 id="creditosTitle">Acerca de</h3>
+      <p id="creditosApp">Hobbi: Control de Series te ayuda a seguir tus series favoritas.</p>
+      <p id="creditosData"><strong>Datos:</strong> Esta app utiliza la API pública de <a href="https://www.tvmaze.com/api" target="_blank">TVmaze</a>, bajo licencia CC BY-SA.</p>
+      <p id="creditosAttribution"><strong>Atribución:</strong> Todos los datos de series, episodios y pósters provienen de <a href="https://www.tvmaze.com" target="_blank">TVmaze</a>. Gracias a TVmaze y su comunidad por mantener esta base de datos.</p>
+      <p id="creditosNote"><strong>Nota:</strong> Hobbi es una app no oficial hecha por un fan. TVmaze es propiedad de su comunidad y desarrolladores.</p>
+    </div>
+  </div>
+</div>
+
+<script>
+  /* ==================== IDIOMA (ES/EN) ====================
+     Cubre la interfaz fija de la app (pestañas, botones, filtros, mensajes
+     vacíos/error, toasts) y también el texto dinámico con fechas interpoladas
+     (badges de estado, calendario, temporadas), usando el locale correcto
+     ('es-AR' o 'en-US') para formatear cada fecha según el idioma elegido.
+     Lo único que queda sin traducir son los géneros de las series (Drama,
+     Action, etc.), porque TVMaze los entrega siempre en inglés. */
+  let idioma = localStorage.getItem('hobi_idioma') || 'es';
+
+  const I18N = {
+    es: {
+      buscar: 'Buscar', favoritos: 'Favoritos', calendario: 'Calendario',
+      volver: '← Volver',
+      searchPlaceholder: 'Buscar serie online...',
+      filtroFavPlaceholder: '🔍 Filtrar tus favoritos...',
+      ordenRecientes: 'Recién agregadas', ordenAlfabetico: 'Alfabético',
+      estadoTodas: 'Todas', estadoEnEmisionOpt: 'En emisión', estadoFinalizadas: 'Finalizadas',
+      ocultarCompletas: 'Ocultar las que ya vi completas',
+      noFavoritos: 'No tenés series en favoritos.',
+      ningunaCoincide: 'Ninguna coincide con ese filtro.',
+      buscando: 'Buscando...',
+      noEncontraron: 'No se encontraron series.',
+      cargandoEpisodios: 'Cargando episodios...',
+      temporadas: 'Temporadas',
+      marcarToda: '✓ Toda',
+      activarAvisos: '🔔 Activar avisos de estrenos',
+      avisosActivados: '🔔 Avisos de estrenos activados',
+      verMas: 'Ver más →',
+      estrenanPronto: 'Estrenan pronto', nuevas: 'Nuevas', populares: 'Populares',
+      upcoming: 'Upcoming', proximasTemporadas: '🎬 Próximas temporadas',
+      cancelar: 'Cancelar', eliminar: 'Eliminar',
+      traducirBtn: '🌐 Traducir', verOriginalBtn: '↩ Ver original',
+      buscarSerieEmpezar: 'Escribí el nombre arriba y tocá el ❤️ de las que quieras seguir.',
+      agregaFavoritos: 'Agregá series en emisión a favoritos para ver su calendario.',
+      sinConexionBanner: '📡 Sin conexión a internet — mostrando datos guardados',
+      conexionRecuperada: 'Conexión recuperada ✅',
+      teQuedasteSinConexion: 'Te quedaste sin conexión',
+      soltarActualizar: '↓ Soltá para actualizar',
+      soltarActualizarListo: '↑ Soltá para actualizar',
+      seguiBajando: '↓ Seguí bajando para actualizar',
+      sacasteDeFavoritos: (nombre) => `Sacaste "${nombre}" de favoritos`,
+      calendarioActualizado: 'Calendario actualizado ✅',
+
+      // Estados de serie (cards de Favoritos/Buscar)
+      estadoEnEmisionCard: '● En emisión', estadoEnPausaCard: '⏸ En pausa',
+      estadoRenovadaCard: '🎬 Renovada', estadoFinalizadaCard: '✔ Finalizada',
+      estadoEsperandoCard: '🔜 Esperando renovación',
+
+      // Badges de estado en el detalle (con fechas interpoladas)
+      estrenoTemporada: (n) => `Estreno de Temporada ${n}`,
+      badgeEnEmision: (etiqueta, fecha, hora) => `📡 En emisión — Próximo: ${etiqueta} — ${fecha}${hora ? ' a las ' + hora : ''}`,
+      badgeRenovadaConFecha: (n, fecha) => `🎬 Renovada — Vuelve con la Temporada ${n} el ${fecha}`,
+      badgeRenovadaSinFecha: (n) => `🎬 Renovada — Temporada ${n} confirmada, fecha por anunciar`,
+      badgeEnPausa: (n) => `⏸ En pausa — todavía quedan capítulos de la Temporada ${n} sin fecha confirmada`,
+      badgeEsperandoRenovacion: '🔜 Esperando renovación — todavía no confirmaron una temporada nueva',
+      badgeFinalizada: '✔ Finalizada',
+
+      // Próximas temporadas / temporada confirmada
+      temporadaLabel: (n) => `📺 Temporada ${n}`,
+      capitulosPrevistos: (n) => `🔢 Capítulos: ${n}`,
+      capitulosRegistrados: (n) => `🔢 Capítulos registrados: ${n}`,
+      capitulosPorConfirmar: '🔢 Capítulos: por confirmar',
+      seEstrena: (fecha) => `📅 Se estrena: ${fecha}`,
+      temporadaConfirmadaTitulo: (n) => `🎬 Temporada ${n} confirmada`,
+      cantidadPorConfirmar: 'cantidad de capítulos por confirmar',
+      capitulosCantidad: (n) => `${n} capítulos`,
+
+      // Ítems de episodio
+      sinFecha: 'Sin fecha', proximoLabel: ' · Próximo',
+      marcarLeido: 'Marcar como leído', todaviaNoEstreno: 'Todavía no se estrenó',
+      marcarTodosCapitulos: 'Marcar todos los capítulos estrenados',
+
+      // Confirmación de eliminar favorito
+      confirmarSacarTitulo: (nombre) => `¿Sacar "${nombre}" de favoritos?`,
+      confirmarSacarMsg: 'También se van a borrar los capítulos que marcaste como vistos de esta serie.',
+
+      // Toasts y errores
+      noSePudoCargarDetalle: (nombre) => `No se pudo cargar el detalle de "${nombre}". Se agregó igual, reintentá más tarde.`,
+      noSePudoActualizarSeries: (n) => `No se pudo actualizar el calendario de ${n} serie${n > 1 ? 's' : ''}.`,
+      notifNoSoportado: 'Este navegador no soporta notificaciones',
+      notifBloqueadas: 'Las bloqueaste antes: activalas desde el ícono del candado del navegador',
+      notifListo: '¡Listo! Te vamos a avisar de los próximos estrenos',
+      notifBtnNoSoportado: '🔕 Tu navegador no soporta notificaciones',
+      notifBtnBloqueado: '🔕 Notificaciones bloqueadas (activalas en el navegador)',
+      errorBuscador: 'Error al conectar con el buscador.',
+      sinConexionBuscador: 'Sin conexión a internet. Probá de nuevo cuando tengas señal.',
+      errorEpisodios: 'Error al obtener episodios. Probá de nuevo.',
+      sinConexionEpisodios: 'Sin conexión y sin datos guardados de esta serie todavía.',
+      errorCalendario: 'Error al cargar el calendario.',
+      noSePudoCargarCatalogo: 'No se pudo cargar el catálogo ahora. Probá buscando algo puntual.',
+      noSePudoTraducir: 'No se pudo traducir la sinopsis ahora',
+      errorGuardarDatos: 'No se pudieron guardar los cambios en este dispositivo (¿sin espacio?). Probá liberar espacio o borrar series viejas.',
+      favoritosActualizados: 'Favoritos actualizados ✅',
+      agregarAFavoritos: 'Agregar a favoritos', quitarDeFavoritos: 'Quitar de favoritos',
+      cerrarModal: 'Cerrar', cambiarIdiomaAria: 'Cambiar idioma',
+
+      // Cuenta regresiva del calendario (Upcoming)
+      hora: 'Hora', horas: 'Horas', dia: 'Día', dias: 'Días',
+      aLasHora: (fecha, hora) => `⏰ ${fecha} a las ${hora}`,
+
+      // Días de la semana (emisión semanal)
+      dias_semana: { Monday: 'Lunes', Tuesday: 'Martes', Wednesday: 'Miércoles', Thursday: 'Jueves', Friday: 'Viernes', Saturday: 'Sábado', Sunday: 'Domingo' },
+      localeFecha: 'es-AR',
+      fechaPorConfirmar: 'fecha por confirmar',
+      actualizando: 'Actualizando...', buscandoEstrenos: 'Buscando próximos estrenos...',
+      noHayProximos: 'No hay próximos episodios ni temporadas confirmadas para tus series favoritas.',
+      sinConexionDatosGuardados: 'Sin conexión: mostrando datos guardados',
+      tagline: 'Control de Series',
+      actores: 'Actores', seriesDe: (nombre) => `Series con ${nombre}`,
+      sinSeriesActor: 'No encontramos series con este actor en TVMaze.',
+      yaEstaDisponible: (etiqueta) => `Ya está disponible: ${etiqueta}`,
+      proximoEpisodioLabel: (fecha) => `📅 Próximo episodio: ${fecha}`,
+      creditosTitle: 'Acerca de',
+      creditosApp: 'Hobbi: Control de Series te ayuda a seguir tus series favoritas.',
+      creditosData: 'Datos: Esta app utiliza la API pública de TVmaze, bajo licencia CC BY-SA.',
+      creditosAttribution: 'Atribución: Todos los datos de series, episodios y pósters provienen de TVmaze. Gracias a TVmaze y su comunidad por mantener esta base de datos.',
+      creditosNote: 'Nota: Hobbi es una app no oficial hecha por un fan. TVmaze es propiedad de su comunidad y desarrolladores.'
+    },
+    en: {
+      buscar: 'Search', favoritos: 'Favorites', calendario: 'Calendar',
+      volver: '← Back',
+      searchPlaceholder: 'Search for a show online...',
+      filtroFavPlaceholder: '🔍 Filter your favorites...',
+      ordenRecientes: 'Recently added', ordenAlfabetico: 'Alphabetical',
+      estadoTodas: 'All', estadoEnEmisionOpt: 'On air', estadoFinalizadas: 'Ended',
+      ocultarCompletas: 'Hide the ones I already watched fully',
+      noFavoritos: "You don't have any favorite shows yet.",
+      ningunaCoincide: 'None match that filter.',
+      buscando: 'Searching...',
+      noEncontraron: 'No shows found.',
+      cargandoEpisodios: 'Loading episodes...',
+      temporadas: 'Seasons',
+      marcarToda: '✓ All',
+      activarAvisos: '🔔 Turn on premiere alerts',
+      avisosActivados: '🔔 Premiere alerts on',
+      verMas: 'See more →',
+      estrenanPronto: 'Coming soon', nuevas: 'New', populares: 'Popular',
+      upcoming: 'Upcoming', proximasTemporadas: '🎬 Upcoming seasons',
+      cancelar: 'Cancel', eliminar: 'Delete',
+      traducirBtn: '🌐 Translate', verOriginalBtn: '↩ Show original',
+      buscarSerieEmpezar: 'Type a name above and tap ❤️ on the ones you want to follow.',
+      agregaFavoritos: 'Add running shows to your favorites to see their calendar here.',
+      sinConexionBanner: '📡 No internet connection — showing saved data',
+      conexionRecuperada: 'Connection restored ✅',
+      teQuedasteSinConexion: 'You lost your connection',
+      soltarActualizar: '↓ Pull to refresh',
+      soltarActualizarListo: '↑ Release to refresh',
+      seguiBajando: '↓ Keep pulling to refresh',
+      sacasteDeFavoritos: (nombre) => `Removed "${nombre}" from favorites`,
+      calendarioActualizado: 'Calendar updated ✅',
+
+      estadoEnEmisionCard: '● On air', estadoEnPausaCard: '⏸ On hiatus',
+      estadoRenovadaCard: '🎬 Renewed', estadoFinalizadaCard: '✔ Ended',
+      estadoEsperandoCard: '🔜 Awaiting renewal',
+
+      estrenoTemporada: (n) => `Season ${n} Premiere`,
+      badgeEnEmision: (etiqueta, fecha, hora) => `📡 On air — Next: ${etiqueta} — ${fecha}${hora ? ' at ' + hora : ''}`,
+      badgeRenovadaConFecha: (n, fecha) => `🎬 Renewed — Season ${n} returns on ${fecha}`,
+      badgeRenovadaSinFecha: (n) => `🎬 Renewed — Season ${n} confirmed, date TBA`,
+      badgeEnPausa: (n) => `⏸ On hiatus — Season ${n} still has episodes without a confirmed date`,
+      badgeEsperandoRenovacion: '🔜 Awaiting renewal — no new season confirmed yet',
+      badgeFinalizada: '✔ Ended',
+
+      temporadaLabel: (n) => `📺 Season ${n}`,
+      capitulosPrevistos: (n) => `🔢 Episodes: ${n}`,
+      capitulosRegistrados: (n) => `🔢 Episodes listed: ${n}`,
+      capitulosPorConfirmar: '🔢 Episodes: TBA',
+      seEstrena: (fecha) => `📅 Premieres: ${fecha}`,
+      temporadaConfirmadaTitulo: (n) => `🎬 Season ${n} confirmed`,
+      cantidadPorConfirmar: 'episode count TBA',
+      capitulosCantidad: (n) => `${n} episodes`,
+
+      sinFecha: 'No date', proximoLabel: ' · Next',
+      marcarLeido: 'Mark as watched', todaviaNoEstreno: "Hasn't aired yet",
+      marcarTodosCapitulos: 'Mark all aired episodes',
+
+      confirmarSacarTitulo: (nombre) => `Remove "${nombre}" from favorites?`,
+      confirmarSacarMsg: "This will also erase the episodes you marked as watched for this show.",
+
+      noSePudoCargarDetalle: (nombre) => `Couldn't load the details for "${nombre}". It was added anyway, try again later.`,
+      noSePudoActualizarSeries: (n) => `Couldn't update the calendar for ${n} show${n > 1 ? 's' : ''}.`,
+      notifNoSoportado: "This browser doesn't support notifications",
+      notifBloqueadas: 'You blocked these before: enable them from the lock icon in your browser',
+      notifListo: "All set! We'll let you know about upcoming premieres",
+      notifBtnNoSoportado: "🔕 This browser doesn't support notifications",
+      notifBtnBloqueado: '🔕 Notifications blocked (enable them in your browser)',
+      errorBuscador: 'Error connecting to the search service.',
+      sinConexionBuscador: 'No internet connection. Try again once you have signal.',
+      errorEpisodios: 'Error loading episodes. Try again.',
+      sinConexionEpisodios: 'No connection, and no saved data for this show yet.',
+      errorCalendario: 'Error loading the calendar.',
+      noSePudoCargarCatalogo: "Couldn't load the catalog right now. Try searching for something specific.",
+      noSePudoTraducir: "Couldn't translate the synopsis right now",
+      errorGuardarDatos: "Couldn't save your changes on this device (out of space?). Try freeing up space or removing old shows.",
+      favoritosActualizados: 'Favorites updated ✅',
+      agregarAFavoritos: 'Add to favorites', quitarDeFavoritos: 'Remove from favorites',
+      cerrarModal: 'Close', cambiarIdiomaAria: 'Switch language',
+
+      hora: 'Hour', horas: 'Hours', dia: 'Day', dias: 'Days',
+      aLasHora: (fecha, hora) => `⏰ ${fecha} at ${hora}`,
+
+      dias_semana: { Monday: 'Monday', Tuesday: 'Tuesday', Wednesday: 'Wednesday', Thursday: 'Thursday', Friday: 'Friday', Saturday: 'Saturday', Sunday: 'Sunday' },
+      localeFecha: 'en-US',
+      fechaPorConfirmar: 'date TBA',
+      actualizando: 'Updating...', buscandoEstrenos: 'Looking for upcoming premieres...',
+      noHayProximos: 'No upcoming episodes or confirmed seasons for your favorite shows.',
+      sinConexionDatosGuardados: 'No connection: showing saved data',
+      tagline: 'Series Tracker',
+      actores: 'Actors', seriesDe: (nombre) => `Shows with ${nombre}`,
+      sinSeriesActor: "Couldn't find any shows for this actor on TVMaze.",
+      yaEstaDisponible: (etiqueta) => `Now available: ${etiqueta}`,
+      proximoEpisodioLabel: (fecha) => `📅 Next episode: ${fecha}`,
+      creditosTitle: 'About',
+      creditosApp: 'Hobbi: Series Tracker helps you keep track of your favorite shows.',
+      creditosData: 'Data: This app uses the public TVmaze API, under CC BY-SA license.',
+      creditosAttribution: 'Attribution: All show, episode, and poster data comes from TVmaze. Thanks to TVmaze and its community for maintaining this database.',
+      creditosNote: 'Note: Hobbi is an unofficial fan-made app. TVmaze is owned by its community and developers.'
+    }
+  };
+
+  function t(clave) {
+    return (I18N[idioma] && I18N[idioma][clave]) || I18N.es[clave] || clave;
+  }
+
+  function cambiarIdioma() {
+    idioma = idioma === 'es' ? 'en' : 'es';
+    localStorage.setItem('hobi_idioma', idioma);
+    aplicarIdioma();
+    // Volvemos a renderizar lo que esté en pantalla para que también cambie el texto dinámico que sí traducimos.
+    if (vistaActual === 'detalle' && detalleActualId) verDetalles(detalleActualId, false);
+    else cambiarVista(vistaActual, false);
+  }
+
+  function aplicarIdioma() {
+    document.getElementById('langToggleBtn').textContent = idioma === 'es' ? '🌐 ES' : '🌐 EN';
+    document.getElementById('appTagline').textContent = t('tagline');
+    document.getElementById('tSearch').textContent = t('buscar');
+    document.getElementById('tFavs').textContent = t('favoritos');
+    document.getElementById('tCalendar').textContent = t('calendario');
+    document.getElementById('searchInput').placeholder = t('searchPlaceholder');
+    document.getElementById('filtroFavoritos').placeholder = t('filtroFavPlaceholder');
+
+    const ordenSel = document.getElementById('ordenFavoritos');
+    ordenSel.options[0].textContent = t('ordenRecientes');
+    ordenSel.options[1].textContent = t('ordenAlfabetico');
+
+    const estadoSel = document.getElementById('estadoFavoritos');
+    estadoSel.options[0].textContent = t('estadoTodas');
+    estadoSel.options[1].textContent = t('estadoEnEmisionOpt');
+    estadoSel.options[2].textContent = t('estadoFinalizadas');
+
+    document.querySelector('.pendientes-toggle').lastChild.textContent = ' ' + t('ocultarCompletas');
+    document.getElementById('detailBackBtn').textContent = t('volver');
+    document.getElementById('notifBtn').textContent = t('activarAvisos');
+    document.getElementById('offlineBanner').textContent = t('sinConexionBanner');
+    document.getElementById('pullIndicator').textContent = t('soltarActualizar');
+  }
+  aplicarIdioma();
+
+  let detalleActualId = null; // showId que se está viendo en el detalle, para poder re-renderizar al cambiar idioma
+
+  /* ==================== TRAILER DIRECTO (YouTube Data API) ====================
+     Sin una API key acá, el botón de YouTube abre una búsqueda (como hasta ahora).
+     Con una key cargada, busca el video y te lleva directo al trailer.
+     Cómo conseguir una gratis: consola.cloud.google.com -> crear proyecto ->
+     "APIs y servicios" -> Biblioteca -> activar "YouTube Data API v3" ->
+     Credenciales -> Crear credencial -> Clave de API. Da 10.000 unidades/día
+     gratis (cada búsqueda gasta 100, o sea ~100 búsquedas por día). Pegala acá: */
+  const YOUTUBE_API_KEY = '';
+
+  async function abrirTrailer(nombreSerie) {
+    const urlBusqueda = `https://www.youtube.com/results?search_query=${encodeURIComponent(nombreSerie + ' trailer')}`;
+
+    if (!YOUTUBE_API_KEY) {
+      window.open(urlBusqueda, '_blank', 'noopener');
+      return;
+    }
+
+    // Reservamos la pestaña YA (en el mismo click), porque si la abrimos después
+    // de esperar el fetch, el navegador la trata como popup y la bloquea.
+    const ventana = window.open('', '_blank', 'noopener');
+    try {
+      const url = `https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&maxResults=1&q=${encodeURIComponent(nombreSerie + ' official trailer')}&key=${YOUTUBE_API_KEY}`;
+      const res = await fetch(url);
+      const data = await res.json();
+      const videoId = data && data.items && data.items[0] && data.items[0].id && data.items[0].id.videoId;
+      if (ventana) ventana.location.href = videoId ? `https://www.youtube.com/watch?v=${videoId}` : urlBusqueda;
+    } catch {
+      if (ventana) ventana.location.href = urlBusqueda;
+    }
+  }
+
+  /* Modal de créditos y atribución a TVmaze */
+  function abrirCreditos() {
+    const modal = document.getElementById('creditosModal');
+    modal.classList.add('show');
+    // Actualizar textos en caso de que hayan cambiado de idioma
+    document.getElementById('creditosTitle').textContent = t('creditosTitle');
+    document.getElementById('creditosApp').innerHTML = t('creditosApp');
+    document.getElementById('creditosData').innerHTML = t('creditosData').replace('TVmaze', '<a href="https://www.tvmaze.com/api" target="_blank">TVmaze</a>');
+    document.getElementById('creditosAttribution').innerHTML = t('creditosAttribution').replace(/TVmaze/g, '<a href="https://www.tvmaze.com" target="_blank">TVmaze</a>');
+    document.getElementById('creditosNote').innerHTML = t('creditosNote').replace(/TVmaze/g, '<a href="https://www.tvmaze.com" target="_blank">TVmaze</a>');
+  }
+
+  function cerrarCreditos() {
+    const modal = document.getElementById('creditosModal');
+    modal.classList.remove('show');
+  }
+
+  /* Placeholder para pósters/fotos que TVMaze no tiene cargados: un SVG generado
+     al vuelo (nunca falla al cargar, así que no aparece como "imagen rota"). */
+  function placeholderImg(emoji, bg) {
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="200" height="280" viewBox="0 0 200 280">`
+      + `<rect width="200" height="280" fill="${bg || '#1c1c2c'}"/>`
+      + `<text x="50%" y="53%" font-size="72" text-anchor="middle" dominant-baseline="middle">${emoji}</text>`
+      + `</svg>`;
+    return 'data:image/svg+xml,' + encodeURIComponent(svg);
+  }
+  const POSTER_PLACEHOLDER = placeholderImg('🎬');
+  const ACTOR_PLACEHOLDER = placeholderImg('👤', '#27273b');
+
+  /* Placeholder "con identidad" para series sin póster en TVMaze: en vez del ícono
+     genérico, muestra las iniciales del título sobre un color derivado del nombre
+     (siempre el mismo color para la misma serie), así cada card se distingue. */
+  function hashCadena(str) {
+    let h = 0;
+    for (let i = 0; i < str.length; i++) h = (h * 31 + str.charCodeAt(i)) | 0;
+    return Math.abs(h);
+  }
+
+  function inicialesDe(nombre) {
+    if (!nombre) return '?';
+    const palabras = nombre.trim().split(/\s+/).filter(p => /[\wÀ-ÿ]/.test(p));
+    if (!palabras.length) return '?';
+    if (palabras.length === 1) return palabras[0].slice(0, 2).toUpperCase();
+    return (palabras[0][0] + palabras[1][0]).toUpperCase();
+  }
+
+  function placeholderPorNombre(nombre) {
+    const hue = hashCadena(nombre || '') % 360;
+    const bg = `hsl(${hue}, 42%, 24%)`;
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="200" height="280" viewBox="0 0 200 280">`
+      + `<rect width="200" height="280" fill="${bg}"/>`
+      + `<text x="50%" y="53%" font-family="Arial, sans-serif" font-size="64" font-weight="700" fill="#ffffff" text-anchor="middle" dominant-baseline="middle">${inicialesDe(nombre)}</text>`
+      + `</svg>`;
+    return 'data:image/svg+xml,' + encodeURIComponent(svg);
+  }
+
+  let favoritos = JSON.parse(localStorage.getItem('hobi_favs')) || [];
+
+
+  let episodiosVistos = JSON.parse(localStorage.getItem('hobi_watched_eps')) || {}; // { episodeId: true }
+  let timeoutBusqueda = null;
+
+  // Marca de tiempo por serie: última vez que el usuario entró a ver sus detalles.
+  // Se usa para dejar de mostrar el badge "Nuevo" en Favoritos una vez que ya la vio,
+  // aunque todavía tenga episodios sin marcar como vistos.
+  let badgeNuevoVisto = JSON.parse(localStorage.getItem('hobi_badge_nuevo_visto')) || {}; // { showId: timestamp }
+  function marcarBadgeNuevoVisto(showId) {
+    badgeNuevoVisto[showId] = Date.now();
+    localStorage.setItem('hobi_badge_nuevo_visto', JSON.stringify(badgeNuevoVisto));
+  }
+
+
+  /* ==================== TOASTS (avisos no intrusivos) ==================== */
+  const toastsRecientes = new Set();
+  function mostrarToast(mensaje, tipo = 'error') {
+    // Si el mismo mensaje ya se mostró hace instantes (ej: varias series fallando juntas), no lo repetimos.
+    if (toastsRecientes.has(mensaje)) return;
+    toastsRecientes.add(mensaje);
+    setTimeout(() => toastsRecientes.delete(mensaje), 4000);
+
+    const holder = document.getElementById('toastHolder');
+    const toast = document.createElement('div');
+    toast.className = `toast ${tipo}`;
+    toast.textContent = mensaje;
+    toast.setAttribute('role', 'status');
+    toast.setAttribute('aria-live', 'polite');
+    holder.appendChild(toast);
+    requestAnimationFrame(() => toast.classList.add('show'));
+    setTimeout(() => {
+      toast.classList.remove('show');
+      setTimeout(() => toast.remove(), 300);
+    }, 3200);
+  }
+
+  /* ==================== ESTADO DE CONEXIÓN ==================== */
+  function actualizarBandaOffline() {
+    document.getElementById('offlineBanner').classList.toggle('show', !navigator.onLine);
+  }
+  window.addEventListener('online', () => { actualizarBandaOffline(); mostrarToast(t('conexionRecuperada'), 'ok'); });
+  window.addEventListener('offline', () => { actualizarBandaOffline(); mostrarToast(t('teQuedasteSinConexion'), 'error'); });
+
+  /* ==================== CACHÉ DE RESPUESTAS DE TVMAZE ====================
+     Evita repetir pedidos a la API para lo mismo en poco tiempo, ahorra datos
+     y hace que la app funcione (con datos algo viejos) si no hay conexión. */
+  const CACHE_TTL_MS = 3 * 60 * 60 * 1000; // 3 horas
+
+  function leerCache(key) {
+    try {
+      const raw = localStorage.getItem('cache_' + key);
+      if (!raw) return null;
+      const { data, ts } = JSON.parse(raw);
+      return { data, vencido: (Date.now() - ts) > CACHE_TTL_MS };
+    } catch {
+      return null;
+    }
+  }
+
+  function guardarCache(key, data) {
+    try {
+      localStorage.setItem('cache_' + key, JSON.stringify({ data, ts: Date.now() }));
+    } catch { /* localStorage lleno o no disponible: seguimos sin cachear */ }
+  }
+
+  /* fetch con caché + reintento + mensaje de error entendible.
+     forzar=true ignora la caché aunque esté vigente (para "pull to refresh"). */
+  async function fetchJSON(url, cacheKey, { forzar = false, ttlVencidoSirve = true } = {}) {
+    const cache = cacheKey ? leerCache(cacheKey) : null;
+    if (cacheKey && cache && !cache.vencido && !forzar) {
+      return cache.data;
+    }
+    try {
+      const res = await fetch(url);
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      const data = await res.json();
+      if (cacheKey) guardarCache(cacheKey, data);
+      return data;
+    } catch (err) {
+      // Sin conexión o falló la API: si hay algo en caché (aunque esté vencido), lo usamos como respaldo.
+      if (cacheKey && cache && ttlVencidoSirve) {
+        mostrarToast(t('sinConexionDatosGuardados'), 'error');
+        return cache.data;
+      }
+      throw err;
+    }
+  }
+
+  /* ==================== NOTIFICACIONES LOCALES ====================
+     Mientras la app corre como página web, usamos la Web Notification API:
+     solo avisa si la app/pestaña sigue abierta (con setTimeout hasta la hora
+     del estreno). Cuando esto se compile como APK con Capacitor, conviene
+     reemplazar programarNotificacionEpisodio() por @capacitor/local-notifications
+     (LocalNotifications.schedule), que sí funciona con la app cerrada. */
+  let notificados = JSON.parse(localStorage.getItem('hobi_notificados')) || {};
+  const timersNotif = {}; // episodioId -> id de setTimeout, para no programar el mismo dos veces
+
+  function guardarNotificados() {
+    localStorage.setItem('hobi_notificados', JSON.stringify(notificados));
+  }
+
+  function notificacionesSoportadas() {
+    return 'Notification' in window;
+  }
+
+  function actualizarBotonNotif() {
+    const btn = document.getElementById('notifBtn');
+    if (!btn) return;
+    if (!notificacionesSoportadas()) {
+      btn.textContent = t('notifBtnNoSoportado');
+      btn.classList.remove('on');
+      return;
+    }
+    if (Notification.permission === 'granted') {
+      btn.textContent = t('avisosActivados');
+      btn.classList.add('on');
+    } else if (Notification.permission === 'denied') {
+      btn.textContent = t('notifBtnBloqueado');
+      btn.classList.remove('on');
+    } else {
+      btn.textContent = t('activarAvisos');
+      btn.classList.remove('on');
+    }
+  }
+
+  async function pedirPermisoNotificaciones() {
+    if (!notificacionesSoportadas()) {
+      mostrarToast(t('notifNoSoportado'), 'error');
+      return;
+    }
+    if (Notification.permission === 'denied') {
+      mostrarToast(t('notifBloqueadas'), 'error');
+      return;
+    }
+    const permiso = await Notification.requestPermission();
+    actualizarBotonNotif();
+    if (permiso === 'granted') {
+      mostrarToast(t('notifListo'), 'ok');
+      programarTodasLasPendientes();
+    }
+  }
+
+  function dispararNotificacion(episodioId, titulo, cuerpo, icono) {
+    if (notificados[episodioId]) return; // ya avisado, no duplicar
+    notificados[episodioId] = true;
+    guardarNotificados();
+    if (notificacionesSoportadas() && Notification.permission === 'granted') {
+      try { new Notification(titulo, { body: cuerpo, icon: icono || undefined }); }
+      catch { /* algunos navegadores mobile no dejan crear Notification directo, fallback silencioso */ }
+    }
+    mostrarToast(`${titulo} — ${cuerpo}`, 'ok');
+  }
+
+  /* Programa (con setTimeout) el aviso de un episodio que estrena dentro de las próximas 48hs.
+     Solo dispara mientras la app siga abierta en el navegador/celular. */
+  function programarNotificacionEpisodio(ep) {
+    if (!ep.episodioId || notificados[ep.episodioId] || timersNotif[ep.episodioId]) return;
+    const msFaltantes = new Date(ep.airstamp).getTime() - Date.now();
+    const LIMITE_48H = 48 * 60 * 60 * 1000;
+    if (msFaltantes < 0 || msFaltantes > LIMITE_48H) return;
+
+    const etiqueta = ep.numero === 1
+      ? `Estreno de Temporada ${ep.temporada}`
+      : `T${ep.temporada}E${ep.numero}`;
+
+    timersNotif[ep.episodioId] = setTimeout(() => {
+      dispararNotificacion(ep.episodioId, `📺 ${ep.serieNombre}`, t('yaEstaDisponible')(etiqueta), ep.imagen);
+      delete timersNotif[ep.episodioId];
+    }, msFaltantes);
+  }
+
+  /* Recorre los próximos estrenos ya cargados y programa los que entren en la ventana de 48hs. */
+  function programarTodasLasPendientes() {
+    if (!notificacionesSoportadas() || Notification.permission !== 'granted') return;
+    ultimosProximos.forEach(programarNotificacionEpisodio);
+  }
+
+  let ultimosProximos = []; // se actualiza cada vez que se carga el calendario
+  let sinopsisOriginal = ''; // texto en inglés de la serie que se está viendo en el detalle
+
+  /* MyMemory (API gratuita de traducción, sin key) corta en ~500 caracteres por
+     pedido. Si te pasás, no tira un error HTTP: devuelve un mensaje de texto
+     ("QUERY LENGTH LIMIT EXCEEDED...") como si fuera la traducción posta. Por
+     eso partimos en oraciones y además revisamos que lo que vuelve no sea uno
+     de esos avisos antes de darlo por bueno. */
+  function partirEnTrozos(texto, maxLen) {
+    if (texto.length <= maxLen) return [texto];
+    const oraciones = texto.split(/(?<=[.!?])\s+/);
+    const trozos = [];
+    let actual = '';
+    oraciones.forEach((oracion) => {
+      const candidato = actual ? `${actual} ${oracion}` : oracion;
+      if (candidato.length > maxLen && actual) {
+        trozos.push(actual);
+        actual = oracion;
+      } else {
+        actual = candidato;
+      }
+    });
+    if (actual) trozos.push(actual);
+    return trozos;
+  }
+
+  async function traducirTrozo(trozo) {
+    const res = await fetch(`https://api.mymemory.translated.net/get?q=${encodeURIComponent(trozo)}&langpair=en|es`);
+    const data = await res.json();
+    const traduccion = data && data.responseData && data.responseData.translatedText;
+    if (!traduccion || /QUERY LENGTH LIMIT EXCEEDED|INVALID (SOURCE|TARGET) LANGUAGE|MYMEMORY WARNING|IS AN INVALID/i.test(traduccion)) {
+      throw new Error('fallo traducción: ' + traduccion);
+    }
+    return traduccion;
+  }
+
+  async function traducirTexto(texto) {
+    const trozos = partirEnTrozos(texto, 480);
+    const traducidos = await Promise.all(trozos.map(traducirTrozo));
+    return traducidos.join(' ');
+  }
+
+  /* Traduce la sinopsis (inglés -> español) con MyMemory.
+     Alterna entre el original y la traducción sin volver a pedir nada si ya se tradujo. */
+  async function traducirSinopsis() {
+    const texto = document.getElementById('sinopsisTexto');
+    const boton = document.getElementById('translateBtn');
+    if (!texto || !boton) return;
+
+    if (boton.dataset.traducido === '1') {
+      texto.textContent = sinopsisOriginal;
+      boton.textContent = t('traducirBtn');
+      boton.dataset.traducido = '0';
+      return;
+    }
+
+    boton.textContent = 'Traduciendo...';
+    boton.style.pointerEvents = 'none';
+    try {
+      const traduccion = await traducirTexto(sinopsisOriginal);
+      texto.textContent = traduccion;
+      boton.textContent = t('verOriginalBtn');
+      boton.dataset.traducido = '1';
+    } catch {
+      mostrarToast(t('noSePudoTraducir'), 'error');
+      boton.textContent = t('traducirBtn');
+    } finally {
+      boton.style.pointerEvents = 'auto';
+    }
+  }
+
+  function guardarDatos() {
+    try {
+      localStorage.setItem('hobi_favs', JSON.stringify(favoritos));
+      localStorage.setItem('hobi_watched_eps', JSON.stringify(episodiosVistos));
+    } catch (err) {
+      // Típicamente QuotaExceededError: localStorage lleno (caché + favoritos + vistos).
+      // A diferencia de guardarCache(), acá sí avisamos: son datos del usuario, no algo descartable.
+      console.error('No se pudieron guardar favoritos/vistos:', err);
+      mostrarToast(t('errorGuardarDatos'), 'error');
+    }
+  }
+
+  /* Modal de confirmación genérico. Devuelve una Promise<boolean>: true si tocaron "Eliminar". */
+  function confirmarEliminar(titulo, mensaje) {
+    return new Promise((resolve) => {
+      const overlay = document.createElement('div');
+      overlay.className = 'confirm-overlay';
+      overlay.innerHTML = `
+        <div class="confirm-box">
+          <div class="confirm-title">${titulo}</div>
+          <div class="confirm-msg">${mensaje}</div>
+          <div class="confirm-actions">
+            <button class="confirm-btn cancel">${t('cancelar')}</button>
+            <button class="confirm-btn delete">${t('eliminar')}</button>
+          </div>
+        </div>
+      `;
+      document.body.appendChild(overlay);
+
+      const cerrar = (resultado) => { overlay.remove(); resolve(resultado); };
+      overlay.querySelector('.cancel').onclick = () => cerrar(false);
+      overlay.querySelector('.delete').onclick = () => cerrar(true);
+      overlay.onclick = (e) => { if (e.target === overlay) cerrar(false); };
+    });
+  }
+
+  /* Borra del historial de "vistos" todos los capítulos de una serie que se sacó de favoritos. */
+  function limpiarEpisodiosVistos(favorito) {
+    if (!favorito || !favorito.episodeIds || !favorito.episodeIds.length) return;
+    let cambio = false;
+    favorito.episodeIds.forEach((id) => {
+      if (episodiosVistos[id]) {
+        delete episodiosVistos[id];
+        cambio = true;
+      }
+    });
+    if (cambio) guardarDatos();
+  }
+
+  function migrarFavorito(f) {
+    if (typeof f.agregadaEn !== 'number') f.agregadaEn = Date.now();
+    return f;
+  }
+  favoritos = favoritos.map(migrarFavorito);
+
+  /* ==================== NAVEGACIÓN + BOTÓN ATRÁS DE ANDROID ====================
+     Cada cambio de pantalla queda como una entrada de historial. Así, el botón
+     físico "Atrás" de Android (que dispara el evento popstate en cualquier
+     WebView, incluida una APK hecha con Capacitor/TWA) navega DENTRO de la app
+     en vez de cerrarla de golpe en la primera pantalla que se le ocurra. */
+  let vistaActual = 'buscar';
+
+  function cambiarVista(vista, push = true) {
+    document.getElementById('detailView').style.display = 'none';
+    document.getElementById('listView').style.display = (vista === 'buscar' || vista === 'favoritos') ? 'block' : 'none';
+    document.getElementById('calendarView').style.display = vista === 'calendario' ? 'block' : 'none';
+
+    document.getElementById('tabSearch').classList.toggle('active', vista === 'buscar');
+    document.getElementById('tabFavs').classList.toggle('active', vista === 'favoritos');
+    document.getElementById('tabCalendar').classList.toggle('active', vista === 'calendario');
+    document.getElementById('tabSearch').setAttribute('aria-selected', vista === 'buscar');
+    document.getElementById('tabFavs').setAttribute('aria-selected', vista === 'favoritos');
+    document.getElementById('tabCalendar').setAttribute('aria-selected', vista === 'calendario');
+
+    document.getElementById('searchBoxContainer').style.display = vista === 'buscar' ? 'block' : 'none';
+    document.getElementById('favsToolbar').style.display = vista === 'favoritos' ? 'flex' : 'none';
+
+    if (vista === 'favoritos') renderizarFavoritos();
+    else if (vista === 'calendario') cargarCalendario();
+    else {
+      mostrarPlaceholderBusqueda();
+      document.getElementById('searchInput').value = '';
+    }
+
+    // Solo agregamos una entrada nueva al historial si de verdad cambiamos de pantalla
+    // (evita que tocar la misma pestaña dos veces obligue a apretar Atrás dos veces).
+    if (push && vistaActual !== vista) {
+      history.pushState({ view: vista }, '', '#' + vista);
+    }
+    vistaActual = vista;
+  }
+
+  /* Aplica el estado guardado en el historial (se usa al navegar con Atrás/Adelante). */
+  function aplicarEstadoHistorial(state) {
+    const estado = state || { view: 'buscar' };
+    if (estado.view === 'detalle' && estado.showId) {
+      verDetalles(estado.showId, false);
+    } else {
+      cambiarVista(estado.view || 'buscar', false);
+    }
+  }
+
+  window.addEventListener('popstate', (e) => aplicarEstadoHistorial(e.state));
+  history.replaceState({ view: 'buscar' }, '', '#buscar'); // punto de partida: un back más allá de esto cierra la app
+  actualizarBandaOffline(); // por si la app arranca sin conexión
+  mostrarPlaceholderBusqueda(); // pantalla inicial: "Buscá una serie para empezar"
+
+  function debouncedSearch() {
+    clearTimeout(timeoutBusqueda);
+    timeoutBusqueda = setTimeout(buscarOnline, 400);
+  }
+
+  function mostrarPlaceholderBusqueda() {
+    document.getElementById('seriesList').innerHTML = `
+      <div style="text-align:center; margin: 20px 0 22px; padding: 0 10px;">
+        <p style="color:var(--ink-muted); font-size:13px; line-height:1.5;">${t('buscarSerieEmpezar')}</p>
+      </div>
+      <div id="discoverHolder">
+        <p style="text-align:center; color:var(--ink-muted); font-size:13px;">${t('buscando')}</p>
+      </div>
+    `;
+    cargarDescubrimiento();
+  }
+
+  /* Trae Populares, Nuevas y Estrenan pronto para la pantalla inicial de Buscar,
+     usando solo endpoints públicos de TVMaze. Todo pasa por fetchJSON, así que
+     queda cacheado 3hs y no se vuelve a pedir cada vez que entrás a la pestaña. */
+  function formatearFechaISO(date) {
+    return date.toISOString().split('T')[0];
+  }
+
+  async function obtenerPopulares() {
+    // TVMaze no tiene un endpoint de "populares", pero cada serie trae un campo
+    // "weight" que ellos mismos usan como señal de relevancia/popularidad.
+    // Una sola página (~250 series) alcanza para variedad sin bajar tanto dato.
+    const pagina0 = await fetchJSON('https://api.tvmaze.com/shows?page=0', 'shows_page0');
+    return pagina0
+      .sort((a, b) => (b.weight || 0) - (a.weight || 0))
+      .slice(0, 60);
+  }
+
+  function elegirAlAzar(lista, cantidad) {
+    const copia = lista.slice();
+    for (let i = copia.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [copia[i], copia[j]] = [copia[j], copia[i]];
+    }
+    return copia.slice(0, cantidad);
+  }
+
+  async function obtenerNuevasYProximos() {
+    const hoy = new Date();
+    const fechasPasadas = [];
+    const fechasFuturas = [];
+    for (let i = 1; i <= 5; i++) {
+      const d = new Date(hoy); d.setDate(d.getDate() - i);
+      fechasPasadas.push(formatearFechaISO(d));
+    }
+    for (let i = 0; i <= 6; i++) {
+      const d = new Date(hoy); d.setDate(d.getDate() + i);
+      fechasFuturas.push(formatearFechaISO(d));
+    }
+
+    const traerDia = (fecha) => fetchJSON(`https://api.tvmaze.com/schedule/web?date=${fecha}`, `schedule_web_${fecha}`).catch(() => []);
+
+    const [episodiosPasados, episodiosFuturos] = await Promise.all([
+      Promise.all(fechasPasadas.map(traerDia)),
+      Promise.all(fechasFuturas.map(traerDia))
+    ]);
+
+    // /schedule/web no siempre trae el show en "ep.show" directo como /schedule:
+    // a veces viene anidado en "ep._embedded.show", y algunas entradas agrupan
+    // varios episodios juntos (estrenos de temporada completa) bajo "_embedded.episodes".
+    // Esta función deja todo normalizado en una sola forma: {show, season, number, airstamp, airdate}.
+    function normalizarEntradaWeb(ep) {
+      const show = ep.show || (ep._embedded && ep._embedded.show) || null;
+      if (!show) return [];
+
+      const episodiosAgrupados = ep._embedded && Array.isArray(ep._embedded.episodes) ? ep._embedded.episodes : null;
+      if (episodiosAgrupados && episodiosAgrupados.length) {
+        return episodiosAgrupados.map(sub => ({
+          show,
+          season: sub.season,
+          number: sub.number,
+          airstamp: sub.airstamp || ep.airstamp,
+          airdate: sub.airdate || ep.airdate
+        }));
+      }
+
+      return [{
+        show,
+        season: ep.season,
+        number: ep.number,
+        airstamp: ep.airstamp,
+        airdate: ep.airdate
+      }];
+    }
+
+    const sinDuplicados = (lista) => {
+      const vistos = new Set();
+      return lista.filter((ep) => {
+        if (!ep.show || vistos.has(ep.show.id)) return false;
+        vistos.add(ep.show.id);
+        return true;
+      });
+    };
+
+    // Nuevas: el primer capítulo de una serie (T1E1) salió en los últimos 5 días.
+    const nuevas = sinDuplicados(
+      episodiosPasados.flat().flatMap(normalizarEntradaWeb)
+        .filter((ep) => ep.season === 1 && ep.number === 1)
+        .sort((a, b) => new Date(b.airstamp || b.airdate) - new Date(a.airstamp || a.airdate))
+    );
+
+    // Estrenan pronto: el próximo capítulo E1 de cualquier temporada (nueva serie o vuelta de una).
+    const pronto = sinDuplicados(
+      episodiosFuturos.flat().flatMap(normalizarEntradaWeb)
+        .filter((ep) => ep.number === 1)
+        .sort((a, b) => new Date(a.airstamp || a.airdate) - new Date(b.airstamp || b.airdate))
+    );
+
+    return { nuevas, pronto };
+  }
+
+  /* Guarda la última tanda completa de cada categoría para que "Ver más" no tenga que volver a pedir nada. */
+  let catalogoDescubrimiento = { pronto: [], nuevas: [], populares: [] };
+  const CATEGORIAS_DESCUBRIMIENTO = { pronto: { emoji: '🔜', clave: 'estrenanPronto' }, nuevas: { emoji: '🆕', clave: 'nuevas' }, populares: { emoji: '🔥', clave: 'populares' } };
+
+  function tituloConEmoji(id) {
+    const cat = CATEGORIAS_DESCUBRIMIENTO[id];
+    return cat ? `${cat.emoji} ${t(cat.clave)}` : id;
+  }
+
+  function renderizarRailDescubrimiento(container, id, shows) {
+    if (!shows.length) return;
+    catalogoDescubrimiento[id] = shows;
+
+    const section = document.createElement('div');
+    section.className = 'discover-section';
+    section.innerHTML = `
+      <div style="display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:10px;">
+        <h3 class="marquee" style="margin-bottom:0;">${tituloConEmoji(id)}</h3>
+        <span class="ver-mas-btn" onclick="verCatalogoCompleto('${id}')">${t('verMas')}</span>
+      </div>
+    `;
+
+    const rail = document.createElement('div');
+    rail.className = 'discover-rail';
+    shows.slice(0, 12).forEach((show) => {
+      if (!show || !show.id) return;
+      const item = document.createElement('div');
+      item.className = 'discover-item';
+      item.onclick = () => verDetalles(show.id);
+      const imagen = (show.image && (show.image.medium || show.image.original)) || placeholderPorNombre(show.name);
+      item.innerHTML = `<img src="${imagen}" alt="${show.name}" loading="lazy"><div class="discover-name">${show.name}</div>`;
+      rail.appendChild(item);
+    });
+    section.appendChild(rail);
+    container.appendChild(section);
+  }
+
+  /* Muestra el catálogo completo de una categoría como lista vertical, con vuelta al descubrimiento. */
+  function verCatalogoCompleto(id) {
+    const shows = catalogoDescubrimiento[id] || [];
+    const container = document.getElementById('seriesList');
+    container.innerHTML = `
+      <button class="back-btn" onclick="mostrarPlaceholderBusqueda()" style="margin-bottom:12px;">${t('volver')}</button>
+      <h3 class="marquee" style="color:var(--gold); font-size:22px; margin-bottom:12px;">${tituloConEmoji(id)}</h3>
+    `;
+    const lista = document.createElement('div');
+    lista.className = 'series-list';
+    shows.forEach((show) => {
+      lista.appendChild(crearTarjetaSerie({
+        id: show.id,
+        name: show.name,
+        image: show.image ? (show.image.medium || show.image.original) : '',
+        status: show.status
+      }, false));
+    });
+    container.appendChild(lista);
+  }
+
+  /* Heurística para "es de Hollywood": el canal/plataforma que la emite es de EE.UU.
+     Ojo: si TVMaze no informa el país (pasa con algunos originales globales de
+     streaming), la serie queda del lado "no Hollywood" aunque en realidad sí lo
+     sea — no usamos el idioma como respaldo porque eso metía series de otros
+     países dobladas o habladas en inglés (rusas, por ejemplo) como si fueran de acá. */
+  function esHollywood(show) {
+    const paisCanal = (show.network && show.network.country && show.network.country.code)
+      || (show.webChannel && show.webChannel.country && show.webChannel.country.code);
+    return paisCanal === 'US';
+  }
+
+  function ordenarHollywoodPrimero(shows) {
+    // sort es estable en los navegadores modernos: dentro de cada grupo se respeta el orden original.
+    return shows.slice().sort((a, b) => (esHollywood(a) ? 0 : 1) - (esHollywood(b) ? 0 : 1));
+  }
+
+  async function cargarDescubrimiento() {
+    try {
+      const [popularesPool, { nuevas, pronto }] = await Promise.all([
+        obtenerPopulares().catch(() => []),
+        obtenerNuevasYProximos().catch(() => ({ nuevas: [], pronto: [] }))
+      ]);
+      const populares = elegirAlAzar(popularesPool, 24);
+
+      // Si el usuario ya escribió algo o cambió de pestaña mientras esto cargaba, no pisamos nada.
+      const holder = document.getElementById('discoverHolder');
+      if (!holder) return;
+
+      holder.innerHTML = '';
+      renderizarRailDescubrimiento(holder, 'pronto', ordenarHollywoodPrimero(pronto.map(ep => ep.show)));
+      renderizarRailDescubrimiento(holder, 'nuevas', ordenarHollywoodPrimero(nuevas.map(ep => ep.show)));
+      renderizarRailDescubrimiento(holder, 'populares', ordenarHollywoodPrimero(populares));
+
+      if (!holder.children.length) {
+        holder.innerHTML = `<p style="text-align:center; color:var(--ink-muted); font-size:13px;">${t('noSePudoCargarCatalogo')}</p>`;
+      }
+    } catch {
+      const holder = document.getElementById('discoverHolder');
+      if (holder) holder.innerHTML = '';
+    }
+  }
+
+  /* ==================== BUSCAR POR ACTOR ==================== */
+  async function buscarPersonas(query) {
+    try {
+      return await fetchJSON(
+        `https://api.tvmaze.com/search/people?q=${encodeURIComponent(query)}`,
+        'search_people_' + query.toLowerCase(),
+        { ttlVencidoSirve: false }
+      );
+    } catch {
+      return [];
+    }
+  }
+
+  function renderizarActores(container, personas) {
+    if (!personas.length) return;
+    const section = document.createElement('div');
+    section.className = 'discover-section';
+    section.innerHTML = `<h3 class="marquee" style="font-size:18px;">🎭 ${t('actores')}</h3>`;
+
+    const rail = document.createElement('div');
+    rail.className = 'discover-rail';
+    personas.slice(0, 10).forEach((item) => {
+      const persona = item.person;
+      if (!persona || !persona.id) return;
+      const div = document.createElement('div');
+      div.className = 'discover-item actor-item';
+      div.onclick = () => verSeriesDeActor(persona.id, persona.name);
+      const imagen = (persona.image && (persona.image.medium || persona.image.original)) || ACTOR_PLACEHOLDER;
+      div.innerHTML = `<img src="${imagen}" alt="${persona.name}" loading="lazy"><div class="discover-name">${persona.name}</div>`;
+      rail.appendChild(div);
+    });
+    section.appendChild(rail);
+    container.appendChild(section);
+  }
+
+  /* Series donde salió un actor puntual, usando sus créditos de reparto (con el show embebido). */
+  async function verSeriesDeActor(personId, nombre) {
+    const container = document.getElementById('seriesList');
+    container.innerHTML = `<p style="text-align:center; color:var(--ink-muted);">${t('buscando')}</p>`;
+
+    try {
+      const creditos = await fetchJSON(
+        `https://api.tvmaze.com/people/${personId}/castcredits?embed=show`,
+        `castcredits_${personId}`
+      );
+
+      const vistos = new Set();
+      const shows = [];
+      creditos.forEach((credito) => {
+        const show = credito._embedded && credito._embedded.show;
+        if (show && !vistos.has(show.id)) {
+          vistos.add(show.id);
+          shows.push(show);
+        }
+      });
+
+      container.innerHTML = `
+        <button class="back-btn" onclick="buscarOnline()" style="margin-bottom:12px;">${t('volver')}</button>
+        <h3 class="marquee" style="color:var(--gold); font-size:22px; margin-bottom:12px;">🎭 ${nombre}</h3>
+      `;
+
+      if (!shows.length) {
+        container.innerHTML += `<p style="text-align:center; color:var(--ink-muted);">${t('sinSeriesActor')}</p>`;
+        return;
+      }
+
+      const lista = document.createElement('div');
+      lista.className = 'series-list';
+      shows.forEach((show) => {
+        lista.appendChild(crearTarjetaSerie({
+          id: show.id,
+          name: show.name,
+          image: show.image ? (show.image.medium || show.image.original) : '',
+          status: show.status
+        }, false));
+      });
+      container.appendChild(lista);
+    } catch {
+      container.innerHTML = `<p style="text-align:center; color:var(--danger);">${t('errorBuscador')}</p>`;
+    }
+  }
+
+  async function buscarOnline() {
+    const query = document.getElementById('searchInput').value.trim();
+    const container = document.getElementById('seriesList');
+    if (!query) return mostrarPlaceholderBusqueda();
+
+    container.innerHTML = `<p style="text-align:center; color:var(--ink-muted);">${t('buscando')}</p>`;
+
+    try {
+      const buscarTexto = (texto) => fetchJSON(
+        `https://api.tvmaze.com/search/shows?q=${encodeURIComponent(texto)}`,
+        'search_' + texto.toLowerCase(),
+        { ttlVencidoSirve: false }
+      );
+
+      const [dataInicial, personas] = await Promise.all([
+        buscarTexto(query),
+        buscarPersonas(query)
+      ]);
+      let data = dataInicial;
+
+      // Si buscar la frase completa no encontró nada (ej: "dark matter"), probamos
+      // achicándola palabra por palabra (ej: "dark") en vez de depender solo del
+      // matching difuso de la API.
+      if (data.length === 0 && query.includes(' ')) {
+        const palabras = query.split(/\s+/);
+        while (data.length === 0 && palabras.length > 1) {
+          palabras.pop();
+          data = await buscarTexto(palabras.join(' '));
+        }
+      }
+
+      container.innerHTML = '';
+      renderizarActores(container, personas);
+
+      if (data.length === 0) {
+        if (!personas.length) {
+          container.innerHTML = `<p style="text-align:center; color:var(--ink-muted);">${t('noEncontraron')}</p>`;
+        }
+        return;
+      }
+
+      // Arriba de todo, sin importar mayúsculas/minúsculas, lo que calza con lo que escribiste.
+      const queryNorm = query.toLowerCase();
+      data = data.slice().sort((a, b) => {
+        const aCalza = a.show.name.toLowerCase().includes(queryNorm) ? 0 : 1;
+        const bCalza = b.show.name.toLowerCase().includes(queryNorm) ? 0 : 1;
+        return aCalza - bCalza;
+      });
+
+      data.forEach(item => {
+        const show = item.show;
+        const card = crearTarjetaSerie({
+          id: show.id,
+          name: show.name,
+          image: show.image?.medium,
+          status: show.status
+        }, false);
+        container.appendChild(card);
+      });
+    } catch {
+      container.innerHTML = navigator.onLine
+        ? `<p style="text-align:center; color:var(--danger);">${t('errorBuscador')}</p>`
+        : `<p style="text-align:center; color:var(--danger);">${t('sinConexionBuscador')}</p>`;
+    }
+  }
+
+  /* Heurística liviana (sin pedir nada a la red): mira la caché de episodios de esa
+     serie y ve si hay alguno ya estrenado que todavía no está marcado como visto.
+     Si el usuario ya entró a ver la serie después de que salió ese episodio,
+     el badge no se muestra aunque el episodio siga sin marcarse como visto. */
+  function hayEpisodioNuevoSinVer(show) {
+    const cache = leerCache(`eps_${show.id}`);
+    if (!cache || !cache.data) return false;
+    const ahora = Date.now();
+    const ultimaVezVisto = badgeNuevoVisto[show.id] || 0;
+    return cache.data.some(ep => {
+      if (episodiosVistos[ep.id]) return false;
+      let ts = ep.airstamp ? new Date(ep.airstamp).getTime() : NaN;
+      if (!Number.isFinite(ts) && ep.airdate) ts = new Date(`${ep.airdate}T23:59:59`).getTime();
+      return Number.isFinite(ts) && ts <= ahora && ts > ultimaVezVisto;
+    });
+  }
+
+  /* Estado real de la serie para la card:
+     - "En emisión": hay un capítulo con fecha confirmada a futuro.
+     - "En pausa": la temporada actual todavía no terminó (faltan capítulos
+       previstos que no salieron todavía), pero sin fecha confirmada del próximo.
+     - "Renovada": la temporada actual ya terminó por completo y TVMaze ya
+       tiene cargada una temporada siguiente (con o sin fecha de estreno).
+     - "Finalizada": la serie no sigue en emisión según TVMaze.
+     - "Esperando renovación": la temporada actual terminó y todavía no hay
+       ninguna temporada nueva confirmada, pero la serie sigue activa.
+     TVMaze marca "Running" durante toda la espera entre temporadas, así que
+     confiar solo en show.status para decir "En Emisión" es engañoso. */
+  function calcularEstadoSerie(show) {
+    const ahora = Date.now();
+    const cacheEps = leerCache(`eps_${show.id}`);
+
+    if (!cacheEps || !cacheEps.data || !cacheEps.data.length) {
+      // Sin caché todavía (recién agregada, nunca se abrió el detalle): usamos lo que haya.
+      if (show.proximoEstreno && new Date(show.proximoEstreno + 'T23:59:59').getTime() >= ahora) {
+        return { texto: t('estadoEnEmisionCard'), clase: '' };
+      }
+      return show.status === 'Running'
+        ? { texto: t('estadoEnPausaCard'), clase: 'paused' }
+        : { texto: t('estadoFinalizadaCard'), clase: 'ended' };
+    }
+
+    const episodios = cacheEps.data;
+    const timestampDe = (ep) => {
+      let ts = ep.airstamp ? new Date(ep.airstamp).getTime() : NaN;
+      if (!Number.isFinite(ts) && ep.airdate) ts = new Date(`${ep.airdate}T23:59:59`).getTime();
+      return ts;
+    };
+
+    const hayFuturo = episodios.some(ep => {
+      const ts = timestampDe(ep);
+      return Number.isFinite(ts) && ts >= ahora;
+    });
+    if (hayFuturo) return { texto: t('estadoEnEmisionCard'), clase: '' };
+
+    // No hay próximo capítulo con fecha confirmada: vemos si la temporada
+    // actual está completa (usando la cantidad prevista de capítulos, si la
+    // tenemos cacheada desde el detalle o el calendario) o si todavía faltan
+    // episodios de esa misma temporada por anunciar.
+    const maxTemporada = Math.max(0, ...episodios.map(e => e.season || 0));
+    const epsUltimaTemp = episodios.filter(e => e.season === maxTemporada);
+
+    const cacheTemps = leerCache(`seasons_${show.id}`);
+    const infoTemps = (cacheTemps && cacheTemps.data) || null;
+    const infoTempActual = infoTemps ? infoTemps.find(s => s.number === maxTemporada) : null;
+
+    const temporadaCompleta = infoTempActual && infoTempActual.episodeOrder
+      ? epsUltimaTemp.length >= infoTempActual.episodeOrder
+      : true; // sin ese dato, no podemos afirmar que está en pausa: asumimos que terminó
+
+    if (!temporadaCompleta) {
+      return { texto: t('estadoEnPausaCard'), clase: 'paused' };
+    }
+
+    if (show.status !== 'Running') {
+      return { texto: t('estadoFinalizadaCard'), clase: 'ended' };
+    }
+
+    const hayRenovacion = infoTemps && infoTemps.some(s => s.number > maxTemporada);
+    if (hayRenovacion) {
+      return { texto: t('estadoRenovadaCard'), clase: 'renewed' };
+    }
+
+    return { texto: t('estadoEsperandoCard'), clase: 'paused' };
+  }
+
+  function crearTarjetaSerie(show, esVistaFavoritos) {
+    const esFav = favoritos.some(f => f.id === show.id);
+    const card = document.createElement('div');
+    card.className = 'card';
+
+    let progresoHTML = '';
+    if (esFav && show.totalEpisodesCount) {
+      const vistosCount = show.episodeIds ? show.episodeIds.filter(id => episodiosVistos[id]).length : 0;
+      const porcentaje = Math.round((vistosCount / show.totalEpisodesCount) * 100) || 0;
+      progresoHTML = `
+        <div class="progress-bar-bg">
+          <div class="progress-bar-fill" style="width: ${porcentaje}%;"></div>
+        </div>
+        <div class="progress-text">${vistosCount}/${show.totalEpisodesCount} vistos (${porcentaje}%)</div>
+      `;
+    }
+
+    const badgeNuevo = esVistaFavoritos && hayEpisodioNuevoSinVer(show) ? '<span class="badge-nuevo">🔴 Nuevo</span>' : '';
+    const estado = esVistaFavoritos
+      ? calcularEstadoSerie(show)
+      : { texto: show.status === 'Running' ? t('estadoEnEmisionCard') : t('estadoFinalizadaCard'), clase: show.status !== 'Running' ? 'ended' : '' };
+    card.classList.add(estado.clase || 'live');
+
+    let extraHTML = '';
+    if (esVistaFavoritos && estado.clase === '' && show.proximoEstreno) {
+      extraHTML = `<div class="next-air">${t('proximoEpisodioLabel')(show.proximoEstreno)}</div>`;
+    }
+
+    const botonFavHTML = esVistaFavoritos
+      ? ''
+      : `<button class="fav-btn" onclick="toggleFavorito(event, ${JSON.stringify(show).replace(/"/g, '&quot;')})" aria-label="${esFav ? t('quitarDeFavoritos') : t('agregarAFavoritos')}">
+          ${esFav ? '❤️' : '🤍'}
+        </button>`;
+
+    card.innerHTML = `
+      <div class="card-top">
+        <img src="${show.image || placeholderPorNombre(show.name)}" onclick="verDetalles(${show.id})" loading="lazy" alt="${show.name}">
+        <div class="card-info" onclick="verDetalles(${show.id})">
+          <h3>${show.name}${badgeNuevo}</h3>
+          <div class="status ${estado.clase}">${estado.texto}</div>
+          ${progresoHTML}
+        </div>
+        ${botonFavHTML}
+      </div>
+      ${extraHTML}
+    `;
+
+    if (!esVistaFavoritos) return card;
+
+    // En Favoritos: la card va envuelta para permitir deslizarla y eliminarla con el dedo.
+    const wrapper = document.createElement('div');
+    wrapper.className = 'swipe-wrapper';
+    wrapper.innerHTML = '<div class="swipe-delete-bg">🗑️</div>';
+    wrapper.appendChild(card);
+    habilitarSwipeEliminar(wrapper, card, show);
+    return wrapper;
+  }
+
+  /* Deslizar una card de Favoritos hacia la izquierda la elimina (como en cualquier lista nativa). */
+  function habilitarSwipeEliminar(wrapper, card, show) {
+    let startX = 0, startY = 0, deltaX = 0, arrastrando = false, esHorizontal = null;
+    const UMBRAL_BORRAR = 90;
+
+    card.addEventListener('touchstart', (e) => {
+      startX = e.touches[0].clientX;
+      startY = e.touches[0].clientY;
+      deltaX = 0;
+      arrastrando = true;
+      esHorizontal = null;
+      card.style.transition = 'none';
+    }, { passive: true });
+
+    card.addEventListener('touchmove', (e) => {
+      if (!arrastrando) return;
+      const dx = e.touches[0].clientX - startX;
+      const dy = e.touches[0].clientY - startY;
+
+      if (esHorizontal === null) esHorizontal = Math.abs(dx) > Math.abs(dy);
+      if (!esHorizontal) return; // dejamos que la página scrollee vertical normalmente
+
+      if (dx < 0) {
+        deltaX = dx;
+        card.style.transform = `translateX(${deltaX}px)`;
+      }
+    }, { passive: true });
+
+    card.addEventListener('touchend', async () => {
+      if (!arrastrando) return;
+      arrastrando = false;
+      card.style.transition = 'transform 0.2s';
+
+      if (esHorizontal && Math.abs(deltaX) > UMBRAL_BORRAR) {
+        const ok = await confirmarEliminar(
+          t('confirmarSacarTitulo')(show.name),
+          t('confirmarSacarMsg')
+        );
+        if (!ok) {
+          card.style.transform = 'translateX(0)';
+          return;
+        }
+
+        card.style.transform = `translateX(-${wrapper.offsetWidth}px)`;
+        wrapper.style.transition = 'height 0.2s, margin 0.2s';
+        setTimeout(() => {
+          const idx = favoritos.findIndex(f => f.id === show.id);
+          if (idx > -1) {
+            limpiarEpisodiosVistos(favoritos[idx]);
+            favoritos.splice(idx, 1);
+          }
+          guardarDatos();
+          wrapper.style.height = wrapper.offsetHeight + 'px';
+          requestAnimationFrame(() => { wrapper.style.height = '0px'; wrapper.style.marginBottom = '0px'; wrapper.style.overflow = 'hidden'; });
+          mostrarToast(t('sacasteDeFavoritos')(show.name), 'ok');
+          setTimeout(() => wrapper.remove(), 220);
+        }, 150);
+      } else {
+        card.style.transform = 'translateX(0)';
+      }
+    });
+  }
+
+  async function verDetalles(showId, push = true) {
+    document.getElementById('listView').style.display = 'none';
+    document.getElementById('calendarView').style.display = 'none';
+    const detailView = document.getElementById('detailView');
+    const container = document.getElementById('detailContent');
+    detailView.style.display = 'block';
+    container.innerHTML = `<p style="text-align:center; color:var(--ink-muted);">${t('cargandoEpisodios')}</p>`;
+    detalleActualId = showId;
+    marcarBadgeNuevoVisto(showId);
+
+    if (push && vistaActual !== 'detalle') {
+      history.pushState({ view: 'detalle', showId }, '', '#detalle-' + showId);
+    }
+    vistaActual = 'detalle';
+
+    try {
+      const [show, episodios, seasonsInfoResultado] = await Promise.all([
+        fetchJSON(`https://api.tvmaze.com/shows/${showId}`, `show_${showId}`),
+        fetchJSON(`https://api.tvmaze.com/shows/${showId}/episodes`, `eps_${showId}`),
+        fetchJSON(`https://api.tvmaze.com/shows/${showId}/seasons`, `seasons_${showId}`).catch(() => null)
+      ]);
+
+      const favIndex = favoritos.findIndex(f => f.id === show.id);
+      if (favIndex > -1) {
+        favoritos[favIndex].episodeIds = episodios.map(e => e.id);
+        favoritos[favIndex].totalEpisodesCount = episodios.length;
+        guardarDatos();
+      }
+
+      const temporadas = {};
+      episodios.forEach(ep => {
+        if (!temporadas[ep.season]) temporadas[ep.season] = [];
+        temporadas[ep.season].push(ep);
+      });
+
+      // Próximo capítulo confirmado (con fecha y hora exactas).
+      const ahoraMs = Date.now();
+      const proximoCap = episodios
+        .filter(e => e.airdate || e.airstamp)
+        .map(e => {
+          let ts = e.airstamp ? new Date(e.airstamp).getTime() : NaN;
+          if (!Number.isFinite(ts) && e.airdate) ts = new Date(`${e.airdate}T23:59:59`).getTime();
+          return { ...e, _ts: ts };
+        })
+        .filter(e => Number.isFinite(e._ts) && e._ts >= ahoraMs)
+        .sort((a, b) => a._ts - b._ts)[0];
+
+      // Temporada ya confirmada/renovada por la productora pero todavía sin episodios cargados en TVMaze.
+      const seasonsInfoCache = seasonsInfoResultado;
+      const renovada = seasonsInfoCache
+        ? seasonsInfoCache.filter(s => s.number > 0 && !temporadas[s.number]).sort((a, b) => a.number - b.number)[0] || null
+        : null;
+
+      // Un solo badge de estado, honesto: no decimos "Emisión: Domingo" si en realidad
+      // no hay ningún capítulo con fecha confirmada, y distinguimos una pausa real
+      // (todavía faltan capítulos de esta misma temporada) de una renovación
+      // (esta temporada ya terminó del todo y ya hay una siguiente confirmada).
+      const maxTemporada = Math.max(0, ...Object.keys(temporadas).map(Number));
+      const epsUltimaTemp = temporadas[maxTemporada] || [];
+      const infoTempActual = seasonsInfoCache ? seasonsInfoCache.find(s => s.number === maxTemporada) : null;
+      const temporadaCompleta = infoTempActual && infoTempActual.episodeOrder
+        ? epsUltimaTemp.length >= infoTempActual.episodeOrder
+        : true; // sin ese dato no podemos afirmar que está en pausa: asumimos que terminó
+
+      let emisionInfo = '';
+      if (proximoCap) {
+        const fechaCap = new Date(proximoCap._ts);
+        const fechaTexto = fechaCap.toLocaleDateString(t('localeFecha'), { day: 'numeric', month: 'long' });
+        const horaTexto = proximoCap.airstamp
+          ? fechaCap.toLocaleTimeString(t('localeFecha'), { hour: '2-digit', minute: '2-digit' })
+          : (show.schedule.time || '');
+        const etiquetaCap = proximoCap.number === 1
+          ? t('estrenoTemporada')(proximoCap.season)
+          : `T${proximoCap.season}E${proximoCap.number}`;
+        emisionInfo = `<div class="schedule-badge">${t('badgeEnEmision')(etiquetaCap, fechaTexto, horaTexto)}</div>`;
+      } else if (renovada && renovada.premiereDate) {
+        const fechaRen = new Date(renovada.premiereDate + 'T00:00:00').toLocaleDateString(t('localeFecha'), { day: 'numeric', month: 'long' });
+        emisionInfo = `<div class="schedule-badge renewed">${t('badgeRenovadaConFecha')(renovada.number, fechaRen)}</div>`;
+      } else if (renovada) {
+        emisionInfo = `<div class="schedule-badge renewed">${t('badgeRenovadaSinFecha')(renovada.number)}</div>`;
+      } else if (!temporadaCompleta) {
+        emisionInfo = `<div class="schedule-badge muted">${t('badgeEnPausa')(maxTemporada)}</div>`;
+      } else if (show.status === 'Running') {
+        emisionInfo = `<div class="schedule-badge muted">${t('badgeEsperandoRenovacion')}</div>`;
+      } else {
+        emisionInfo = `<div class="schedule-badge muted">${t('badgeFinalizada')}</div>`;
+      }
+
+      // Temporada ya confirmada/renovada por la productora pero todavía sin episodios cargados en TVMaze.
+      let proximaTempInfo = '';
+      if (renovada) {
+        const fechaRenovada = renovada.premiereDate
+          ? new Date(renovada.premiereDate + 'T00:00:00').toLocaleDateString(t('localeFecha'), { day: 'numeric', month: 'long', year: 'numeric' })
+          : t('fechaPorConfirmar');
+        const capsRenovada = renovada.episodeOrder ? t('capitulosCantidad')(renovada.episodeOrder) : t('cantidadPorConfirmar');
+        proximaTempInfo = `
+          <div class="season-upcoming-card" style="margin-top:12px;">
+            <div class="season-label">${t('temporadaConfirmadaTitulo')(renovada.number)}</div>
+            <div class="season-meta">🔢 ${capsRenovada}<br>${t('seEstrena')(fechaRenovada)}</div>
+          </div>
+        `;
+      }
+
+      const esFavActual = favoritos.some(f => f.id === show.id);
+      const serieParaFav = { id: show.id, name: show.name, image: show.image ? show.image.medium : '', status: show.status };
+
+      const iconoYoutube = `
+        <button class="icon-btn" onclick="abrirTrailer(${JSON.stringify(show.name).replace(/"/g, '&quot;')})" title="Ver trailer en YouTube" aria-label="Ver trailer en YouTube">
+          <svg viewBox="0 0 24 24" width="18" height="18"><path fill="#FF0000" d="M23.5 6.6s-.2-1.6-.9-2.3c-.9-.9-1.9-.9-2.3-1C17.1 3 12 3 12 3h0s-5.1 0-8.3.3c-.5.1-1.5.1-2.3 1C.7 5 .5 6.6.5 6.6S.3 8.5.3 10.3v1.6c0 1.8.2 3.7.2 3.7s.2 1.6.9 2.3c.9.9 2 .9 2.5 1 1.8.2 7.8.3 7.8.3s5.1 0 8.3-.3c.5-.1 1.5-.1 2.3-1 .7-.7.9-2.3.9-2.3s.2-1.8.2-3.7v-1.6c0-1.8-.2-3.7-.2-3.7z"/><path fill="#fff" d="M9.7 14.3V8.9l5.7 2.7-5.7 2.7z"/></svg>
+        </button>
+      `;
+
+      // Plataforma/canal donde se emite (streaming o TV abierta/cable), si TVMaze lo tiene cargado.
+      // El ícono de YouTube va pegado acá al lado, para buscar el trailer de esta serie puntual.
+      const plataforma = (show.webChannel && show.webChannel.name) || (show.network && show.network.name) || null;
+      const esStreaming = !!(show.webChannel && show.webChannel.name);
+      const plataformaHTML = `
+        <div style="display:flex; align-items:center; gap:8px; margin-top:6px;">
+          ${plataforma ? `<div class="schedule-badge muted" style="margin-top:0;">${esStreaming ? '🖥️' : '📡'} ${plataforma}</div>` : ''}
+          ${iconoYoutube}
+        </div>
+      `;
+
+      // TVMaze trae la sinopsis en inglés con algunas etiquetas HTML (<p>, <b>).
+      // La dejamos en texto plano para poder mandarla a traducir y volver al original.
+      const sinopsisPlana = show.summary ? show.summary.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim() : '';
+      sinopsisOriginal = sinopsisPlana;
+      // Si la app ya está en inglés, la sinopsis (que TVMaze siempre da en inglés) ya calza: no hace falta el botón.
+      const botonTraducirHTML = idioma === 'es'
+        ? `<span class="translate-btn" id="translateBtn" onclick="traducirSinopsis()">${t('traducirBtn')}</span>`
+        : '';
+      const sinopsisHTML = sinopsisPlana
+        ? `<div class="synopsis">
+             <p id="sinopsisTexto">${sinopsisPlana}</p>
+             ${botonTraducirHTML}
+           </div>`
+        : '';
+
+      const ratingHTML = (show.rating && show.rating.average)
+        ? `<div class="detail-rating">⭐ ${show.rating.average.toFixed(1)}</div>`
+        : '';
+
+      let html = `
+        <div class="detail-header">
+          <button class="fav-btn" id="detailFavBtn" onclick="toggleFavorito(event, ${JSON.stringify(serieParaFav).replace(/"/g, '&quot;')})" aria-label="${esFavActual ? t('quitarDeFavoritos') : t('agregarAFavoritos')}">
+            ${esFavActual ? '❤️' : '🤍'}
+          </button>
+          <img class="detail-poster" src="${show.image ? (show.image.medium || show.image.original) : placeholderPorNombre(show.name)}" srcset="${show.image ? `${show.image.medium || show.image.original} 1x${show.image.original ? `, ${show.image.original} 2x` : ''}` : ''}" alt="${show.name}" loading="lazy">
+          ${ratingHTML}
+          <h2>${show.name}</h2>
+          <p class="detail-tags">${show.genres.join(', ')}</p>
+          <div style="display:flex; flex-direction:column; align-items:center; gap:6px;">
+            ${plataformaHTML}
+            ${emisionInfo}
+          </div>
+        </div>
+        ${sinopsisHTML}
+        ${proximaTempInfo}
+        <h3 class="marquee" style="margin-top:16px; font-size:22px; color:var(--gold); letter-spacing:0.5px;">${t('temporadas')} (${Object.keys(temporadas).length})</h3><br>
+      `;
+
+      Object.keys(temporadas).forEach(numTemp => {
+        const epsTemp = temporadas[numTemp];
+        html += `
+          <details>
+            <summary>
+              <span>Temporada ${numTemp} (${epsTemp.length} Eps)</span>
+              <div class="season-actions">
+                <button class="mark-season-btn ${epsTemp.some(episodioYaEstreno) && epsTemp.filter(episodioYaEstreno).every(ep => episodiosVistos[ep.id]) ? 'active' : ''}" ${epsTemp.some(episodioYaEstreno) ? '' : 'disabled'} onclick="marcarTemporadaEntera(event, ${JSON.stringify(epsTemp.map(e => e.id))})" title="${t('marcarTodosCapitulos')}">${t('marcarToda')}</button>
+              </div>
+            </summary>
+            <div>
+              ${epsTemp.map(e => {
+                const visto = !!episodiosVistos[e.id];
+                const estrenado = episodioYaEstreno(e);
+                return `
+                  <div class="episode-item ${estrenado ? '' : 'future-episode'}">
+                    <div class="episode-left">
+                      <input type="checkbox" class="ep-checkbox" ${visto ? 'checked' : ''} ${estrenado ? '' : 'disabled'} onchange="toggleEpisodioVisto(${e.id})" title="${estrenado ? t('marcarLeido') : t('todaviaNoEstreno')}" aria-label="${(estrenado ? t('marcarLeido') : t('todaviaNoEstreno'))} — E${e.number} ${e.name}">
+                      <span class="ep-title ${visto ? 'watched' : ''}" id="ep-title-${e.id}">E${e.number} - ${e.name}</span>
+                    </div>
+                    <span class="ep-date">${e.airdate || t('sinFecha')}${estrenado ? '' : t('proximoLabel')} </span>
+                  </div>
+                `;
+              }).join('')}
+            </div>
+          </details>
+        `;
+      });
+
+      container.innerHTML = html;
+      actualizarBotonesTemporada();
+    } catch {
+      container.innerHTML = navigator.onLine
+        ? `<p style="text-align:center; color:var(--danger);">${t('errorEpisodios')}</p>`
+        : `<p style="text-align:center; color:var(--danger);">${t('sinConexionEpisodios')}</p>`;
+    }
+  }
+
+  function episodioYaEstreno(ep) {
+    let timestamp = NaN;
+    if (ep.airstamp) timestamp = new Date(ep.airstamp).getTime();
+    if (!Number.isFinite(timestamp) && ep.airdate) timestamp = new Date(`${ep.airdate}T23:59:59`).getTime();
+    return Number.isFinite(timestamp) && timestamp <= Date.now();
+  }
+
+  function toggleEpisodioVisto(epId) {
+    // No permitimos marcar como leído un capítulo que todavía no se estrenó.
+    const checkbox = document.querySelector(`input[onchange=\"toggleEpisodioVisto(${epId})\"]`);
+    if (checkbox?.disabled) {
+      checkbox.checked = false;
+      return;
+    }
+
+    episodiosVistos[epId] = !episodiosVistos[epId];
+    if (!episodiosVistos[epId]) delete episodiosVistos[epId];
+
+    const titleEl = document.getElementById(`ep-title-${epId}`);
+    if (titleEl) titleEl.classList.toggle('watched', !!episodiosVistos[epId]);
+
+    actualizarBotonesTemporada();
+    guardarDatos();
+  }
+
+  function marcarTemporadaEntera(e, arrayIds) {
+    e.stopPropagation();
+
+    // Solo cuentan los capítulos que ya se estrenaron.
+    const idsEstrenados = arrayIds.filter(id => {
+      const checkbox = document.querySelector(`input[onchange=\"toggleEpisodioVisto(${id})\"]`);
+      return checkbox && !checkbox.disabled;
+    });
+
+    if (!idsEstrenados.length) return;
+
+    const todosVistos = idsEstrenados.every(id => episodiosVistos[id]);
+    idsEstrenados.forEach(id => {
+      if (todosVistos) delete episodiosVistos[id];
+      else episodiosVistos[id] = true;
+
+      const titleEl = document.getElementById(`ep-title-${id}`);
+      const checkbox = titleEl?.parentElement.querySelector('input');
+      if (titleEl) titleEl.classList.toggle('watched', !todosVistos);
+      if (checkbox) checkbox.checked = !todosVistos;
+    });
+
+    actualizarBotonesTemporada();
+    guardarDatos();
+  }
+
+  function actualizarBotonesTemporada() {
+    document.querySelectorAll('details').forEach(details => {
+      const boton = details.querySelector('.mark-season-btn');
+      if (!boton) return;
+
+      const checkboxes = Array.from(details.querySelectorAll('.ep-checkbox'));
+      const estrenados = checkboxes.filter(cb => !cb.disabled);
+      if (!estrenados.length) {
+        boton.disabled = true;
+        boton.classList.remove('active');
+        return;
+      }
+
+      boton.disabled = false;
+      const todosVistos = estrenados.every(cb => cb.checked);
+      boton.classList.toggle('active', todosVistos);
+    });
+  }
+
+  /* Obtiene el próximo episodio confirmado de CADA serie favorita.
+     Usa airstamp cuando existe y airdate como respaldo. */
+  async function obtenerProximosEstrenos(forzar = false) {
+    const ahora = Date.now();
+    let fallas = 0;
+
+    const resultados = await Promise.all(favoritos.map(async fav => {
+      try {
+        // Misma clave de caché que usa verDetalles/toggleFavorito: se reaprovecha el mismo pedido.
+        const episodios = await fetchJSON(`https://api.tvmaze.com/shows/${fav.id}/episodes`, `eps_${fav.id}`, { forzar });
+
+        const futuros = episodios
+          .filter(e => e.airdate || e.airstamp)
+          .map(e => {
+            let timestamp = e.airstamp ? new Date(e.airstamp).getTime() : NaN;
+
+            // Respaldo: si TVMaze no entrega airstamp, usamos la fecha de emisión.
+            if (!Number.isFinite(timestamp) && e.airdate) {
+              timestamp = new Date(`${e.airdate}T23:59:59`).getTime();
+            }
+
+            return { ...e, _timestamp: timestamp };
+          })
+          .filter(e => Number.isFinite(e._timestamp) && e._timestamp >= ahora)
+          .sort((a, b) => a._timestamp - b._timestamp);
+
+        const futuro = futuros[0];
+
+        fav.proximoEstreno = futuro ? futuro.airdate : null;
+
+        if (!futuro) return null;
+
+        return {
+          episodioId: futuro.id,
+          serieId: fav.id,
+          serieNombre: fav.name,
+          imagen: fav.image,
+          episodioNombre: futuro.name,
+          temporada: futuro.season,
+          numero: futuro.number,
+          airstamp: futuro.airstamp || `${futuro.airdate}T23:59:59`
+        };
+      } catch {
+        fallas++;
+        return null;
+      }
+    }));
+
+    if (fallas > 0) {
+      mostrarToast(t('noSePudoActualizarSeries')(fallas), 'error');
+    }
+
+    guardarDatos();
+    return resultados.filter(Boolean).sort((a, b) => new Date(a.airstamp) - new Date(b.airstamp));
+  }
+
+  /* Renderiza una lista de próximos episodios como línea de tiempo con cuenta regresiva */
+  function renderizarTimeline(container, lista) {
+    container.innerHTML = '';
+    const wrapper = document.createElement('div');
+    wrapper.className = 'timeline';
+
+    const track = document.createElement('div');
+    track.className = 'timeline-track';
+    wrapper.appendChild(track);
+
+    const itemsWrap = document.createElement('div');
+    itemsWrap.className = 'timeline-items';
+    wrapper.appendChild(itemsWrap);
+
+    const ahora = Date.now();
+
+    lista.forEach(ep => {
+      const fechaEp = new Date(ep.airstamp);
+      const diffHoras = Math.max(1, Math.round((fechaEp.getTime() - ahora) / 3600000));
+      let valor, unidad;
+      if (diffHoras < 24) {
+        valor = diffHoras;
+        unidad = diffHoras === 1 ? t('hora') : t('horas');
+      } else {
+        valor = Math.round(diffHoras / 24);
+        unidad = valor === 1 ? t('dia') : t('dias');
+      }
+
+      const fechaTexto = fechaEp.toLocaleDateString(t('localeFecha'), { day: 'numeric', month: 'long', year: 'numeric' });
+      const horaTexto = fechaEp.toLocaleTimeString(t('localeFecha'), { hour: '2-digit', minute: '2-digit' });
+
+      const etiquetaEpisodio = ep.numero === 1
+        ? t('estrenoTemporada')(ep.temporada)
+        : `T${ep.temporada}E${ep.numero}${ep.episodioNombre ? ' - ' + ep.episodioNombre : ''}`;
+
+      const item = document.createElement('div');
+      item.className = 'timeline-item';
+      item.innerHTML = `
+        <div class="timeline-marker">
+          <span class="time-value">${valor}</span>
+          <span class="time-unit">${unidad}</span>
+          <div class="timeline-dot"></div>
+        </div>
+        <div class="timeline-card" onclick="verDetalles(${ep.serieId})">
+          <img src="${ep.imagen || placeholderPorNombre(ep.serieNombre)}" loading="lazy">
+          <div class="timeline-card-info">
+            <h4>${ep.serieNombre}</h4>
+            <div class="timeline-badge">📺 ${etiquetaEpisodio}</div>
+            <div class="timeline-date">${t('aLasHora')(fechaTexto, horaTexto)}</div>
+          </div>
+        </div>
+      `;
+      itemsWrap.appendChild(item);
+    });
+
+    container.appendChild(wrapper);
+
+    // Ajusta la píldora del degradado para que empiece y termine exactamente en el primer y último punto
+    const posicionarTrack = () => {
+      const dots = itemsWrap.querySelectorAll('.timeline-dot');
+      if (!dots.length) return;
+      const anchoTrack = track.offsetWidth;
+      const primero = dots[0].offsetTop + dots[0].offsetHeight / 2;
+      const ultimo = dots[dots.length - 1].offsetTop + dots[dots.length - 1].offsetHeight / 2;
+      track.style.top = Math.max(0, primero - anchoTrack / 2) + 'px';
+      track.style.height = Math.max(anchoTrack, (ultimo - primero) + anchoTrack) + 'px';
+    };
+    requestAnimationFrame(posicionarTrack);
+  }
+
+  /* Busca la próxima temporada que todavía no comenzó en cada serie favorita.
+     TVMaze expone número, cantidad prevista de episodios y fecha de estreno de la temporada. */
+  async function obtenerProximasTemporadas(forzar = false) {
+    const ahora = new Date();
+
+    const resultados = await Promise.all(favoritos.map(async fav => {
+      try {
+        const temporadas = await fetchJSON(`https://api.tvmaze.com/shows/${fav.id}/seasons`, `seasons_${fav.id}`, { forzar });
+
+        const futuras = temporadas
+          .filter(temp => temp.number > 0 && temp.premiereDate && new Date(temp.premiereDate + 'T00:00:00') >= ahora)
+          .sort((a, b) => new Date(a.premiereDate) - new Date(b.premiereDate));
+
+        if (!futuras.length) return null;
+
+        const temporada = futuras[0];
+        let cantidad = temporada.episodeOrder;
+        let esRegistrado = false;
+
+        // Si TVMaze no informa episodeOrder, intentamos contar los episodios ya registrados.
+        if (!cantidad) {
+          try {
+            const episodios = await fetchJSON(`https://api.tvmaze.com/seasons/${temporada.id}/episodes`, `season_eps_${temporada.id}`);
+            if (episodios.length) {
+              cantidad = episodios.length;
+              esRegistrado = true;
+            }
+          } catch { /* si no hay dato ni caché, queda "por confirmar" */ }
+        }
+
+        return {
+          serieId: fav.id,
+          serieNombre: fav.name,
+          imagen: fav.image,
+          temporada: temporada.number,
+          cantidad,
+          esRegistrado,
+          estreno: temporada.premiereDate
+        };
+      } catch {
+        return null;
+      }
+    }));
+
+    return resultados.filter(Boolean).sort((a, b) => new Date(a.estreno) - new Date(b.estreno));
+  }
+
+  function renderizarProximasTemporadas(container, lista) {
+    if (!lista.length) return;
+
+    const section = document.createElement('section');
+    section.innerHTML = `<h3 class="upcoming-seasons-title">${t('proximasTemporadas')}</h3>`;
+
+    lista.forEach(temp => {
+      const card = document.createElement('div');
+      card.className = 'season-upcoming-card';
+      const fecha = new Date(temp.estreno + 'T00:00:00').toLocaleDateString(t('localeFecha'), {
+        day: 'numeric', month: 'long', year: 'numeric'
+      });
+      const capitulosTexto = temp.cantidad
+        ? (temp.esRegistrado ? t('capitulosRegistrados')(temp.cantidad) : t('capitulosPrevistos')(temp.cantidad))
+        : t('capitulosPorConfirmar');
+
+      card.innerHTML = `
+        <div class="season-upcoming-top" onclick="verDetalles(${temp.serieId})">
+          <img src="${temp.imagen || placeholderPorNombre(temp.serieNombre)}" alt="${temp.serieNombre}" loading="lazy">
+          <div class="season-upcoming-info">
+            <h4>${temp.serieNombre}</h4>
+            <div class="season-label">${t('temporadaLabel')(temp.temporada)}</div>
+            <div class="season-meta">
+              ${capitulosTexto}<br>
+              ${t('seEstrena')(fecha)}
+            </div>
+          </div>
+        </div>
+      `;
+      section.appendChild(card);
+    });
+
+    container.appendChild(section);
+  }
+
+  /* PESTAÑA CALENDARIO: próximos episodios + próximas temporadas de los favoritos */
+  async function cargarCalendario(forzar = false) {
+    const container = document.getElementById('calendarContent');
+    container.innerHTML = `<p style="text-align:center; color:var(--ink-muted);">${forzar ? t('actualizando') : t('buscandoEstrenos')}</p>`;
+    actualizarBotonNotif();
+
+    if (favoritos.length === 0) {
+      container.innerHTML = `<p style="text-align:center; color:var(--ink-muted); margin-top:20px;">${t('agregaFavoritos')}</p>`;
+      return;
+    }
+
+    try {
+      const [proximos, temporadas] = await Promise.all([
+        obtenerProximosEstrenos(forzar),
+        obtenerProximasTemporadas(forzar)
+      ]);
+
+      ultimosProximos = proximos;
+      programarTodasLasPendientes();
+
+      container.innerHTML = '';
+
+      if (proximos.length > 0) {
+        const titulo = document.createElement('h3');
+        titulo.className = 'marquee';
+        titulo.style.margin = '4px 0 16px';
+        titulo.style.fontSize = '22px';
+        titulo.style.color = 'var(--gold)';
+        titulo.style.letterSpacing = '0.5px';
+        titulo.textContent = t('upcoming');
+        container.appendChild(titulo);
+
+        const timelineHolder = document.createElement('div');
+        container.appendChild(timelineHolder);
+        renderizarTimeline(timelineHolder, proximos);
+      }
+
+      if (temporadas.length > 0) {
+        const section = document.createElement('div');
+        section.style.marginTop = proximos.length ? '24px' : '4px';
+        renderizarProximasTemporadas(section, temporadas);
+        container.appendChild(section);
+      }
+
+      if (!proximos.length && !temporadas.length) {
+        container.innerHTML = `<p style="text-align:center; color:var(--ink-muted); margin-top:20px;">${t('noHayProximos')}</p>`;
+      }
+
+      if (forzar) mostrarToast(t('calendarioActualizado'), 'ok');
+    } catch {
+      container.innerHTML = `<p style="text-align:center; color:var(--danger);">${t('errorCalendario')}</p>`;
+    }
+  }
+
+  /* ==================== PULL-TO-REFRESH (genérico) ====================
+     Deslizar hacia abajo estando arriba de todo de la pantalla fuerza un
+     refresco salteando la caché (fetchJSON con forzar:true). Se usa tanto
+     en Calendario como en Favoritos (ver las dos llamadas debajo). */
+  function inicializarPullToRefresh(contenedorId, indicadorId, estaActiva, onRefrescar) {
+    const vista = document.getElementById(contenedorId);
+    const indicador = document.getElementById(indicadorId);
+    const UMBRAL_REFRESH = 70;
+    let startY = 0, arrastrando = false, listo = false;
+
+    vista.addEventListener('touchstart', (e) => {
+      if (!estaActiva() || window.scrollY > 0) return;
+      startY = e.touches[0].clientY;
+      arrastrando = true;
+      listo = false;
+    }, { passive: true });
+
+    vista.addEventListener('touchmove', (e) => {
+      if (!arrastrando) return;
+      const dy = e.touches[0].clientY - startY;
+      if (dy <= 0) { indicador.style.height = '0px'; return; }
+
+      const alto = Math.min(dy * 0.5, 60);
+      indicador.style.height = alto + 'px';
+      listo = dy * 0.5 > UMBRAL_REFRESH;
+      indicador.textContent = listo ? t('soltarActualizarListo') : t('seguiBajando');
+    }, { passive: true });
+
+    vista.addEventListener('touchend', () => {
+      if (!arrastrando) return;
+      arrastrando = false;
+      indicador.style.height = '0px';
+      if (listo) {
+        indicador.textContent = t('soltarActualizar');
+        onRefrescar();
+      }
+    });
+  }
+
+  inicializarPullToRefresh('calendarView', 'pullIndicator', () => vistaActual === 'calendario', () => cargarCalendario(true));
+  inicializarPullToRefresh('listView', 'pullIndicatorFavs', () => vistaActual === 'favoritos', () => actualizarFavoritos(true));
+
+  function volverALista() {
+    // Mismo camino que el botón físico Atrás: pop del historial y el listener
+    // (aplicarEstadoHistorial) se encarga de mostrar la pantalla correcta.
+    history.back();
+  }
+
+  async function toggleFavorito(e, serie) {
+    e.stopPropagation();
+    const idx = favoritos.findIndex(f => f.id === serie.id);
+    if (idx > -1) {
+      const favReal = favoritos[idx];
+      const ok = await confirmarEliminar(
+        t('confirmarSacarTitulo')(favReal.name),
+        t('confirmarSacarMsg')
+      );
+      if (!ok) return;
+      favoritos.splice(idx, 1);
+      limpiarEpisodiosVistos(favReal);
+    } else {
+      try {
+        const eps = await fetchJSON(`https://api.tvmaze.com/shows/${serie.id}/episodes`, `eps_${serie.id}`);
+        serie.episodeIds = eps.map(e => e.id);
+        serie.totalEpisodesCount = eps.length;
+        const hoy = new Date().toISOString().split('T')[0];
+        const futuros = eps.filter(e => e.airdate && e.airdate >= hoy);
+        serie.proximoEstreno = futuros.length > 0 ? futuros[0].airdate : null;
+      } catch {
+        mostrarToast(t('noSePudoCargarDetalle')(serie.name), 'error');
+      }
+      migrarFavorito(serie);
+      favoritos.push(serie);
+    }
+    guardarDatos();
+    if (vistaActual === 'detalle') {
+      actualizarBotonFavoritoDetalle(serie.id);
+    } else if (document.getElementById('tabFavs').classList.contains('active')) {
+      renderizarFavoritos();
+    } else {
+      buscarOnline();
+    }
+  }
+
+  function actualizarBotonFavoritoDetalle(showId) {
+    const btn = document.getElementById('detailFavBtn');
+    if (!btn) return;
+    const esFav = favoritos.some(f => f.id === showId);
+    btn.textContent = esFav ? '❤️' : '🤍';
+    btn.setAttribute('aria-label', esFav ? t('quitarDeFavoritos') : t('agregarAFavoritos'));
+  }
+
+  /* Re-fetchea episodios de cada favorito (progreso, próximo estreno) salteando
+     la caché. La dispara el pull-to-refresh en la pestaña Favoritos. */
+  async function actualizarFavoritos(forzar = false) {
+    if (!favoritos.length) { renderizarFavoritos(); return; }
+    mostrarEsqueletoFavoritos();
+    try {
+      await Promise.all(favoritos.map(async (fav) => {
+        try {
+          const eps = await fetchJSON(`https://api.tvmaze.com/shows/${fav.id}/episodes`, `eps_${fav.id}`, { forzar });
+          fav.episodeIds = eps.map(e => e.id);
+          fav.totalEpisodesCount = eps.length;
+          const hoy = new Date().toISOString().split('T')[0];
+          const futuros = eps.filter(e => e.airdate && e.airdate >= hoy);
+          fav.proximoEstreno = futuros.length > 0 ? futuros[0].airdate : null;
+        } catch {
+          // Si falla una serie puntual seguimos con las demás; no cortamos todo el refresh por una.
+        }
+      }));
+      guardarDatos();
+      if (forzar) mostrarToast(t('favoritosActualizados'), 'ok');
+    } finally {
+      renderizarFavoritos();
+    }
+  }
+
+  function mostrarEsqueletoFavoritos() {
+    const container = document.getElementById('seriesList');
+    const cantidad = Math.min(favoritos.length || 3, 5);
+    container.innerHTML = Array.from({ length: cantidad }).map(() => `
+      <div class="card" aria-hidden="true">
+        <div class="card-top">
+          <div class="skeleton-block" style="width:60px; height:85px; border-radius:8px; flex-shrink:0;"></div>
+          <div style="flex:1; display:flex; flex-direction:column; gap:8px;">
+            <div class="skeleton-block" style="height:14px; width:70%;"></div>
+            <div class="skeleton-block" style="height:10px; width:40%;"></div>
+            <div class="skeleton-block" style="height:8px; width:100%;"></div>
+          </div>
+        </div>
+      </div>
+    `).join('');
+  }
+
+  function renderizarFavoritos() {
+    const container = document.getElementById('seriesList');
+    const orden = document.getElementById('ordenFavoritos').value;
+    const estado = document.getElementById('estadoFavoritos').value;
+    const filtroTexto = document.getElementById('filtroFavoritos').value.trim().toLowerCase();
+    const soloPendientes = document.getElementById('soloPendientes').checked;
+
+    let lista = favoritos.slice();
+
+    if (filtroTexto) {
+      lista = lista.filter(f => f.name.toLowerCase().includes(filtroTexto));
+    }
+    if (estado === 'emision') {
+      lista = lista.filter(f => f.status === 'Running');
+    } else if (estado === 'finalizada') {
+      lista = lista.filter(f => f.status !== 'Running');
+    }
+    if (soloPendientes) {
+      lista = lista.filter(f => {
+        if (!f.totalEpisodesCount) return true; // sin datos todavía, la mostramos igual
+        const vistosCount = f.episodeIds ? f.episodeIds.filter(id => episodiosVistos[id]).length : 0;
+        return vistosCount < f.totalEpisodesCount;
+      });
+    }
+
+    if (orden === 'alfabetico') {
+      lista.sort((a, b) => a.name.localeCompare(b.name));
+    } else {
+      lista.sort((a, b) => (b.agregadaEn || 0) - (a.agregadaEn || 0));
+    }
+
+    container.innerHTML = '';
+    if (!lista.length) {
+      const mensaje = favoritos.length ? t('ningunaCoincide') : t('noFavoritos');
+      container.innerHTML = `<p style="text-align:center; color:var(--ink-muted); margin-top:20px;">${mensaje}</p>`;
+      return;
+    }
+    lista.forEach(show => {
+      container.appendChild(crearTarjetaSerie(show, true));
+    });
+  }
+
+</script>
+</body>
+</html>
