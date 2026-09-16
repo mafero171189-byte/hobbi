@@ -392,6 +392,7 @@
           </div>
         </div>
         <button class="ajustes-btn danger" onclick="cerrarSesionGoogle()" id="ajustesCerrarSesionBtn">Cerrar sesión</button>
+        <button class="ajustes-btn danger" onclick="eliminarCuenta()" id="ajustesEliminarCuentaBtn">Eliminar cuenta</button>
       </div>
 
       <div class="ajustes-seccion">
@@ -531,6 +532,8 @@
       cerrarModal: 'Cerrar', cambiarIdiomaAria: 'Cambiar idioma',
       sesionIniciada: '✅ Sesión iniciada, favoritos sincronizados', errorLoginGoogle: 'No se pudo iniciar sesión con Google',
       cerrarSesionTitulo: '¿Cerrar sesión?', cerrarSesionMsg: 'Vas a tener que volver a iniciar sesión para ver tus favoritos de nuevo.', cerrarSesionBoton: 'Cerrar sesión',
+      eliminarCuentaBoton: 'Eliminar cuenta', eliminarCuentaTitulo: '¿Eliminar cuenta?', eliminarCuentaMsg: 'Se van a borrar tu cuenta y todos tus datos (favoritos, vistos) de forma permanente. Esta acción no se puede deshacer.',
+      eliminarCuentaOk: '✅ Cuenta eliminada', errorEliminarCuenta: 'No se pudo eliminar la cuenta. Probá de nuevo.',
       ajustesTitle: 'Ajustes', ajustesAria: 'Ajustes', ajustesTituloCuenta: 'Cuenta', ajustesTituloIdioma: 'Idioma',
       ajustesCambiarAIngles: 'Cambiar a English →', ajustesCambiarAEspanol: 'Cambiar a Español →',
       ajustesAcercaDe: 'ℹ️ Acerca de',
@@ -646,6 +649,8 @@
       cerrarModal: 'Close', cambiarIdiomaAria: 'Switch language',
       sesionIniciada: '✅ Signed in, favorites synced', errorLoginGoogle: "Couldn't sign in with Google",
       cerrarSesionTitulo: 'Sign out?', cerrarSesionMsg: "You'll need to sign in again to see your favorites.", cerrarSesionBoton: 'Sign out',
+      eliminarCuentaBoton: 'Delete account', eliminarCuentaTitulo: 'Delete account?', eliminarCuentaMsg: 'Your account and all your data (favorites, watched episodes) will be permanently deleted. This action cannot be undone.',
+      eliminarCuentaOk: '✅ Account deleted', errorEliminarCuenta: "Couldn't delete the account. Please try again.",
       ajustesTitle: 'Settings', ajustesAria: 'Settings', ajustesTituloCuenta: 'Account', ajustesTituloIdioma: 'Language',
       ajustesCambiarAIngles: 'Switch to English →', ajustesCambiarAEspanol: 'Switch to Español →',
       ajustesAcercaDe: 'ℹ️ About',
@@ -781,6 +786,7 @@
     document.getElementById('ajustesTitle').textContent = t('ajustesTitle');
     document.getElementById('ajustesTituloCuenta').textContent = t('ajustesTituloCuenta');
     document.getElementById('ajustesCerrarSesionBtn').textContent = t('cerrarSesionBoton');
+    document.getElementById('ajustesEliminarCuentaBtn').textContent = t('eliminarCuentaBoton');
     document.getElementById('ajustesTituloIdioma').textContent = t('ajustesTituloIdioma');
     document.getElementById('menuIdioma').style.display = 'none';
     actualizarMenuIdioma();
@@ -944,6 +950,31 @@
     favoritos = [];
     episodiosVistos = {};
     guardarDatosLocal();
+    mostrarOnboarding();
+  }
+
+  /* Elimina la cuenta del usuario logueado: pide confirmación, borra el
+     registro en el servidor (D1) vía DELETE /api/account, y si sale bien
+     limpia todo lo local y vuelve a mostrar el onboarding (login obligatorio). */
+  async function eliminarCuenta() {
+    const ok = await confirmarEliminar(t('eliminarCuentaTitulo'), t('eliminarCuentaMsg'), t('eliminarCuentaBoton'));
+    if (!ok) return;
+    clearTimeout(timeoutSyncNube); // cancelamos cualquier sync pendiente, ya no tiene sentido subir nada
+    try {
+      const res = await fetch('/api/account', { method: 'DELETE' });
+      if (!res.ok) throw new Error('delete falló');
+    } catch {
+      mostrarToast(t('errorEliminarCuenta'), 'error');
+      return;
+    }
+    usuarioActual = null;
+    actualizarChipUsuario();
+    mostrarSyncBadge('');
+    favoritos = [];
+    episodiosVistos = {};
+    guardarDatosLocal();
+    cerrarAjustes();
+    mostrarToast(t('eliminarCuentaOk'), 'ok');
     mostrarOnboarding();
   }
 
