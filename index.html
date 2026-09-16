@@ -7,6 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&display=swap" rel="stylesheet">
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
   <style>
     :root {
       /* Fondo: negro azulado, como una sala de cine */
@@ -46,6 +47,14 @@
     .tab-btn.active { background: var(--gold); color: var(--gold-ink); }
     .lang-toggle { background: var(--surface); border: 1px solid var(--border); color: var(--ink-muted); font-size: 11px; font-weight: 700; padding: 5px 10px; border-radius: 20px; cursor: pointer; }
     .info-btn { background: var(--surface); border: 1px solid var(--border); color: var(--ink-muted); font-size: 14px; padding: 5px 8px; border-radius: 6px; cursor: pointer; width: 30px; height: 30px; display: flex; align-items: center; justify-content: center; }
+
+    /* Login con Google / chip de usuario */
+    #googleBtnContainer { display: inline-block; }
+    .user-chip { display: flex; align-items: center; gap: 6px; background: var(--surface); border: 1px solid var(--border); border-radius: 20px; padding: 3px 10px 3px 3px; cursor: pointer; }
+    .user-chip img { width: 22px; height: 22px; border-radius: 50%; }
+    .user-chip span { font-size: 11px; color: var(--ink-muted); max-width: 80px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .sync-badge { font-size: 10px; color: var(--ink-muted); text-align: center; margin-top: -6px; margin-bottom: 4px; min-height: 14px; }
+    .sync-badge.error { color: var(--danger); }
     /* Modal de créditos */
     .modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.6); z-index: 1000; display: none; align-items: center; justify-content: center; }
     .modal-overlay.show { display: flex; }
@@ -222,12 +231,22 @@
 <div class="app-container">
   <div id="offlineBanner" role="status" aria-live="polite">📡 Sin conexión a internet — mostrando datos guardados</div>
   <header>
-    <div style="display:flex; justify-content:flex-end; gap:8px; margin-bottom:-4px;">
-      <button class="info-btn" onclick="abrirCreditos()" title="Acerca de" aria-label="Acerca de">ℹ️</button>
-      <button id="langToggleBtn" class="lang-toggle" onclick="cambiarIdioma()" aria-label="Cambiar idioma / Switch language">🌐 ES</button>
+    <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; margin-bottom:-4px;">
+      <div id="authArea">
+        <div id="googleBtnContainer"></div>
+        <button id="userChip" class="user-chip" style="display:none;" onclick="cerrarSesionGoogle()" title="Cerrar sesión">
+          <img id="userChipFoto" src="" alt="">
+          <span id="userChipNombre"></span>
+        </button>
+      </div>
+      <div style="display:flex; gap:8px;">
+        <button class="info-btn" onclick="abrirCreditos()" title="Acerca de" aria-label="Acerca de">ℹ️</button>
+        <button id="langToggleBtn" class="lang-toggle" onclick="cambiarIdioma()" aria-label="Cambiar idioma / Switch language">🌐 ES</button>
+      </div>
     </div>
     <h1>HOBBI</h1>
     <p id="appTagline" style="text-align:center; color:var(--ink-muted); font-size:12px; letter-spacing:0.5px; margin-top:-10px; margin-bottom:12px;">Control de Series</p>
+    <div id="syncBadge" class="sync-badge" role="status" aria-live="polite"></div>
     <div class="nav-tabs" role="tablist">
       <button class="tab-btn active" id="tabSearch" onclick="cambiarVista('buscar')" role="tab" aria-selected="true">🔍 <span id="tSearch">Buscar</span></button>
       <button class="tab-btn" id="tabFavs" onclick="cambiarVista('favoritos')" role="tab" aria-selected="false">❤️ <span id="tFavs">Favoritos</span></button>
@@ -389,6 +408,9 @@
       favoritosActualizados: 'Favoritos actualizados ✅',
       agregarAFavoritos: 'Agregar a favoritos', quitarDeFavoritos: 'Quitar de favoritos',
       cerrarModal: 'Cerrar', cambiarIdiomaAria: 'Cambiar idioma',
+      sesionIniciada: '✅ Sesión iniciada, favoritos sincronizados', errorLoginGoogle: 'No se pudo iniciar sesión con Google',
+      cerrarSesionTitulo: '¿Cerrar sesión?', cerrarSesionMsg: 'Tus datos van a seguir guardados en este dispositivo, pero dejan de sincronizarse con tu cuenta.',
+      sincronizado: '☁️ Sincronizado', errorSync: '⚠️ No se pudo sincronizar',
 
       // Cuenta regresiva del calendario (Upcoming)
       hora: 'Hora', horas: 'Horas', dia: 'Día', dias: 'Días',
@@ -491,6 +513,9 @@
       favoritosActualizados: 'Favorites updated ✅',
       agregarAFavoritos: 'Add to favorites', quitarDeFavoritos: 'Remove from favorites',
       cerrarModal: 'Close', cambiarIdiomaAria: 'Switch language',
+      sesionIniciada: '✅ Signed in, favorites synced', errorLoginGoogle: "Couldn't sign in with Google",
+      cerrarSesionTitulo: 'Sign out?', cerrarSesionMsg: 'Your data stays saved on this device, but stops syncing with your account.',
+      sincronizado: '☁️ Synced', errorSync: "⚠️ Couldn't sync",
 
       hora: 'Hour', horas: 'Hours', dia: 'Day', dias: 'Days',
       aLasHora: (fecha, hora) => `⏰ ${fecha} at ${hora}`,
@@ -647,6 +672,148 @@
 
   let episodiosVistos = JSON.parse(localStorage.getItem('hobi_watched_eps')) || {}; // { episodeId: true }
   let timeoutBusqueda = null;
+
+  /* ==================== LOGIN CON GOOGLE + SYNC EN LA NUBE ====================
+     El usuario puede usar la app sin loguearse (todo queda en localStorage,
+     como hasta ahora). Si se loguea con Google, los favoritos/vistos/idioma
+     se sincronizan contra las Pages Functions (/api/*) que a su vez usan D1.
+     localStorage sigue siendo la fuente de verdad "offline-first": al loguear
+     subimos lo que había local, y de ahí en más cada guardarDatos() también
+     empuja los cambios al servidor (con debounce, para no golpear la API
+     por cada tilde de checkbox). */
+  const GOOGLE_CLIENT_ID = '403618822429-pshtrss0fg4nnojujh6aqqagaboia66h.apps.googleusercontent.com';
+  let usuarioActual = null; // { email, nombre, foto } o null si no logueó
+  let timeoutSyncNube = null;
+
+  function mostrarSyncBadge(texto, esError = false) {
+    const el = document.getElementById('syncBadge');
+    el.textContent = texto;
+    el.classList.toggle('error', esError);
+    if (texto) setTimeout(() => { if (el.textContent === texto) el.textContent = ''; }, 2500);
+  }
+
+  function actualizarChipUsuario() {
+    const chip = document.getElementById('userChip');
+    const btnGoogle = document.getElementById('googleBtnContainer');
+    if (usuarioActual) {
+      document.getElementById('userChipFoto').src = usuarioActual.foto || '';
+      document.getElementById('userChipFoto').alt = usuarioActual.nombre || usuarioActual.email || '';
+      document.getElementById('userChipNombre').textContent = usuarioActual.nombre || usuarioActual.email || '';
+      chip.style.display = 'flex';
+      btnGoogle.style.display = 'none';
+    } else {
+      chip.style.display = 'none';
+      btnGoogle.style.display = 'inline-block';
+    }
+  }
+
+  /* Se llama una vez al arrancar la app: revisa si ya había una sesión activa
+     (cookie de sesión todavía válida) sin obligar a tocar el botón de nuevo. */
+  async function revisarSesionExistente() {
+    try {
+      const res = await fetch('/api/me');
+      if (!res.ok) return;
+      const data = await res.json();
+      if (data.logueado) {
+        usuarioActual = { email: data.email, nombre: data.nombre, foto: data.foto };
+        actualizarChipUsuario();
+        await sincronizarDesdeNube();
+      }
+    } catch {
+      // Sin conexión o API no disponible: seguimos con localStorage nomás.
+    }
+  }
+
+  /* Callback que dispara Google Identity Services cuando el usuario elige su cuenta. */
+  async function manejarCredencialGoogle(respuesta) {
+    try {
+      const res = await fetch('/api/auth', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ credential: respuesta.credential })
+      });
+      if (!res.ok) throw new Error('login falló');
+      const data = await res.json();
+      usuarioActual = { email: data.email, nombre: data.nombre, foto: data.foto };
+      actualizarChipUsuario();
+      // Subimos lo que ya tenía guardado localmente y después traemos el estado
+      // combinado del servidor (por si venía de otro dispositivo).
+      await sincronizarHaciaNube(true);
+      await sincronizarDesdeNube();
+      mostrarSyncBadge(t('sesionIniciada'));
+    } catch {
+      mostrarToast(t('errorLoginGoogle'), 'error');
+    }
+  }
+
+  async function cerrarSesionGoogle() {
+    const ok = await confirmarEliminar(t('cerrarSesionTitulo'), t('cerrarSesionMsg'));
+    if (!ok) return;
+    try { await fetch('/api/auth', { method: 'DELETE' }); } catch {}
+    usuarioActual = null;
+    actualizarChipUsuario();
+    mostrarSyncBadge('');
+    // Los datos siguen en este dispositivo (localStorage); solo dejamos de sincronizar.
+  }
+
+  /* Trae favoritos/vistos/idioma guardados en el servidor y los mergea con lo
+     local (unión, sin perder nada que el usuario haya marcado en otro lado). */
+  async function sincronizarDesdeNube() {
+    if (!usuarioActual) return;
+    try {
+      const res = await fetch('/api/data');
+      if (!res.ok) throw new Error('sync down falló');
+      const nube = await res.json();
+
+      const idsLocales = new Set(favoritos.map(f => f.id));
+      (nube.favoritos || []).forEach(f => { if (!idsLocales.has(f.id)) favoritos.push(f); });
+
+      episodiosVistos = Object.assign({}, nube.episodiosVistos || {}, episodiosVistos);
+
+      if (nube.idioma && !localStorage.getItem('hobi_idioma')) {
+        idioma = nube.idioma;
+        localStorage.setItem('hobi_idioma', idioma);
+        aplicarIdioma();
+      }
+
+      guardarDatosLocal();
+      if (vistaActual === 'favoritos') renderizarFavoritos();
+    } catch {
+      mostrarSyncBadge(t('errorSync'), true);
+    }
+  }
+
+  /* Empuja el estado actual al servidor. Con debounce (2s) salvo cuando
+     forzar=true (justo después de loguear). */
+  function sincronizarHaciaNube(forzar = false) {
+    if (!usuarioActual) return Promise.resolve();
+    clearTimeout(timeoutSyncNube);
+    const hacerPush = async () => {
+      try {
+        const res = await fetch('/api/data', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ favoritos, episodiosVistos, idioma })
+        });
+        if (!res.ok) throw new Error('sync up falló');
+        mostrarSyncBadge(t('sincronizado'));
+      } catch {
+        mostrarSyncBadge(t('errorSync'), true);
+      }
+    };
+    if (forzar) return hacerPush();
+    return new Promise((resolve) => {
+      timeoutSyncNube = setTimeout(() => hacerPush().then(resolve), 2000);
+    });
+  }
+
+  window.addEventListener('load', () => {
+    if (window.google && google.accounts && google.accounts.id) {
+      google.accounts.id.initialize({ client_id: GOOGLE_CLIENT_ID, callback: manejarCredencialGoogle });
+      google.accounts.id.renderButton(document.getElementById('googleBtnContainer'), { theme: 'filled_black', size: 'medium', shape: 'pill', text: 'signin' });
+    }
+    revisarSesionExistente();
+  });
 
   // Marca de tiempo por serie: última vez que el usuario entró a ver sus detalles.
   // Se usa para dejar de mostrar el badge "Nuevo" en Favoritos una vez que ya la vio,
@@ -892,7 +1059,7 @@
     }
   }
 
-  function guardarDatos() {
+  function guardarDatosLocal() {
     try {
       localStorage.setItem('hobi_favs', JSON.stringify(favoritos));
       localStorage.setItem('hobi_watched_eps', JSON.stringify(episodiosVistos));
@@ -902,6 +1069,14 @@
       console.error('No se pudieron guardar favoritos/vistos:', err);
       mostrarToast(t('errorGuardarDatos'), 'error');
     }
+  }
+
+  /* Guarda siempre local (funciona sin login) y, si hay sesión de Google activa,
+     además empuja el cambio a la nube (debounced) para que persista entre
+     dispositivos. */
+  function guardarDatos() {
+    guardarDatosLocal();
+    sincronizarHaciaNube();
   }
 
   /* Modal de confirmación genérico. Devuelve una Promise<boolean>: true si tocaron "Eliminar". */

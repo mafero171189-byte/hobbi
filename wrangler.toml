@@ -1,0 +1,12 @@
+name = "hobbi"
+main = "_worker.js"
+compatibility_date = "2025-01-01"
+
+[assets]
+directory = "."
+binding = "ASSETS"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "hobbi-db"
+database_id = "a3988f25-f866-4111-b57b-8a6465e617ac"
