@@ -92,7 +92,16 @@
     .onboarding-card h1 { font-family: 'Bebas Neue', -apple-system, sans-serif; color: var(--gold); font-size: 44px; letter-spacing: 3px; font-weight: 400; text-shadow: 0 0 24px var(--gold-dim); }
     .onboarding-card p { color: var(--ink); font-size: 15px; font-weight: 600; line-height: 1.4; max-width: 320px; margin-bottom: 10px; }
     #googleBtnOnboarding { margin-top: 4px; }
-    .onboarding-skip { background: none; border: none; color: var(--ink-muted); font-size: 13px; font-weight: 600; padding: 12px; cursor: pointer; text-decoration: underline; }
+    .onboarding-divider { display: flex; align-items: center; gap: 10px; width: 100%; max-width: 280px; color: var(--ink-dim); font-size: 12px; margin: 12px 0; }
+    .onboarding-divider::before, .onboarding-divider::after { content: ''; flex: 1; height: 1px; background: var(--border); }
+    #onboardingEmailForm { display: flex; flex-direction: column; gap: 8px; width: 100%; max-width: 280px; }
+    #onboardingEmailForm input { background: var(--surface); border: 1px solid var(--border); color: var(--ink); padding: 13px 14px; border-radius: 10px; font-size: 14px; width: 100%; }
+    #onboardingEmailForm input::placeholder { color: var(--ink-dim); }
+    #onboardingEmailForm input:focus { outline: none; border-color: var(--gold); }
+    .onboarding-email-btn { background: var(--gold); color: var(--gold-ink); border: none; padding: 13px; border-radius: 10px; font-weight: 700; font-size: 14px; cursor: pointer; margin-top: 2px; }
+    .onboarding-email-btn:disabled { opacity: 0.6; }
+    .onboarding-toggle-mode { background: none; border: none; color: var(--teal); font-size: 13px; font-weight: 600; cursor: pointer; padding: 12px 6px 4px; }
+    .onboarding-error { color: var(--danger); font-size: 13px; min-height: 16px; max-width: 280px; }
     /* Modal de créditos */
     .modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.6); z-index: 1000; display: none; align-items: center; justify-content: center; }
     .modal-overlay.show { display: flex; }
@@ -266,15 +275,22 @@
 
 <div id="toastHolder"></div>
 
-<!-- Pantalla de bienvenida (collage de pósters + login) -->
-<div id="onboardingScreen" style="display:none;">
+<!-- Pantalla de bienvenida / login obligatorio (collage de pósters + Google + email) -->
+<div id="onboardingScreen">
   <div id="onboardingPosters"></div>
   <div class="onboarding-scrim"></div>
   <div class="onboarding-card">
     <h1>HOBBI</h1>
     <p id="onboardingTagline">Todas tus series y películas, en un solo lugar.</p>
     <div id="googleBtnOnboarding"></div>
-    <button class="onboarding-skip" onclick="cerrarOnboarding()" id="onboardingSkipBtn">Entrar sin cuenta</button>
+    <div class="onboarding-divider"><span id="onboardingDividerTexto">o con tu mail</span></div>
+    <form id="onboardingEmailForm" onsubmit="return manejarSubmitEmail(event)">
+      <input type="email" id="onboardingEmail" placeholder="Email" required autocomplete="email">
+      <input type="password" id="onboardingPassword" placeholder="Contraseña" required minlength="6" autocomplete="current-password">
+      <button type="submit" class="onboarding-email-btn" id="onboardingSubmitBtn">Iniciar sesión</button>
+    </form>
+    <button type="button" class="onboarding-toggle-mode" id="onboardingToggleModeBtn" onclick="toggleModoOnboarding()">¿No tenés cuenta? Registrate</button>
+    <p id="onboardingError" class="onboarding-error" role="alert" aria-live="assertive"></p>
   </div>
 </div>
 
@@ -459,9 +475,14 @@
       agregarAFavoritos: 'Agregar a favoritos', quitarDeFavoritos: 'Quitar de favoritos',
       cerrarModal: 'Cerrar', cambiarIdiomaAria: 'Cambiar idioma',
       sesionIniciada: '✅ Sesión iniciada, favoritos sincronizados', errorLoginGoogle: 'No se pudo iniciar sesión con Google',
-      cerrarSesionTitulo: '¿Cerrar sesión?', cerrarSesionMsg: 'Tus datos van a seguir guardados en este dispositivo, pero dejan de sincronizarse con tu cuenta.',
+      cerrarSesionTitulo: '¿Cerrar sesión?', cerrarSesionMsg: 'Vas a tener que volver a iniciar sesión para ver tus favoritos de nuevo.',
       sincronizado: '☁️ Sincronizado', errorSync: '⚠️ No se pudo sincronizar',
-      onboardingTagline: 'Todas tus series y películas, en un solo lugar.', onboardingSkip: 'Entrar sin cuenta',
+      onboardingTagline: 'Todas tus series y películas, en un solo lugar.',
+      onboardingDivider: 'o con tu mail', onboardingEmailPlaceholder: 'Email', onboardingPasswordPlaceholder: 'Contraseña',
+      onboardingIniciarSesion: 'Iniciar sesión', onboardingRegistrarme: 'Registrarme',
+      onboardingIrARegistro: '¿No tenés cuenta? Registrate', onboardingIrALogin: '¿Ya tenés cuenta? Iniciá sesión',
+      errorLoginEmail: 'No se pudo iniciar sesión. Revisá el mail y la contraseña.',
+      errorRegistroEmail: 'No se pudo completar el registro.',
 
       // Cuenta regresiva del calendario (Upcoming)
       hora: 'Hora', horas: 'Horas', dia: 'Día', dias: 'Días',
@@ -565,9 +586,14 @@
       agregarAFavoritos: 'Add to favorites', quitarDeFavoritos: 'Remove from favorites',
       cerrarModal: 'Close', cambiarIdiomaAria: 'Switch language',
       sesionIniciada: '✅ Signed in, favorites synced', errorLoginGoogle: "Couldn't sign in with Google",
-      cerrarSesionTitulo: 'Sign out?', cerrarSesionMsg: 'Your data stays saved on this device, but stops syncing with your account.',
+      cerrarSesionTitulo: 'Sign out?', cerrarSesionMsg: "You'll need to sign in again to see your favorites.",
       sincronizado: '☁️ Synced', errorSync: "⚠️ Couldn't sync",
-      onboardingTagline: 'Every show and movie you watch, in one place.', onboardingSkip: 'Continue without an account',
+      onboardingTagline: 'Every show and movie you watch, in one place.',
+      onboardingDivider: 'or with your email', onboardingEmailPlaceholder: 'Email', onboardingPasswordPlaceholder: 'Password',
+      onboardingIniciarSesion: 'Sign in', onboardingRegistrarme: 'Sign up',
+      onboardingIrARegistro: "Don't have an account? Sign up", onboardingIrALogin: 'Already have an account? Sign in',
+      errorLoginEmail: "Couldn't sign in. Check your email and password.",
+      errorRegistroEmail: "Couldn't complete the sign up.",
 
       hora: 'Hour', horas: 'Hours', dia: 'Day', dias: 'Days',
       aLasHora: (fecha, hora) => `⏰ ${fecha} at ${hora}`,
@@ -608,7 +634,10 @@
     document.getElementById('langToggleBtn').textContent = idioma === 'es' ? '🌐 ES' : '🌐 EN';
     document.getElementById('appTagline').textContent = t('tagline');
     document.getElementById('onboardingTagline').textContent = t('onboardingTagline');
-    document.getElementById('onboardingSkipBtn').textContent = t('onboardingSkip');
+    document.getElementById('onboardingDividerTexto').textContent = t('onboardingDivider');
+    document.getElementById('onboardingEmail').placeholder = t('onboardingEmailPlaceholder');
+    document.getElementById('onboardingPassword').placeholder = t('onboardingPasswordPlaceholder');
+    actualizarTextosModoOnboarding();
     document.getElementById('tSearch').textContent = t('buscar');
     document.getElementById('tFavs').textContent = t('favoritos');
     document.getElementById('tCalendar').textContent = t('calendario');
@@ -811,12 +840,19 @@
     usuarioActual = null;
     actualizarChipUsuario();
     mostrarSyncBadge('');
-    // Los datos siguen en este dispositivo (localStorage); solo dejamos de sincronizar.
+    // Como el registro es obligatorio, no dejamos datos de esta cuenta visibles
+    // antes de que alguien loguee de nuevo en este dispositivo (puede ser otra
+    // cuenta): limpiamos lo local y volvemos a mostrar la pantalla de login.
+    favoritos = [];
+    episodiosVistos = {};
+    guardarDatosLocal();
+    mostrarOnboarding();
   }
 
-  /* ==================== ONBOARDING ==================== */
+  /* ==================== ONBOARDING / LOGIN OBLIGATORIO ==================== */
 
   const POSTERS_ONBOARDING = ['Wednesday', 'Stranger Things', 'Breaking Bad', 'Squid Game', 'The Last of Us', 'Game of Thrones', 'Loki', 'House of the Dragon', 'The Mandalorian'];
+  let modoOnboarding = 'login'; // 'login' | 'registro'
 
   async function cargarPostersOnboarding() {
     const contenedor = document.getElementById('onboardingPosters');
@@ -834,16 +870,73 @@
     }
   }
 
-  function mostrarOnboardingSiCorresponde() {
-    if (localStorage.getItem('hobi_onboarding_visto')) return;
+  function mostrarOnboarding() {
     document.getElementById('onboardingScreen').style.display = 'flex';
-    cargarPostersOnboarding();
+    if (!document.getElementById('onboardingPosters').children.length) cargarPostersOnboarding();
   }
 
   function cerrarOnboarding() {
-    localStorage.setItem('hobi_onboarding_visto', '1');
     const el = document.getElementById('onboardingScreen');
     if (el) el.style.display = 'none';
+  }
+
+  function toggleModoOnboarding() {
+    modoOnboarding = modoOnboarding === 'login' ? 'registro' : 'login';
+    actualizarTextosModoOnboarding();
+  }
+
+  function actualizarTextosModoOnboarding() {
+    const submitBtn = document.getElementById('onboardingSubmitBtn');
+    const toggleBtn = document.getElementById('onboardingToggleModeBtn');
+    const pass = document.getElementById('onboardingPassword');
+    if (!submitBtn) return; // todavía no existe en el DOM (primera pasada de aplicarIdioma)
+    if (modoOnboarding === 'login') {
+      submitBtn.textContent = t('onboardingIniciarSesion');
+      toggleBtn.textContent = t('onboardingIrARegistro');
+      pass.setAttribute('autocomplete', 'current-password');
+    } else {
+      submitBtn.textContent = t('onboardingRegistrarme');
+      toggleBtn.textContent = t('onboardingIrALogin');
+      pass.setAttribute('autocomplete', 'new-password');
+    }
+    document.getElementById('onboardingError').textContent = '';
+  }
+
+  /* Login o registro con mail/contraseña, según el modo actual del formulario.
+     El resto del flujo (merge, push, chip de usuario) es igual al de Google. */
+  async function manejarSubmitEmail(e) {
+    e.preventDefault();
+    const email = document.getElementById('onboardingEmail').value.trim();
+    const password = document.getElementById('onboardingPassword').value;
+    const errorEl = document.getElementById('onboardingError');
+    const submitBtn = document.getElementById('onboardingSubmitBtn');
+    errorEl.textContent = '';
+
+    const endpoint = modoOnboarding === 'login' ? '/api/auth/login' : '/api/auth/register';
+    submitBtn.disabled = true;
+    try {
+      const res = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password })
+      });
+      if (!res.ok) {
+        errorEl.textContent = (await res.text()) || t(modoOnboarding === 'login' ? 'errorLoginEmail' : 'errorRegistroEmail');
+        return false;
+      }
+      const data = await res.json();
+      usuarioActual = { email: data.email, nombre: data.nombre, foto: data.foto };
+      actualizarChipUsuario();
+      cerrarOnboarding();
+      await sincronizarDesdeNube(true);
+      await sincronizarHaciaNube(true);
+      mostrarSyncBadge(t('sesionIniciada'));
+    } catch {
+      errorEl.textContent = t(modoOnboarding === 'login' ? 'errorLoginEmail' : 'errorRegistroEmail');
+    } finally {
+      submitBtn.disabled = false;
+    }
+    return false;
   }
 
   window.addEventListener('load', () => {
@@ -852,7 +945,7 @@
       google.accounts.id.renderButton(document.getElementById('googleBtnContainer'), { theme: 'filled_black', size: 'medium', shape: 'pill', text: 'signin' });
       google.accounts.id.renderButton(document.getElementById('googleBtnOnboarding'), { theme: 'filled_black', size: 'large', shape: 'pill', text: 'signup_with' });
     }
-    mostrarOnboardingSiCorresponde();
+    mostrarOnboarding();
     revisarSesionExistente();
   });
 
