@@ -236,6 +236,29 @@ async function handleDataPost(request, env) {
   return json({ ok: true });
 }
 
+/* ---------- Eliminar cuenta ---------- */
+
+async function handleAccountDelete(request, env) {
+  const usuarioId = await usuarioDesdeCookie(request, env.SESSION_SECRET);
+  if (!usuarioId) return new Response('No autenticado', { status: 401 });
+
+  try {
+    await env.DB.batch([
+      env.DB.prepare('DELETE FROM favoritos WHERE usuario_id = ?').bind(usuarioId),
+      env.DB.prepare('DELETE FROM episodios_vistos WHERE usuario_id = ?').bind(usuarioId),
+      env.DB.prepare('DELETE FROM usuarios WHERE id = ?').bind(usuarioId)
+    ]);
+  } catch (err) {
+    return new Response('Error de servidor: ' + err.message, { status: 500 });
+  }
+
+  // Además de borrar los datos, cerramos la sesión: la cookie ya no sirve
+  // porque el usuario al que apuntaba dejó de existir.
+  return json({ ok: true }, {
+    headers: { 'Set-Cookie': `hobbi_sesion=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0` }
+  });
+}
+
 /* ---------- Router ---------- */
 
 export default {
@@ -249,6 +272,7 @@ export default {
     if (url.pathname === '/api/me' && request.method === 'GET') return handleMe(request, env);
     if (url.pathname === '/api/data' && request.method === 'GET') return handleDataGet(request, env);
     if (url.pathname === '/api/data' && request.method === 'POST') return handleDataPost(request, env);
+    if (url.pathname === '/api/account' && request.method === 'DELETE') return handleAccountDelete(request, env);
 
     // Todo lo que no sea /api/* se sirve como archivo estático (index.html, etc).
     return env.ASSETS.fetch(request);
