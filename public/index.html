@@ -88,7 +88,7 @@
     }
     .onboarding-scrim {
       position: absolute; inset: 0;
-      background: linear-gradient(180deg, var(--bg) 0%, transparent 18%, transparent 42%, var(--bg) 78%, var(--bg) 100%);
+      background: linear-gradient(180deg, var(--bg) 0%, transparent 16%, rgba(10,10,16,0.35) 36%, rgba(10,10,16,0.75) 55%, var(--bg) 80%, var(--bg) 100%);
     }
     .onboarding-card {
       position: relative; z-index: 1;
@@ -96,7 +96,7 @@
       display: flex; flex-direction: column; align-items: center; gap: 10px;
       text-align: center;
     }
-    .onboarding-card h1 { font-family: 'Bebas Neue', -apple-system, sans-serif; color: var(--gold); font-size: 44px; letter-spacing: 3px; font-weight: 400; text-shadow: 0 0 24px var(--gold-dim); }
+    .onboarding-card h1 { font-family: 'Bebas Neue', -apple-system, sans-serif; color: var(--gold); font-size: 44px; letter-spacing: 3px; font-weight: 400; text-shadow: 0 2px 3px rgba(0,0,0,0.9), 0 4px 18px rgba(0,0,0,0.85), 0 0 24px var(--gold-dim); }
     .onboarding-card p { color: var(--ink); font-size: 15px; font-weight: 600; line-height: 1.4; max-width: 320px; margin-bottom: 10px; }
     #googleBtnOnboarding { margin-top: 4px; }
     .onboarding-divider { display: flex; align-items: center; gap: 10px; width: 100%; max-width: 280px; color: var(--ink-dim); font-size: 12px; margin: 12px 0; }
@@ -129,6 +129,8 @@
     .ajustes-cuenta-mail { color: var(--ink-muted); font-size: 12px; }
     .ajustes-btn { width: 100%; background: var(--surface-2); border: 1px solid var(--border); color: var(--ink); padding: 12px; border-radius: 10px; font-size: 14px; font-weight: 600; cursor: pointer; display: flex; align-items: center; justify-content: space-between; }
     .ajustes-btn.danger { color: var(--danger); border-color: var(--danger); }
+    .ajustes-link-sutil { background: none; border: none; color: var(--ink-muted); font-size: 12px; padding: 6px; cursor: pointer; opacity: 0.7; }
+    .ajustes-link-sutil:hover, .ajustes-link-sutil:active { opacity: 1; color: var(--danger); }
     .ajustes-idioma-menu { margin-top: 8px; border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
     .ajustes-idioma-opcion { width: 100%; background: var(--surface); border: none; border-bottom: 1px solid var(--border); color: var(--ink); padding: 12px 14px; font-size: 14px; cursor: pointer; display: flex; justify-content: space-between; align-items: center; }
     .ajustes-idioma-opcion:last-child { border-bottom: none; }
@@ -392,7 +394,6 @@
           </div>
         </div>
         <button class="ajustes-btn danger" onclick="cerrarSesionGoogle()" id="ajustesCerrarSesionBtn">Cerrar sesión</button>
-        <button class="ajustes-btn danger" onclick="eliminarCuenta()" id="ajustesEliminarCuentaBtn">Eliminar cuenta</button>
       </div>
 
       <div class="ajustes-seccion">
@@ -416,6 +417,10 @@
           <span id="ajustesAcercaDeTexto">ℹ️ Acerca de</span>
           <span>→</span>
         </button>
+      </div>
+
+      <div class="ajustes-seccion" style="border-top:none; margin-top:4px; padding-top:0; text-align:center;">
+        <button class="ajustes-link-sutil" onclick="eliminarCuenta()" id="ajustesEliminarCuentaBtn">Eliminar cuenta</button>
       </div>
     </div>
   </div>
@@ -987,7 +992,7 @@
     try {
       const resultados = await Promise.all(POSTERS_ONBOARDING.map(nombre =>
         fetchJSON(`https://api.tvmaze.com/search/shows?q=${encodeURIComponent(nombre)}`, 'onboarding_' + nombre.toLowerCase())
-          .then(r => r[0]?.show?.image?.medium || null)
+          .then(r => r[0]?.show?.image?.original || r[0]?.show?.image?.medium || null)
           .catch(() => null)
       ));
       const imagenes = resultados.filter(Boolean);
