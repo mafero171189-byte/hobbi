@@ -387,6 +387,7 @@
      Lo único que queda sin traducir son los géneros de las series (Drama,
      Action, etc.), porque TVMaze los entrega siempre en inglés. */
   let idioma = localStorage.getItem('hobi_idioma') || 'es';
+  let modoOnboarding = 'login'; // 'login' | 'registro' — declarado acá arriba porque aplicarIdioma() (línea ~633) ya lo necesita al cargar la página
 
   const I18N = {
     es: {
@@ -852,7 +853,6 @@
   /* ==================== ONBOARDING / LOGIN OBLIGATORIO ==================== */
 
   const POSTERS_ONBOARDING = ['Wednesday', 'Stranger Things', 'Breaking Bad', 'Squid Game', 'The Last of Us', 'Game of Thrones', 'Loki', 'House of the Dragon', 'The Mandalorian'];
-  let modoOnboarding = 'login'; // 'login' | 'registro'
 
   async function cargarPostersOnboarding() {
     const contenedor = document.getElementById('onboardingPosters');
