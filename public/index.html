@@ -55,6 +55,44 @@
     .user-chip span { font-size: 11px; color: var(--ink-muted); max-width: 80px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .sync-badge { font-size: 10px; color: var(--ink-muted); text-align: center; margin-top: -6px; margin-bottom: 4px; min-height: 14px; }
     .sync-badge.error { color: var(--danger); }
+
+    /* ==================== ONBOARDING / PANTALLA DE BIENVENIDA ====================
+       Collage de pósters de fondo (como la referencia de Hobi) + card con el
+       nombre de la app, tagline y los dos caminos: loguearse con Google o
+       entrar sin cuenta (todo queda local en ese caso). Se muestra una sola
+       vez (o hasta que el usuario cierre sesión/borre localStorage). */
+    #onboardingScreen {
+      position: fixed; inset: 0; z-index: 9999;
+      background: var(--bg);
+      display: flex; flex-direction: column; justify-content: flex-end;
+      overflow: hidden;
+    }
+    #onboardingPosters {
+      position: absolute; inset: 0;
+      display: grid; grid-template-columns: repeat(3, 1fr);
+      gap: 3px; padding: 3px;
+      transform: scale(1.08) rotate(-2deg);
+      opacity: 0.9;
+    }
+    #onboardingPosters img {
+      width: 100%; height: 100%; object-fit: cover; border-radius: 6px;
+      background: var(--surface);
+      aspect-ratio: 2 / 3;
+    }
+    .onboarding-scrim {
+      position: absolute; inset: 0;
+      background: linear-gradient(180deg, var(--bg) 0%, transparent 18%, transparent 42%, var(--bg) 78%, var(--bg) 100%);
+    }
+    .onboarding-card {
+      position: relative; z-index: 1;
+      padding: 28px 24px 36px;
+      display: flex; flex-direction: column; align-items: center; gap: 10px;
+      text-align: center;
+    }
+    .onboarding-card h1 { font-family: 'Bebas Neue', -apple-system, sans-serif; color: var(--gold); font-size: 44px; letter-spacing: 3px; font-weight: 400; text-shadow: 0 0 24px var(--gold-dim); }
+    .onboarding-card p { color: var(--ink); font-size: 15px; font-weight: 600; line-height: 1.4; max-width: 320px; margin-bottom: 10px; }
+    #googleBtnOnboarding { margin-top: 4px; }
+    .onboarding-skip { background: none; border: none; color: var(--ink-muted); font-size: 13px; font-weight: 600; padding: 12px; cursor: pointer; text-decoration: underline; }
     /* Modal de créditos */
     .modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.6); z-index: 1000; display: none; align-items: center; justify-content: center; }
     .modal-overlay.show { display: flex; }
@@ -227,6 +265,18 @@
 <body>
 
 <div id="toastHolder"></div>
+
+<!-- Pantalla de bienvenida (collage de pósters + login) -->
+<div id="onboardingScreen" style="display:none;">
+  <div id="onboardingPosters"></div>
+  <div class="onboarding-scrim"></div>
+  <div class="onboarding-card">
+    <h1>HOBBI</h1>
+    <p id="onboardingTagline">Todas tus series y películas, en un solo lugar.</p>
+    <div id="googleBtnOnboarding"></div>
+    <button class="onboarding-skip" onclick="cerrarOnboarding()" id="onboardingSkipBtn">Entrar sin cuenta</button>
+  </div>
+</div>
 
 <div class="app-container">
   <div id="offlineBanner" role="status" aria-live="polite">📡 Sin conexión a internet — mostrando datos guardados</div>
@@ -411,6 +461,7 @@
       sesionIniciada: '✅ Sesión iniciada, favoritos sincronizados', errorLoginGoogle: 'No se pudo iniciar sesión con Google',
       cerrarSesionTitulo: '¿Cerrar sesión?', cerrarSesionMsg: 'Tus datos van a seguir guardados en este dispositivo, pero dejan de sincronizarse con tu cuenta.',
       sincronizado: '☁️ Sincronizado', errorSync: '⚠️ No se pudo sincronizar',
+      onboardingTagline: 'Todas tus series y películas, en un solo lugar.', onboardingSkip: 'Entrar sin cuenta',
 
       // Cuenta regresiva del calendario (Upcoming)
       hora: 'Hora', horas: 'Horas', dia: 'Día', dias: 'Días',
@@ -516,6 +567,7 @@
       sesionIniciada: '✅ Signed in, favorites synced', errorLoginGoogle: "Couldn't sign in with Google",
       cerrarSesionTitulo: 'Sign out?', cerrarSesionMsg: 'Your data stays saved on this device, but stops syncing with your account.',
       sincronizado: '☁️ Synced', errorSync: "⚠️ Couldn't sync",
+      onboardingTagline: 'Every show and movie you watch, in one place.', onboardingSkip: 'Continue without an account',
 
       hora: 'Hour', horas: 'Hours', dia: 'Day', dias: 'Days',
       aLasHora: (fecha, hora) => `⏰ ${fecha} at ${hora}`,
@@ -555,6 +607,8 @@
   function aplicarIdioma() {
     document.getElementById('langToggleBtn').textContent = idioma === 'es' ? '🌐 ES' : '🌐 EN';
     document.getElementById('appTagline').textContent = t('tagline');
+    document.getElementById('onboardingTagline').textContent = t('onboardingTagline');
+    document.getElementById('onboardingSkipBtn').textContent = t('onboardingSkip');
     document.getElementById('tSearch').textContent = t('buscar');
     document.getElementById('tFavs').textContent = t('favoritos');
     document.getElementById('tCalendar').textContent = t('calendario');
@@ -717,6 +771,7 @@
       if (data.logueado) {
         usuarioActual = { email: data.email, nombre: data.nombre, foto: data.foto };
         actualizarChipUsuario();
+        cerrarOnboarding(); // ya está logueado: no tiene sentido mostrarle la bienvenida
         await sincronizarDesdeNube();
       }
     } catch {
@@ -736,10 +791,13 @@
       const data = await res.json();
       usuarioActual = { email: data.email, nombre: data.nombre, foto: data.foto };
       actualizarChipUsuario();
-      // Subimos lo que ya tenía guardado localmente y después traemos el estado
-      // combinado del servidor (por si venía de otro dispositivo).
-      await sincronizarHaciaNube(true);
+      cerrarOnboarding();
+      // Primero BAJAMOS lo que ya había en el servidor y lo mergeamos con lo local
+      // (unión, sin perder nada de ningún lado), y recién ahí subimos el resultado
+      // combinado. Si lo hiciéramos al revés, un dispositivo nuevo sin favoritos
+      // locales pisaría (borraría) lo que ya había en la nube al hacer el primer push.
       await sincronizarDesdeNube();
+      await sincronizarHaciaNube(true);
       mostrarSyncBadge(t('sesionIniciada'));
     } catch {
       mostrarToast(t('errorLoginGoogle'), 'error');
@@ -756,8 +814,47 @@
     // Los datos siguen en este dispositivo (localStorage); solo dejamos de sincronizar.
   }
 
-  /* Trae favoritos/vistos/idioma guardados en el servidor y los mergea con lo
-     local (unión, sin perder nada que el usuario haya marcado en otro lado). */
+  /* ==================== ONBOARDING ==================== */
+
+  const POSTERS_ONBOARDING = ['Wednesday', 'Stranger Things', 'Breaking Bad', 'Squid Game', 'The Last of Us', 'Game of Thrones', 'Loki', 'House of the Dragon', 'The Mandalorian'];
+
+  async function cargarPostersOnboarding() {
+    const contenedor = document.getElementById('onboardingPosters');
+    try {
+      const resultados = await Promise.all(POSTERS_ONBOARDING.map(nombre =>
+        fetchJSON(`https://api.tvmaze.com/search/shows?q=${encodeURIComponent(nombre)}`, 'onboarding_' + nombre.toLowerCase())
+          .then(r => r[0]?.show?.image?.medium || null)
+          .catch(() => null)
+      ));
+      const imagenes = resultados.filter(Boolean);
+      if (!imagenes.length) return; // sin conexión ni caché: queda solo el fondo liso, no rompe nada
+      contenedor.innerHTML = imagenes.map(src => `<img src="${src}" alt="" loading="eager">`).join('');
+    } catch {
+      // Si falla todo, la pantalla igual funciona (solo sin el collage de fondo).
+    }
+  }
+
+  function mostrarOnboardingSiCorresponde() {
+    if (localStorage.getItem('hobi_onboarding_visto')) return;
+    document.getElementById('onboardingScreen').style.display = 'flex';
+    cargarPostersOnboarding();
+  }
+
+  function cerrarOnboarding() {
+    localStorage.setItem('hobi_onboarding_visto', '1');
+    const el = document.getElementById('onboardingScreen');
+    if (el) el.style.display = 'none';
+  }
+
+  window.addEventListener('load', () => {
+    if (window.google && google.accounts && google.accounts.id) {
+      google.accounts.id.initialize({ client_id: GOOGLE_CLIENT_ID, callback: manejarCredencialGoogle });
+      google.accounts.id.renderButton(document.getElementById('googleBtnContainer'), { theme: 'filled_black', size: 'medium', shape: 'pill', text: 'signin' });
+      google.accounts.id.renderButton(document.getElementById('googleBtnOnboarding'), { theme: 'filled_black', size: 'large', shape: 'pill', text: 'signup_with' });
+    }
+    mostrarOnboardingSiCorresponde();
+    revisarSesionExistente();
+  });
   async function sincronizarDesdeNube() {
     if (!usuarioActual) return;
     try {
@@ -806,14 +903,6 @@
       timeoutSyncNube = setTimeout(() => hacerPush().then(resolve), 2000);
     });
   }
-
-  window.addEventListener('load', () => {
-    if (window.google && google.accounts && google.accounts.id) {
-      google.accounts.id.initialize({ client_id: GOOGLE_CLIENT_ID, callback: manejarCredencialGoogle });
-      google.accounts.id.renderButton(document.getElementById('googleBtnContainer'), { theme: 'filled_black', size: 'medium', shape: 'pill', text: 'signin' });
-    }
-    revisarSesionExistente();
-  });
 
   // Marca de tiempo por serie: última vez que el usuario entró a ver sus detalles.
   // Se usa para dejar de mostrar el badge "Nuevo" en Favoritos una vez que ya la vio,
