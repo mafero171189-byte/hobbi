@@ -2469,7 +2469,7 @@
               if (!persona || !persona.id) return '';
               const imagen = (persona.image && (persona.image.medium || persona.image.original)) || ACTOR_PLACEHOLDER;
               return `
-                <div class="discover-item actor-item" onclick="verSeriesDeActor(${persona.id}, ${JSON.stringify(persona.name)})">
+                <div class="discover-item actor-item" onclick="verSeriesDeActor(${persona.id}, ${JSON.stringify(persona.name).replace(/"/g, '&quot;')})">
                   <img src="${imagen}" alt="${persona.name}" loading="lazy">
                   <div class="discover-name">${persona.name}</div>
                   ${personaje && personaje.name ? `<div class="discover-name" style="color:var(--ink-muted); font-weight:400;">${personaje.name}</div>` : ''}
