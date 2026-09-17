@@ -368,8 +368,8 @@
 
     /* Swipe-to-delete en las cards de Favoritos */
     .swipe-wrapper { position: relative; border-radius: 14px; overflow: hidden; }
-    .swipe-delete-bg { position: absolute; inset: 0; background: var(--danger); display: flex; align-items: center; justify-content: flex-end; padding-right: 22px; font-size: 22px; }
-    .swipe-visto-bg { position: absolute; inset: 0; background: var(--teal); display: flex; align-items: center; justify-content: flex-start; padding-left: 22px; font-size: 22px; color: var(--bg); font-weight: 700; }
+    .swipe-delete-bg { position: absolute; inset: 0; background: var(--danger); display: flex; align-items: center; justify-content: flex-end; padding-right: 22px; font-size: 22px; opacity: 0; transition: opacity 0.1s ease; }
+    .swipe-visto-bg { position: absolute; inset: 0; background: var(--teal); display: flex; align-items: center; justify-content: flex-start; padding-left: 22px; font-size: 22px; color: var(--bg); font-weight: 700; opacity: 0; transition: opacity 0.1s ease; }
     .swipe-wrapper .card { position: relative; transition: transform 0.2s; touch-action: pan-y; background-color: var(--surface); }
 
     /* Pull-to-refresh del Calendario */
@@ -422,7 +422,7 @@
   <div class="onboarding-scrim"></div>
   <div class="onboarding-card">
     <h1>HOBBI</h1>
-    <p id="onboardingTagline">Todas tus series y películas, en un solo lugar.</p>
+    <p id="onboardingTagline">Todas tus series, en un solo lugar.</p>
     <div id="googleBtnOnboarding"></div>
     <div class="onboarding-divider"><span id="onboardingDividerTexto">o con tu mail</span></div>
     <form id="onboardingEmailForm" onsubmit="return manejarSubmitEmail(event)">
@@ -719,7 +719,7 @@
       ajustesCambiarAIngles: 'Cambiar a English →', ajustesCambiarAEspanol: 'Cambiar a Español →',
       ajustesAcercaDe: 'ℹ️ Acerca de',
       sincronizado: '☁️ Sincronizado', errorSync: '⚠️ No se pudo sincronizar',
-      onboardingTagline: 'Todas tus series y películas, en un solo lugar.',
+      onboardingTagline: 'Todas tus series, en un solo lugar.',
       onboardingDivider: 'o con tu mail', onboardingEmailPlaceholder: 'Email', onboardingPasswordPlaceholder: 'Contraseña',
       onboardingIniciarSesion: 'Iniciar sesión', onboardingRegistrarme: 'Registrarme',
       onboardingIrARegistro: '¿No tenés cuenta? Registrate', onboardingIrALogin: '¿Ya tenés cuenta? Iniciá sesión',
@@ -850,7 +850,7 @@
       ajustesCambiarAIngles: 'Switch to English →', ajustesCambiarAEspanol: 'Switch to Español →',
       ajustesAcercaDe: 'ℹ️ About',
       sincronizado: '☁️ Synced', errorSync: "⚠️ Couldn't sync",
-      onboardingTagline: 'Every show and movie you watch, in one place.',
+      onboardingTagline: 'Every show you watch, in one place.',
       onboardingDivider: 'or with your email', onboardingEmailPlaceholder: 'Email', onboardingPasswordPlaceholder: 'Password',
       onboardingIniciarSesion: 'Sign in', onboardingRegistrarme: 'Sign up',
       onboardingIrARegistro: "Don't have an account? Sign up", onboardingIrALogin: 'Already have an account? Sign in',
@@ -1000,7 +1000,38 @@
      en vez de dejar Ajustes abierto sin ninguna función de cierre asociada.
      Cada entrada es { elementoPrevio, onCerrar }. */
   const pilaModales = [];
-  let cerrandoModalPorUI = false; // ver devolverFocoTrasModal() y el listener de popstate más abajo
+  // Cuántas entradas "modal" del historial quedaron colgadas por cierres
+  // hechos con la ✕ (no con el gesto/botón Atrás) y todavía no se sacaron.
+  // No alcanza con un history.back() inmediato por cada cierre: si dos
+  // modales se cierran en el mismo tick de JS (ej. cerrarSesionGoogle cierra
+  // el modal de confirmación Y el de Ajustes, uno atrás del otro, sin esperar
+  // nada entre medio), el navegador no llega a procesar la primera navegación
+  // antes de que le pidamos la segunda, y el segundo back() se pierde. En vez
+  // de eso, cada cierre solo suma a este contador, y un solo history.go(-n)
+  // disparado en el siguiente microtask (setTimeout 0) salta todas las
+  // entradas colgadas de una sola vez, ya con el tick de cierres terminado.
+  let entradasModalPendientesDeSacar = 0;
+  let saltoHistorialProgramado = false;
+  // Cuántos popstate disparados por nuestros propios saltos (ver
+  // programarSaltoHistorial) todavía no llegaron. history.go(-n) dispara un
+  // único popstate aunque salte varias entradas de golpe, así que esto suele
+  // quedar en 0 o 1 en la práctica, pero se maneja como contador por las
+  // dudas de que el navegador lo procese distinto.
+  let backsPropiosPendientes = 0;
+
+  function programarSaltoHistorial() {
+    if (saltoHistorialProgramado) return;
+    saltoHistorialProgramado = true;
+    setTimeout(() => {
+      const n = entradasModalPendientesDeSacar;
+      entradasModalPendientesDeSacar = 0;
+      saltoHistorialProgramado = false;
+      if (n > 0) {
+        backsPropiosPendientes += n;
+        history.go(-n);
+      }
+    }, 0);
+  }
 
   function enfocarModal(modal, onCerrar) {
     pilaModales.push({ elementoPrevio: document.activeElement, onCerrar });
@@ -1019,14 +1050,13 @@
       entrada.elementoPrevio.focus();
     }
     // Si cerramos tocando la ✕ (no con el gesto/botón Atrás), la entrada de
-    // historial que pushState agregó al abrir el modal queda "colgada" — el
-    // próximo Atrás del usuario no haría nada visible. La sacamos nosotros
-    // mismos con back(), pero marcando cerrandoModalPorUI para que nuestro
-    // propio popstate no interprete este back() como si el usuario hubiese
-    // deslizado atrás (que cerraría un segundo modal de la pila si había).
+    // historial que pushState agregó al abrir este modal queda "colgada" — el
+    // próximo Atrás del usuario no haría nada visible. La marcamos para
+    // sacarla (ver programarSaltoHistorial) en vez de hacer history.back()
+    // ahora mismo, porque puede haber más cierres en el mismo tick.
     if (history.state && history.state.view === 'modal') {
-      cerrandoModalPorUI = true;
-      history.back();
+      entradasModalPendientesDeSacar++;
+      programarSaltoHistorial();
     }
   }
 
@@ -1971,9 +2001,11 @@
     // Si este back() lo disparamos nosotros mismos al cerrar un modal por la
     // ✕ (ver devolverFocoTrasModal), no hay nada más que hacer: la pila ya
     // se actualizó ahí, y actuar de nuevo acá cerraría un segundo modal de
-    // encima si lo había (ej. Créditos abierto desde Ajustes).
-    if (cerrandoModalPorUI) {
-      cerrandoModalPorUI = false;
+    // encima si lo había (ej. Créditos abierto desde Ajustes). Consumimos un
+    // solo crédito por popstate — puede haber más de uno encolado si se
+    // cerraron varios modales en el mismo tick (ej. al cerrar sesión).
+    if (backsPropiosPendientes > 0) {
+      backsPropiosPendientes--;
       return;
     }
     // Si hay un modal abierto, el gesto/botón Atrás lo cierra a él primero
@@ -2571,6 +2603,25 @@
     const UMBRAL_ACCION = 90;
     const LIMITE_ARRASTRE_DERECHA = 110; // no dejamos que se vaya de la pantalla, no hay nada que borrar hacia ese lado
 
+    const fondoEliminar = wrapper.querySelector('.swipe-delete-bg');
+    const fondoVisto = wrapper.querySelector('.swipe-visto-bg');
+
+    // Los dos fondos ocupan todo el wrapper (inset:0) para no tener que medir
+    // anchos — se diferencian mostrando uno solo por vez según hacia qué lado
+    // se está deslizando en ese momento, no por posición.
+    function mostrarFondoSegunDireccion(dx) {
+      if (dx < 0) {
+        fondoEliminar.style.opacity = '1';
+        fondoVisto.style.opacity = '0';
+      } else if (dx > 0) {
+        fondoEliminar.style.opacity = '0';
+        fondoVisto.style.opacity = '1';
+      } else {
+        fondoEliminar.style.opacity = '0';
+        fondoVisto.style.opacity = '0';
+      }
+    }
+
     card.addEventListener('touchstart', (e) => {
       startX = e.touches[0].clientX;
       startY = e.touches[0].clientY;
@@ -2595,6 +2646,7 @@
         deltaX = Math.min(dx, LIMITE_ARRASTRE_DERECHA);
         card.style.transform = `translateX(${deltaX}px)`;
       }
+      mostrarFondoSegunDireccion(deltaX);
     }, { passive: true });
 
     card.addEventListener('touchend', async () => {
@@ -2606,9 +2658,11 @@
         await ejecutarSwipeEliminar(wrapper, card, show);
       } else if (esHorizontal && deltaX > 0 && deltaX > UMBRAL_ACCION) {
         card.style.transform = 'translateX(0)';
+        mostrarFondoSegunDireccion(0);
         await ejecutarSwipeMarcarVisto(card, show);
       } else {
         card.style.transform = 'translateX(0)';
+        mostrarFondoSegunDireccion(0);
       }
     });
   }
@@ -2684,12 +2738,18 @@
 
     mostrarToast(t('episodioMarcadoVisto')(show.name), 'ok');
 
-    // Si este era el último episodio pendiente y la serie ya está finalizada,
-    // se oculta sola de Favoritos (mismo criterio que renderizarFavoritos) —
-    // salvo que el usuario tenga tildado "Mostrar finalizadas que ya vi
-    // completas", en cuyo caso se queda donde está.
+    // Si este era el último episodio pendiente, la card puede tener que
+    // desaparecer por dos motivos, los mismos que aplica renderizarFavoritos:
+    // "Ocultar las que ya vi completas" (cualquier serie 100% vista) o el
+    // auto-ocultamiento de finalizadas completas (solo si además terminó).
+    // Sin este chequeo acá, la card se queda visible hasta el próximo cambio
+    // de vista, aunque ya no debería estar en la lista con esos filtros.
+    const soloPendientes = document.getElementById('soloPendientes')?.checked;
     const mostrarFinalizadasCompletas = document.getElementById('mostrarFinalizadasCompletas')?.checked;
-    if (!mostrarFinalizadasCompletas && esFinalizadaYCompleta(fav)) {
+    const yaEstaCompleta = fav.totalEpisodesCount && vistosCount >= fav.totalEpisodesCount;
+    const debeOcultarse = (soloPendientes && yaEstaCompleta) || (!mostrarFinalizadasCompletas && esFinalizadaYCompleta(fav));
+
+    if (debeOcultarse) {
       const wrapper = card.closest('.swipe-wrapper');
       if (wrapper) {
         wrapper.style.transition = 'opacity 0.25s ease, height 0.25s ease, margin 0.25s ease';
