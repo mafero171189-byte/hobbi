@@ -305,6 +305,30 @@
     .timeline-badge { font-size: 12px; color: var(--gold); font-weight: 600; margin-bottom: 3px; }
     .timeline-date { font-size: 11px; color: var(--ink-muted); }
 
+    /* Sección "Episodios sin ver" en Calendario: cards simples sin cuenta
+       regresiva (son del pasado) + botón de check para marcar visto ahí mismo. */
+    .sinver-card { display: flex; gap: 12px; align-items: center; background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 10px; margin-top: 10px; }
+    .sinver-card img { width: 52px; height: 74px; object-fit: cover; border-radius: 8px; background: var(--bg); flex-shrink: 0; cursor: pointer; }
+    .sinver-info { min-width: 0; flex: 1; cursor: pointer; }
+    .sinver-info h4 { font-size: 15px; margin-bottom: 4px; }
+    .sinver-badge { font-size: 12px; color: var(--teal); font-weight: 600; margin-bottom: 3px; }
+    .sinver-fecha { font-size: 11px; color: var(--ink-muted); }
+    .sinver-check { flex-shrink: 0; width: 38px; height: 38px; border-radius: 10px; border: 1px solid var(--border); background: var(--surface-2); color: var(--ink-muted); font-size: 17px; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+    .sinver-check:hover, .sinver-check:active { border-color: var(--teal); color: var(--teal); }
+
+    .sinver-grupo { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; margin-top: 10px; overflow: hidden; }
+    .sinver-grupo-header { width: 100%; display: flex; gap: 12px; align-items: center; background: none; border: none; padding: 10px; cursor: pointer; text-align: left; }
+    .sinver-grupo-header img { width: 52px; height: 74px; object-fit: cover; border-radius: 8px; background: var(--bg); flex-shrink: 0; }
+    .sinver-grupo-flecha { color: var(--teal); flex-shrink: 0; transition: transform 0.2s ease; }
+    .sinver-grupo.abierto .sinver-grupo-flecha { transform: rotate(180deg); }
+    .sinver-grupo-detalle { max-height: 0; overflow: hidden; transition: max-height 0.25s ease; padding: 0 10px; }
+    .sinver-grupo.abierto .sinver-grupo-detalle { max-height: 2000px; padding-bottom: 10px; }
+    .sinver-grupo .sinver-card { margin-top: 8px; }
+    .sinver-grupo .sinver-card:first-child { margin-top: 0; }
+    @media (prefers-reduced-motion: reduce) {
+      .sinver-grupo-flecha, .sinver-grupo-detalle { transition: none; }
+    }
+
     /* Toast de errores/avisos */
     #toastHolder { position: fixed; left: 50%; bottom: 18px; transform: translateX(-50%); z-index: 10000; display: flex; flex-direction: column; gap: 8px; align-items: center; width: 100%; max-width: 480px; padding: 0 16px; pointer-events: none; }
     .toast { background: var(--surface-2); border: 1px solid var(--border); color: var(--ink); font-size: 13px; padding: 10px 14px; border-radius: 10px; box-shadow: 0 4px 16px rgba(0,0,0,0.4); opacity: 0; transform: translateY(8px); transition: opacity 0.25s, transform 0.25s; max-width: 100%; text-align: center; }
@@ -588,6 +612,8 @@
       estrenanPronto: 'Estrenan pronto', nuevas: 'Nuevas', populares: 'Populares',
       estrenosMes: 'Estrenos este mes', vuelvenMes: 'Vuelven este mes',
       upcoming: 'Upcoming', proximasTemporadas: '🎬 Próximas temporadas', enEmisionHoy: 'En emisión hoy',
+      sinVer: 'Episodios sin ver', marcarVisto: 'Marcar como visto',
+      episodiosSinVer: (n) => `${n} episodios sin ver`,
       cancelar: 'Cancelar', eliminar: 'Eliminar',
       traducirBtn: '🌐 Traducir', verOriginalBtn: '↩ Ver original',
       buscarSerieEmpezar: 'Escribí el nombre arriba y tocá el ❤️ de las que quieras seguir.',
@@ -719,6 +745,8 @@
       estrenanPronto: 'Coming soon', nuevas: 'New', populares: 'Popular',
       estrenosMes: 'Premiering this month', vuelvenMes: 'Returning this month',
       upcoming: 'Upcoming', proximasTemporadas: '🎬 Upcoming seasons', enEmisionHoy: 'Airing today',
+      sinVer: 'Unwatched episodes', marcarVisto: 'Mark as watched',
+      episodiosSinVer: (n) => `${n} unwatched episodes`,
       cancelar: 'Cancel', eliminar: 'Delete',
       traducirBtn: '🌐 Translate', verOriginalBtn: '↩ Show original',
       buscarSerieEmpezar: 'Type a name above and tap ❤️ on the ones you want to follow.',
@@ -2821,6 +2849,143 @@
     return resultados.filter(Boolean).sort((a, b) => new Date(a.airstamp) - new Date(b.airstamp));
   }
 
+  /* Episodios que YA se emitieron pero nunca se marcaron como vistos. Reusa el
+     mismo pedido /episodes (y su caché) que obtenerProximosEstrenos, así que
+     no agrega tráfico de red extra — solo se filtra distinto sobre el mismo
+     array. Se limita a los últimos 2 años para no inundar la lista con series
+     viejas que recién se agregaron como favoritas. */
+  async function obtenerEpisodiosSinVer(forzar = false) {
+    const ahora = Date.now();
+    const LIMITE_ANTIGUEDAD_MS = 2 * 365 * 24 * 60 * 60 * 1000;
+
+    const resultadosPorSerie = await Promise.all(favoritos.map(async fav => {
+      try {
+        const episodios = await fetchJSON(`https://api.tvmaze.com/shows/${fav.id}/episodes`, `eps_${fav.id}`, { forzar });
+
+        return episodios
+          .filter(e => e.airdate || e.airstamp)
+          .map(e => {
+            let timestamp = e.airstamp ? new Date(e.airstamp).getTime() : NaN;
+            if (!Number.isFinite(timestamp) && e.airdate) {
+              timestamp = new Date(`${e.airdate}T23:59:59`).getTime();
+            }
+            return { ...e, _timestamp: timestamp };
+          })
+          .filter(e => Number.isFinite(e._timestamp) && e._timestamp < ahora && e._timestamp > ahora - LIMITE_ANTIGUEDAD_MS)
+          .filter(e => !episodiosVistos[e.id])
+          .sort((a, b) => a._timestamp - b._timestamp)
+          .map(e => ({
+            episodioId: e.id,
+            serieId: fav.id,
+            serieNombre: fav.name,
+            imagen: fav.image,
+            episodioNombre: e.name,
+            temporada: e.season,
+            numero: e.number,
+            airstamp: e.airstamp || `${e.airdate}T23:59:59`
+          }));
+      } catch {
+        return [];
+      }
+    }));
+
+    return resultadosPorSerie.flat().sort((a, b) => new Date(b.airstamp) - new Date(a.airstamp));
+  }
+
+  /* Renderiza episodios pendientes de ver como lista simple (sin cuenta
+     regresiva, no tiene sentido para algo que ya pasó). Si una misma serie
+     tiene 3+ episodios sin ver, los agrupa en un solo card expandible para no
+     inundar la pantalla con filas repetidas. */
+  function renderizarSinVer(container, lista) {
+    container.innerHTML = '';
+
+    const porSerie = {};
+    lista.forEach(ep => {
+      if (!porSerie[ep.serieId]) porSerie[ep.serieId] = [];
+      porSerie[ep.serieId].push(ep);
+    });
+
+    const UMBRAL_AGRUPAR = 3;
+
+    Object.values(porSerie).forEach(epsDeLaSerie => {
+      if (epsDeLaSerie.length >= UMBRAL_AGRUPAR) {
+        container.appendChild(crearCardGrupoSinVer(epsDeLaSerie));
+      } else {
+        epsDeLaSerie.forEach(ep => container.appendChild(crearCardEpisodioSinVer(ep)));
+      }
+    });
+  }
+
+  function crearCardEpisodioSinVer(ep) {
+    const fechaEp = new Date(ep.airstamp);
+    const fechaTexto = fechaEp.toLocaleDateString(t('localeFecha'), { day: 'numeric', month: 'short', year: 'numeric' });
+    const etiquetaEpisodio = ep.numero === 1
+      ? t('estrenoTemporada')(ep.temporada)
+      : `T${ep.temporada}E${ep.numero}${ep.episodioNombre ? ' - ' + ep.episodioNombre : ''}`;
+
+    const card = document.createElement('div');
+    card.className = 'sinver-card';
+    card.id = `sinver-${ep.episodioId}`;
+    card.innerHTML = `
+      <img src="${ep.imagen || placeholderPorNombre(ep.serieNombre)}" loading="lazy" onclick="verDetalles(${ep.serieId})">
+      <div class="sinver-info" onclick="verDetalles(${ep.serieId})">
+        <h4>${ep.serieNombre}</h4>
+        <div class="sinver-badge">📺 ${etiquetaEpisodio}</div>
+        <div class="sinver-fecha">${fechaTexto}</div>
+      </div>
+      <button type="button" class="sinver-check" onclick="marcarVistoDesdeCalendario(${ep.episodioId}, this)" title="${t('marcarVisto')}" aria-label="${t('marcarVisto')}">✓</button>
+    `;
+    return card;
+  }
+
+  function crearCardGrupoSinVer(epsDeLaSerie) {
+    const serie = epsDeLaSerie[0];
+    const wrap = document.createElement('div');
+    wrap.className = 'sinver-grupo';
+
+    const header = document.createElement('button');
+    header.type = 'button';
+    header.className = 'sinver-grupo-header';
+    header.innerHTML = `
+      <img src="${serie.imagen || placeholderPorNombre(serie.serieNombre)}" loading="lazy">
+      <div class="sinver-info">
+        <h4>${serie.serieNombre}</h4>
+        <div class="sinver-badge">${t('episodiosSinVer')(epsDeLaSerie.length)}</div>
+      </div>
+      <span class="sinver-grupo-flecha">▾</span>
+    `;
+
+    const detalle = document.createElement('div');
+    detalle.className = 'sinver-grupo-detalle';
+    epsDeLaSerie.forEach(ep => detalle.appendChild(crearCardEpisodioSinVer(ep)));
+
+    header.onclick = () => wrap.classList.toggle('abierto');
+
+    wrap.appendChild(header);
+    wrap.appendChild(detalle);
+    return wrap;
+  }
+
+  /* Marca un episodio como visto desde la sección de Calendario y saca la
+     fila de la vista con un fundido breve, sin tener que recargar toda la
+     lista de sin-ver (que implicaría re-pedir episodios). */
+  function marcarVistoDesdeCalendario(epId, btn) {
+    episodiosVistos[epId] = true;
+    guardarDatos();
+
+    const card = document.getElementById(`sinver-${epId}`) || btn.closest('.sinver-card');
+    if (!card) return;
+    card.style.transition = 'opacity 0.25s ease, transform 0.25s ease';
+    card.style.opacity = '0';
+    card.style.transform = 'translateX(12px)';
+    setTimeout(() => {
+      const grupo = card.closest('.sinver-grupo');
+      card.remove();
+      // Si era el último episodio pendiente de un grupo, sacamos el grupo entero.
+      if (grupo && !grupo.querySelector('.sinver-card')) grupo.remove();
+    }, 250);
+  }
+
   /* Renderiza una lista de próximos episodios como línea de tiempo con cuenta regresiva */
   function renderizarTimeline(container, lista) {
     container.innerHTML = '';
@@ -2985,9 +3150,10 @@
     }
 
     try {
-      const [proximos, temporadas] = await Promise.all([
+      const [proximos, temporadas, sinVer] = await Promise.all([
         obtenerProximosEstrenos(forzar),
-        obtenerProximasTemporadas(forzar)
+        obtenerProximasTemporadas(forzar),
+        obtenerEpisodiosSinVer(forzar)
       ]);
 
       ultimosProximos = proximos;
@@ -3038,7 +3204,22 @@
         container.appendChild(section);
       }
 
-      if (!proximos.length && !temporadas.length) {
+      if (sinVer.length > 0) {
+        const tituloSinVer = document.createElement('h3');
+        tituloSinVer.className = 'marquee';
+        tituloSinVer.style.margin = (proximos.length || temporadas.length) ? '24px 0 4px' : '4px 0 4px';
+        tituloSinVer.style.fontSize = '22px';
+        tituloSinVer.style.color = 'var(--teal)';
+        tituloSinVer.style.letterSpacing = '0.5px';
+        tituloSinVer.textContent = '👀 ' + t('sinVer');
+        container.appendChild(tituloSinVer);
+
+        const sinVerHolder = document.createElement('div');
+        container.appendChild(sinVerHolder);
+        renderizarSinVer(sinVerHolder, sinVer);
+      }
+
+      if (!proximos.length && !temporadas.length && !sinVer.length) {
         container.innerHTML = `<p style="text-align:center; color:var(--ink-muted); margin-top:20px;">${t('noHayProximos')}</p>`;
       }
 
