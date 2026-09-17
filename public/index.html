@@ -609,6 +609,7 @@
       sinConexionDatosGuardados: 'Sin conexión: mostrando datos guardados',
       tagline: 'Control de Series',
       actores: 'Actores', seriesDe: (nombre) => `Series con ${nombre}`,
+      actoresPrincipales: 'Actores principales',
       sinSeriesActor: 'No encontramos series con este actor en TVMaze.',
       yaEstaDisponible: (etiqueta) => `Ya está disponible: ${etiqueta}`,
       proximoEpisodioLabel: (fecha) => `📅 Próximo episodio: ${fecha}`,
@@ -724,6 +725,7 @@
       sinConexionDatosGuardados: 'No connection: showing saved data',
       tagline: 'Series Tracker',
       actores: 'Actors', seriesDe: (nombre) => `Shows with ${nombre}`,
+      actoresPrincipales: 'Main cast',
       sinSeriesActor: "Couldn't find any shows for this actor on TVMaze.",
       yaEstaDisponible: (etiqueta) => `Now available: ${etiqueta}`,
       proximoEpisodioLabel: (fecha) => `📅 Next episode: ${fecha}`,
@@ -1678,6 +1680,7 @@
   }
 
   function mostrarPlaceholderBusqueda() {
+    document.getElementById('searchBoxContainer').style.display = 'block';
     document.getElementById('seriesList').innerHTML = `
       <div style="text-align:center; margin: 20px 0 22px; padding: 0 10px;">
         <p style="color:var(--ink-muted); font-size:13px; line-height:1.5;">${t('buscarSerieEmpezar')}</p>
@@ -1954,8 +1957,23 @@
     container.appendChild(section);
   }
 
-  /* Series donde salió un actor puntual, usando sus créditos de reparto (con el show embebido). */
+  /* Series donde salió un actor puntual, usando sus créditos de reparto (con el show embebido).
+     Puede llamarse desde la búsqueda (ya está en #listView) o desde el detalle
+     de una serie (el reparto principal, ver verDetalles): en ese segundo caso
+     hay que mostrar #listView y ocultar #detailView primero, si no el resultado
+     se pinta en un contenedor que sigue invisible y no pasa nada en pantalla. */
   async function verSeriesDeActor(personId, nombre) {
+    if (vistaActual === 'detalle') {
+      document.getElementById('detailView').style.display = 'none';
+      document.getElementById('listView').style.display = 'block';
+      document.getElementById('searchBoxContainer').style.display = 'none';
+      document.getElementById('tabSearch').classList.add('active');
+      document.getElementById('tabFavs').classList.remove('active');
+      document.getElementById('tabCalendar').classList.remove('active');
+      history.pushState({ view: 'inicio' }, '', '#inicio');
+      vistaActual = 'inicio';
+      reiniciarFadeIn(document.getElementById('listView'));
+    }
     const container = document.getElementById('seriesList');
     container.innerHTML = `<p style="text-align:center; color:var(--ink-muted);">${t('buscando')}</p>`;
 
@@ -2306,10 +2324,11 @@
     vistaActual = 'detalle';
 
     try {
-      const [show, episodios, seasonsInfoResultado] = await Promise.all([
+      const [show, episodios, seasonsInfoResultado, cast] = await Promise.all([
         fetchJSON(`https://api.tvmaze.com/shows/${showId}`, `show_${showId}`),
         fetchJSON(`https://api.tvmaze.com/shows/${showId}/episodes`, `eps_${showId}`),
-        fetchJSON(`https://api.tvmaze.com/shows/${showId}/seasons`, `seasons_${showId}`).catch(() => null)
+        fetchJSON(`https://api.tvmaze.com/shows/${showId}/seasons`, `seasons_${showId}`).catch(() => null),
+        fetchJSON(`https://api.tvmaze.com/shows/${showId}/cast`, `cast_${showId}`).catch(() => null)
       ]);
       // Si mientras esperábamos el usuario ya entró a ver otra serie (o volvió
       // a la lista), detalleActualId cambió — descartamos esta respuesta vieja
@@ -2436,6 +2455,31 @@
         ? `<div class="detail-rating">⭐ ${show.rating.average.toFixed(1)}</div>`
         : '';
 
+      // Reparto principal: TVMaze en /cast trae actor + personaje, ya ordenado
+      // por relevancia. Nos quedamos con los primeros (igual que hace la sección
+      // de "Actores" en la búsqueda) y reusamos el mismo estilo circular (.actor-item)
+      // para que se vea consistente en toda la app.
+      const castHTML = (Array.isArray(cast) && cast.length)
+        ? `
+          <h3 class="marquee" style="margin-top:16px; font-size:20px; color:var(--gold); letter-spacing:0.5px;">👥 ${t('actoresPrincipales')}</h3>
+          <div class="discover-rail" style="margin-top:10px; margin-bottom:4px;">
+            ${cast.slice(0, 12).map(credito => {
+              const persona = credito.person;
+              const personaje = credito.character;
+              if (!persona || !persona.id) return '';
+              const imagen = (persona.image && (persona.image.medium || persona.image.original)) || ACTOR_PLACEHOLDER;
+              return `
+                <div class="discover-item actor-item" onclick="verSeriesDeActor(${persona.id}, ${JSON.stringify(persona.name)})">
+                  <img src="${imagen}" alt="${persona.name}" loading="lazy">
+                  <div class="discover-name">${persona.name}</div>
+                  ${personaje && personaje.name ? `<div class="discover-name" style="color:var(--ink-muted); font-weight:400;">${personaje.name}</div>` : ''}
+                </div>
+              `;
+            }).join('')}
+          </div>
+        `
+        : '';
+
       let html = `
         <div class="detail-header">
           <button class="fav-btn" id="detailFavBtn" onclick="toggleFavorito(event, ${JSON.stringify(serieParaFav).replace(/"/g, '&quot;')})" aria-label="${esFavActual ? t('quitarDeFavoritos') : t('agregarAFavoritos')}">
@@ -2451,6 +2495,7 @@
           </div>
         </div>
         ${sinopsisHTML}
+        ${castHTML}
         ${proximaTempInfo}
         <h3 class="marquee" style="margin-top:16px; font-size:22px; color:var(--gold); letter-spacing:0.5px;">${t('temporadas')} (${Object.keys(temporadas).length})</h3><br>
       `;
