@@ -186,17 +186,32 @@ async function handleMe(request, env) {
   return json({ logueado: true, ...usuario });
 }
 
+/* ---------- Datos (favoritos + episodios vistos) ----------
+   Guardados como UN SOLO JSON por usuario, en 2 columnas de la tabla
+   usuarios (favoritos_json, episodios_vistos_json), en vez de una fila por
+   serie/episodio. Esto baja el consumo de escrituras de D1 de ~cientos de
+   filas por sync a 1 sola fila (UPDATE) por sync — con el diseño anterior
+   (DELETE + INSERT por cada favorito y cada episodio visto), una cuenta con
+   pocos favoritos pero muchos episodios marcados podía gastar el límite
+   diario gratis de D1 en una sola sesión de uso normal. */
+
 async function handleDataGet(request, env) {
   const usuarioId = await usuarioDesdeCookie(request, env.SESSION_SECRET);
   if (!usuarioId) return new Response('No autenticado', { status: 401 });
 
-  const usuario = await env.DB.prepare('SELECT idioma FROM usuarios WHERE id = ?').bind(usuarioId).first();
-  const favs = await env.DB.prepare('SELECT datos FROM favoritos WHERE usuario_id = ?').bind(usuarioId).all();
-  const vistos = await env.DB.prepare('SELECT episodio_id FROM episodios_vistos WHERE usuario_id = ?').bind(usuarioId).all();
+  const usuario = await env.DB.prepare(
+    'SELECT idioma, favoritos_json, episodios_vistos_json FROM usuarios WHERE id = ?'
+  ).bind(usuarioId).first();
 
-  const favoritos = favs.results.map(r => JSON.parse(r.datos));
-  const episodiosVistos = {};
-  vistos.results.forEach(r => { episodiosVistos[r.episodio_id] = true; });
+  let favoritos = [];
+  let episodiosVistos = {};
+  try {
+    if (usuario?.favoritos_json) favoritos = JSON.parse(usuario.favoritos_json);
+    if (usuario?.episodios_vistos_json) episodiosVistos = JSON.parse(usuario.episodios_vistos_json);
+  } catch {
+    // Si el JSON guardado estuviera corrupto por algún motivo, mejor devolver
+    // vacío que romper el endpoint entero — el cliente lo toma como "sin datos".
+  }
 
   return json({ idioma: usuario?.idioma || 'es', favoritos, episodiosVistos });
 }
@@ -206,33 +221,32 @@ async function handleDataPost(request, env) {
   if (!usuarioId) return new Response('No autenticado', { status: 401 });
 
   const { favoritos, episodiosVistos, idioma } = await request.json();
-  const statements = [];
+
+  const campos = [];
+  const valores = [];
 
   if (idioma) {
-    statements.push(env.DB.prepare('UPDATE usuarios SET idioma = ? WHERE id = ?').bind(idioma, usuarioId));
+    campos.push('idioma = ?');
+    valores.push(idioma);
   }
-
   if (Array.isArray(favoritos)) {
-    statements.push(env.DB.prepare('DELETE FROM favoritos WHERE usuario_id = ?').bind(usuarioId));
-    favoritos.forEach(f => {
-      statements.push(env.DB.prepare(
-        'INSERT INTO favoritos (usuario_id, show_id, datos) VALUES (?, ?, ?)'
-      ).bind(usuarioId, f.id, JSON.stringify(f)));
-    });
+    campos.push('favoritos_json = ?');
+    valores.push(JSON.stringify(favoritos));
   }
-
   if (episodiosVistos && typeof episodiosVistos === 'object') {
-    statements.push(env.DB.prepare('DELETE FROM episodios_vistos WHERE usuario_id = ?').bind(usuarioId));
-    Object.keys(episodiosVistos).forEach(epId => {
-      if (episodiosVistos[epId]) {
-        statements.push(env.DB.prepare(
-          'INSERT INTO episodios_vistos (usuario_id, episodio_id, visto) VALUES (?, ?, 1)'
-        ).bind(usuarioId, epId));
-      }
-    });
+    campos.push('episodios_vistos_json = ?');
+    valores.push(JSON.stringify(episodiosVistos));
   }
 
-  if (statements.length) await env.DB.batch(statements);
+  // Nada que guardar (body vacío o sin ninguno de los 3 campos esperados):
+  // no hace falta tocar la base.
+  if (!campos.length) return json({ ok: true });
+
+  valores.push(usuarioId);
+  await env.DB.prepare(
+    `UPDATE usuarios SET ${campos.join(', ')} WHERE id = ?`
+  ).bind(...valores).run();
+
   return json({ ok: true });
 }
 
@@ -243,6 +257,9 @@ async function handleAccountDelete(request, env) {
   if (!usuarioId) return new Response('No autenticado', { status: 401 });
 
   try {
+    // Las tablas favoritos/episodios_vistos ya no se usan para escribir datos
+    // nuevos, pero por las dudas de que un usuario viejo todavía tenga filas
+    // ahí (de antes de esta migración), las limpiamos igual al borrar la cuenta.
     await env.DB.batch([
       env.DB.prepare('DELETE FROM favoritos WHERE usuario_id = ?').bind(usuarioId),
       env.DB.prepare('DELETE FROM episodios_vistos WHERE usuario_id = ?').bind(usuarioId),
