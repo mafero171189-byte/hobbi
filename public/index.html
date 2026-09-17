@@ -1451,8 +1451,42 @@
   // Si volvés a la pestaña/app después de un rato (ej: la dejaste en segundo
   // plano y mientras tanto borraste un favorito desde el celu), traemos el
   // estado real del servidor en vez de esperar a que recargues la página.
+  //
+  // Y al revés: si la app se va a segundo plano (cambiás de app, apagás la
+  // pantalla, etc.) con un cambio local reciente que todavía está esperando
+  // el debounce de 2s de sincronizarHaciaNube, ese cambio se perdería sin
+  // llegar nunca al servidor. Lo forzamos a subir ya mismo apenas la app deja
+  // de estar visible, sin esperar el debounce.
+  function forzarPushPendienteSiHay() {
+    if (usuarioActual && hayPushPendiente) {
+      clearTimeout(timeoutSyncNube);
+      sincronizarHaciaNube(true);
+    }
+  }
   document.addEventListener('visibilitychange', () => {
-    if (!document.hidden && usuarioActual) sincronizarDesdeNube();
+    if (document.hidden) {
+      forzarPushPendienteSiHay();
+    } else if (usuarioActual) {
+      sincronizarDesdeNube();
+    }
+  });
+  // pagehide cubre el cierre real de la pestaña/app. Ahí un fetch() normal
+  // puede no llegar a salir antes de que el navegador mate el proceso —
+  // sendBeacon está hecho justo para este momento: el navegador garantiza
+  // que el envío sale igual aunque la página ya se esté cerrando.
+  window.addEventListener('pagehide', () => {
+    if (!usuarioActual || !hayPushPendiente) return;
+    clearTimeout(timeoutSyncNube);
+    try {
+      navigator.sendBeacon('/api/data', new Blob(
+        [JSON.stringify({ favoritos, episodiosVistos, idioma })],
+        { type: 'application/json' }
+      ));
+    } catch {
+      // Si sendBeacon no está disponible (navegador viejo), no hay mucho más
+      // para hacer en este momento puntual — el próximo cambio disparará el
+      // debounce normal de nuevo si la app sigue viva.
+    }
   });
   /* modoMerge=true: unión con lo local (solo para el primer login, así no se
      pierden favoritos que el usuario ya tenía como invitado en ese dispositivo).
