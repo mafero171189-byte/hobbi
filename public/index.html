@@ -71,6 +71,7 @@
     }
     @media (prefers-reduced-motion: reduce) {
       .vista-entrando { animation: none; }
+      .faq-pregunta .faq-flecha, .faq-respuesta { transition: none; }
     }
 
     /* Header y Navegación */
@@ -200,6 +201,15 @@
     .favs-filtro-panel { position: absolute; top: calc(100% + 8px); right: 0; z-index: 20; width: 240px; background: var(--surface-2); border: 1px solid var(--border); border-radius: 12px; padding: 14px; display: flex; flex-direction: column; gap: 10px; box-shadow: 0 8px 24px rgba(0,0,0,0.4); }
     .favs-filtro-panel .filter-row { flex-direction: column; }
     .favs-filtro-panel .filter-row select { width: 100%; }
+
+    /* Acordeón de Preguntas y respuestas */
+    .faq-item { border: 1px solid var(--border); border-radius: 10px; margin-bottom: 10px; overflow: hidden; }
+    .faq-pregunta { width: 100%; text-align: left; background: var(--surface); border: none; color: var(--ink); font-size: 14px; font-weight: 600; padding: 14px; cursor: pointer; display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+    .faq-pregunta .faq-flecha { color: var(--gold); transition: transform 0.2s ease; flex-shrink: 0; }
+    .faq-item.abierto .faq-pregunta .faq-flecha { transform: rotate(180deg); }
+    .faq-respuesta { max-height: 0; overflow: hidden; transition: max-height 0.25s ease; }
+    .faq-item.abierto .faq-respuesta { max-height: 300px; }
+    .faq-respuesta p { padding: 0 14px 14px; margin: 0; font-size: 13px; color: var(--ink-muted); line-height: 1.5; }
 
     /* Cards de Series */
     .series-list { display: flex; flex-direction: column; gap: 12px; }
@@ -506,6 +516,13 @@
       </div>
 
       <div class="ajustes-seccion">
+        <button class="ajustes-btn" onclick="abrirFAQ()" id="ajustesFAQBtn">
+          <span id="ajustesFAQTexto">❓ Preguntas y respuestas</span>
+          <span>→</span>
+        </button>
+      </div>
+
+      <div class="ajustes-seccion">
         <button class="ajustes-btn" onclick="abrirCreditos()" id="ajustesAcercaDeBtn">
           <span id="ajustesAcercaDeTexto">ℹ️ Acerca de</span>
           <span>→</span>
@@ -526,6 +543,14 @@
       <p id="creditosData"><strong>Datos:</strong> Esta app utiliza la API pública de <a href="https://www.tvmaze.com/api" target="_blank">TVmaze</a>, bajo licencia CC BY-SA.</p>
       <p id="creditosAttribution"><strong>Atribución:</strong> Todos los datos de series, episodios y pósters provienen de <a href="https://www.tvmaze.com" target="_blank">TVmaze</a>. Gracias a TVmaze y su comunidad por mantener esta base de datos.</p>
       <p id="creditosNote"><strong>Nota:</strong> Hobbi es una app no oficial hecha por un fan. TVmaze es propiedad de su comunidad y desarrolladores.</p>
+    </div>
+  </div>
+
+  <div id="faqModal" class="modal-overlay" onclick="if(event.target.id === 'faqModal') cerrarFAQ()">
+    <div class="modal-content" style="position:relative;">
+      <button class="modal-close" onclick="cerrarFAQ()" aria-label="Cerrar">✕</button>
+      <h3 id="faqTitle">Preguntas y respuestas</h3>
+      <div id="faqLista"></div>
     </div>
   </div>
 </div>
@@ -662,10 +687,16 @@
       yaEstaDisponible: (etiqueta) => `Ya está disponible: ${etiqueta}`,
       proximoEpisodioLabel: (fecha) => `📅 Próximo episodio: ${fecha}`,
       creditosTitle: 'Acerca de',
-      creditosApp: 'Hobbi: Control de Series te ayuda a seguir tus series favoritas.',
+      creditosApp: 'Hobbi: Control de Series te ayuda a seguir tus series favoritas. Importante: Hobbi no reproduce ni transmite episodios — es solo para organizar qué viste, qué te falta y cuándo estrenan.',
       creditosData: 'Datos: Esta app utiliza la API pública de TVmaze, bajo licencia CC BY-SA.',
       creditosAttribution: 'Atribución: Todos los datos de series, episodios y pósters provienen de TVmaze. Gracias a TVmaze y su comunidad por mantener esta base de datos.',
-      creditosNote: 'Nota: Hobbi es una app no oficial hecha por un fan. TVmaze es propiedad de su comunidad y desarrolladores.'
+      creditosNote: 'Nota: Hobbi es una app no oficial hecha por un fan. TVmaze es propiedad de su comunidad y desarrolladores.',
+      ajustesFAQTexto: '❓ Preguntas y respuestas', faqTitle: 'Preguntas y respuestas',
+      faqLista: [
+        { p: '¿Hobbi me deja ver series o episodios?', r: 'No. Hobbi no reproduce ni transmite nada — es una libreta para organizar qué series seguís, qué episodios ya viste y cuándo estrenan los próximos. Para ver el contenido necesitás tu plataforma de streaming habitual.' },
+        { p: '¿Necesito internet para usar la app?', r: 'Para buscar series nuevas y actualizar datos sí. Pero una vez que agregaste tus favoritos, podés marcar episodios vistos y consultarlos sin conexión — se guardan en tu dispositivo.' },
+        { p: '¿De dónde salen los datos de las series?', r: 'De TVmaze, una base de datos pública y colaborativa. Si un dato está mal o falta un póster, es porque así está cargado ahí — no es algo que Hobbi pueda corregir directamente.' }
+      ]
     },
     en: {
       buscar: 'Search', inicio: 'Home', favoritos: 'Favorites', calendario: 'Calendar',
@@ -779,10 +810,16 @@
       yaEstaDisponible: (etiqueta) => `Now available: ${etiqueta}`,
       proximoEpisodioLabel: (fecha) => `📅 Next episode: ${fecha}`,
       creditosTitle: 'About',
-      creditosApp: 'Hobbi: Series Tracker helps you keep track of your favorite shows.',
+      creditosApp: 'Hobbi: Series Tracker helps you keep track of your favorite shows. Important: Hobbi does not stream or play episodes — it only helps you organize what you\'ve watched, what\'s left, and when new episodes air.',
       creditosData: 'Data: This app uses the public TVmaze API, under CC BY-SA license.',
       creditosAttribution: 'Attribution: All show, episode, and poster data comes from TVmaze. Thanks to TVmaze and its community for maintaining this database.',
-      creditosNote: 'Note: Hobbi is an unofficial fan-made app. TVmaze is owned by its community and developers.'
+      creditosNote: 'Note: Hobbi is an unofficial fan-made app. TVmaze is owned by its community and developers.',
+      ajustesFAQTexto: '❓ FAQ', faqTitle: 'Frequently asked questions',
+      faqLista: [
+        { p: 'Can I watch shows or episodes in Hobbi?', r: 'No. Hobbi doesn\'t stream or play anything — it\'s a notebook to track which shows you follow, which episodes you\'ve watched, and when new ones air. To actually watch, you\'ll need your usual streaming service.' },
+        { p: 'Do I need internet to use the app?', r: 'Yes, to search for new shows and refresh data. But once you\'ve added your favorites, you can mark episodes as watched and check them offline — they\'re saved on your device.' },
+        { p: 'Where does the show data come from?', r: 'From TVmaze, a public, community-run database. If something\'s wrong or a poster is missing, that\'s how it\'s listed there — it\'s not something Hobbi can fix directly.' }
+      ]
     }
   };
 
@@ -834,6 +871,7 @@
     document.getElementById('ajustesBtn').title = t('ajustesAria');
     document.getElementById('ajustesBtn').setAttribute('aria-label', t('ajustesAria'));
     document.getElementById('ajustesAcercaDeTexto') && (document.getElementById('ajustesAcercaDeTexto').textContent = t('ajustesAcercaDe'));
+    document.getElementById('ajustesFAQTexto') && (document.getElementById('ajustesFAQTexto').textContent = t('ajustesFAQTexto'));
     document.getElementById('tFavs').textContent = t('favoritos');
     document.getElementById('tCalendar').textContent = t('calendario');
     document.getElementById('searchInput').placeholder = t('searchPlaceholder');
@@ -958,6 +996,39 @@
     const modal = document.getElementById('creditosModal');
     modal.classList.remove('show');
     devolverFocoTrasModal();
+  }
+
+  /* Modal de Preguntas y respuestas: acordeón simple, cada pregunta se abre
+     independiente de las demás (no es exclusivo tipo "una sola abierta"). */
+  function abrirFAQ() {
+    const modal = document.getElementById('faqModal');
+    modal.classList.add('show');
+    document.getElementById('faqTitle').textContent = t('faqTitle');
+    const lista = t('faqLista');
+    const cont = document.getElementById('faqLista');
+    cont.innerHTML = lista.map((item, i) => `
+      <div class="faq-item" id="faqItem${i}">
+        <button type="button" class="faq-pregunta" onclick="toggleFAQItem(${i})" aria-expanded="false">
+          <span>${item.p}</span>
+          <span class="faq-flecha">▾</span>
+        </button>
+        <div class="faq-respuesta"><p>${item.r}</p></div>
+      </div>
+    `).join('');
+    enfocarModal(modal, cerrarFAQ);
+  }
+
+  function cerrarFAQ() {
+    const modal = document.getElementById('faqModal');
+    modal.classList.remove('show');
+    devolverFocoTrasModal();
+  }
+
+  function toggleFAQItem(i) {
+    const item = document.getElementById('faqItem' + i);
+    if (!item) return;
+    const abierto = item.classList.toggle('abierto');
+    item.querySelector('.faq-pregunta').setAttribute('aria-expanded', abierto ? 'true' : 'false');
   }
 
   /* Placeholder para pósters/fotos que TVMaze no tiene cargados: un SVG generado
