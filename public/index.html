@@ -12,6 +12,20 @@
   <link rel="preconnect" href="https://api.tvmaze.com" crossorigin>
   <!-- Para Google Profile Pictures (si autentican con Google) -->
   <link rel="dns-prefetch" href="https://lh3.googleusercontent.com">
+
+  <!-- ==================== PWA: instalable en el celular ====================
+       El manifest se genera en runtime como Blob (ver abajo, al final del
+       script) para que el archivo siga siendo un único .html autocontenido,
+       sin depender de un manifest.json externo que se pueda perder al mover
+       el archivo. iOS no lee manifest.json para el ícono/tema de forma
+       confiable, así que además de eso van las meta tags "apple-*" clásicas. -->
+  <meta name="theme-color" content="#0a0a13">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Hobbi">
+  <link rel="apple-touch-icon" id="appleTouchIcon" href="">
+
   <script src="https://accounts.google.com/gsi/client" async defer></script>
   <style>
     :root {
@@ -459,6 +473,23 @@
       </div>
 
       <div class="ajustes-seccion">
+        <div class="ajustes-seccion-titulo" id="ajustesTituloNotif">Notificaciones</div>
+        <button class="ajustes-btn" onclick="pedirPermisoNotificaciones()" id="ajustesNotifBtn">
+          <span id="ajustesNotifEstado">🔔 Activar avisos de estrenos</span>
+        </button>
+        <div style="display:flex; align-items:center; justify-content:space-between; gap:10px; margin-top:10px;">
+          <label for="anticipacionNotifSelect" style="font-size:13px; color:var(--ink-muted);" id="ajustesAnticipacionLabel">Avisar con anticipación de</label>
+          <select id="anticipacionNotifSelect" onchange="cambiarAnticipacionNotif(this.value)" style="padding:8px; border-radius:8px; border:1px solid var(--border); background:var(--surface); color:var(--ink); font-size:13px;">
+            <option value="1">1 hora</option>
+            <option value="6">6 horas</option>
+            <option value="24">1 día</option>
+            <option value="48">2 días</option>
+            <option value="168">1 semana</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="ajustes-seccion">
         <button class="ajustes-btn" onclick="abrirCreditos()" id="ajustesAcercaDeBtn">
           <span id="ajustesAcercaDeTexto">ℹ️ Acerca de</span>
           <span>→</span>
@@ -516,6 +547,7 @@
       estrenanPronto: 'Estrenan pronto', nuevas: 'Nuevas', populares: 'Populares',
       estrenosMes: 'Estrenos este mes', vuelvenMes: 'Vuelven este mes',
       upcoming: 'Upcoming', proximasTemporadas: '🎬 Próximas temporadas',
+      enEmisionHoy: 'En emisión hoy',
       cancelar: 'Cancelar', eliminar: 'Eliminar',
       traducirBtn: '🌐 Traducir', verOriginalBtn: '↩ Ver original',
       buscarSerieEmpezar: 'Escribí el nombre arriba y tocá el ❤️ de las que quieras seguir.',
@@ -586,6 +618,8 @@
       eliminarCuentaBoton: 'Eliminar cuenta', eliminarCuentaTitulo: '¿Eliminar cuenta?', eliminarCuentaMsg: 'Se van a borrar tu cuenta y todos tus datos (favoritos, vistos) de forma permanente. Esta acción no se puede deshacer.',
       eliminarCuentaOk: '✅ Cuenta eliminada', errorEliminarCuenta: 'No se pudo eliminar la cuenta. Probá de nuevo.',
       ajustesTitle: 'Ajustes', ajustesAria: 'Ajustes', ajustesTituloCuenta: 'Cuenta', ajustesTituloIdioma: 'Idioma',
+      ajustesTituloNotif: 'Notificaciones', anticipacionLabel: 'Avisar con anticipación de',
+      anticipacion1h: '1 hora', anticipacion6h: '6 horas', anticipacion1d: '1 día', anticipacion2d: '2 días', anticipacion1sem: '1 semana',
       ajustesCambiarAIngles: 'Cambiar a English →', ajustesCambiarAEspanol: 'Cambiar a Español →',
       ajustesAcercaDe: 'ℹ️ Acerca de',
       sincronizado: '☁️ Sincronizado', errorSync: '⚠️ No se pudo sincronizar',
@@ -640,6 +674,7 @@
       estrenanPronto: 'Coming soon', nuevas: 'New', populares: 'Popular',
       estrenosMes: 'Premiering this month', vuelvenMes: 'Returning this month',
       upcoming: 'Upcoming', proximasTemporadas: '🎬 Upcoming seasons',
+      enEmisionHoy: 'Airing today',
       cancelar: 'Cancel', eliminar: 'Delete',
       traducirBtn: '🌐 Translate', verOriginalBtn: '↩ Show original',
       buscarSerieEmpezar: 'Type a name above and tap ❤️ on the ones you want to follow.',
@@ -704,6 +739,8 @@
       eliminarCuentaBoton: 'Delete account', eliminarCuentaTitulo: 'Delete account?', eliminarCuentaMsg: 'Your account and all your data (favorites, watched episodes) will be permanently deleted. This action cannot be undone.',
       eliminarCuentaOk: '✅ Account deleted', errorEliminarCuenta: "Couldn't delete the account. Please try again.",
       ajustesTitle: 'Settings', ajustesAria: 'Settings', ajustesTituloCuenta: 'Account', ajustesTituloIdioma: 'Language',
+      ajustesTituloNotif: 'Notifications', anticipacionLabel: 'Notify ahead of time by',
+      anticipacion1h: '1 hour', anticipacion6h: '6 hours', anticipacion1d: '1 day', anticipacion2d: '2 days', anticipacion1sem: '1 week',
       ajustesCambiarAIngles: 'Switch to English →', ajustesCambiarAEspanol: 'Switch to Español →',
       ajustesAcercaDe: 'ℹ️ About',
       sincronizado: '☁️ Synced', errorSync: "⚠️ Couldn't sync",
@@ -791,6 +828,13 @@
     estadoSel.options[1].textContent = t('estadoEnEmisionOpt');
     estadoSel.options[2].textContent = t('estadoFinalizadas');
 
+    const anticipacionSel = document.getElementById('anticipacionNotifSelect');
+    anticipacionSel.options[0].textContent = t('anticipacion1h');
+    anticipacionSel.options[1].textContent = t('anticipacion6h');
+    anticipacionSel.options[2].textContent = t('anticipacion1d');
+    anticipacionSel.options[3].textContent = t('anticipacion2d');
+    anticipacionSel.options[4].textContent = t('anticipacion1sem');
+
     document.querySelector('.pendientes-toggle').lastChild.textContent = ' ' + t('ocultarCompletas');
     document.getElementById('detailBackBtn').textContent = t('volver');
     document.getElementById('notifBtn') && actualizarBotonNotif();
@@ -871,9 +915,12 @@
     document.getElementById('ajustesCerrarSesionBtn').textContent = t('cerrarSesionBoton');
     document.getElementById('ajustesEliminarCuentaBtn').textContent = t('eliminarCuentaBoton');
     document.getElementById('ajustesTituloIdioma').textContent = t('ajustesTituloIdioma');
+    document.getElementById('ajustesTituloNotif').textContent = t('ajustesTituloNotif');
+    document.getElementById('ajustesAnticipacionLabel').textContent = t('anticipacionLabel');
     document.getElementById('menuIdioma').style.display = 'none';
     actualizarMenuIdioma();
     actualizarChipUsuario();
+    actualizarBotonNotif();
     enfocarModal(modal, cerrarAjustes);
   }
 
@@ -1374,6 +1421,16 @@
   let notificados = JSON.parse(localStorage.getItem('hobi_notificados')) || {};
   const timersNotif = {}; // episodioId -> id de setTimeout, para no programar el mismo dos veces
 
+  // Con cuánta anticipación avisar, en horas. Configurable desde Ajustes.
+  // Limitado a un máximo razonable (7 días): setTimeout con ventanas muy
+  // largas es poco confiable en navegadores mobile (el proceso puede matarse
+  // en segundo plano bastante antes de que llegue la hora), así que no tiene
+  // sentido prometer un aviso "con 30 días de anticipación" que en la práctica
+  // casi nunca va a disparar.
+  const OPCIONES_ANTICIPACION_HORAS = [1, 6, 24, 48, 168]; // 1h, 6h, 1 día, 2 días, 1 semana
+  let horasAnticipacionNotif = Number(localStorage.getItem('hobi_notif_horas')) || 48;
+  if (!OPCIONES_ANTICIPACION_HORAS.includes(horasAnticipacionNotif)) horasAnticipacionNotif = 48;
+
   function guardarNotificados() {
     localStorage.setItem('hobi_notificados', JSON.stringify(notificados));
   }
@@ -1384,30 +1441,30 @@
 
   function actualizarBotonNotif() {
     const btn = document.getElementById('notifBtn');
-    if (!btn) return;
+    const btnAjustes = document.getElementById('ajustesNotifEstado');
+    if (!btn && !btnAjustes) return;
+
+    let icono, texto;
     if (!notificacionesSoportadas()) {
-      btn.textContent = '🔕';
-      btn.title = t('notifBtnNoSoportado');
-      btn.setAttribute('aria-label', t('notifBtnNoSoportado'));
-      btn.classList.remove('on');
-      return;
-    }
-    if (Notification.permission === 'granted') {
-      btn.textContent = '🔔';
-      btn.title = t('avisosActivados');
-      btn.setAttribute('aria-label', t('avisosActivados'));
-      btn.classList.add('on');
+      icono = '🔕'; texto = t('notifBtnNoSoportado');
+    } else if (Notification.permission === 'granted') {
+      icono = '🔔'; texto = t('avisosActivados');
     } else if (Notification.permission === 'denied') {
-      btn.textContent = '🔕';
-      btn.title = t('notifBtnBloqueado');
-      btn.setAttribute('aria-label', t('notifBtnBloqueado'));
-      btn.classList.remove('on');
+      icono = '🔕'; texto = t('notifBtnBloqueado');
     } else {
-      btn.textContent = '🔔';
-      btn.title = t('activarAvisos');
-      btn.setAttribute('aria-label', t('activarAvisos'));
-      btn.classList.remove('on');
+      icono = '🔔'; texto = t('activarAvisos');
     }
+
+    if (btn) {
+      btn.textContent = icono;
+      btn.title = texto;
+      btn.setAttribute('aria-label', texto);
+      btn.classList.toggle('on', notificacionesSoportadas() && Notification.permission === 'granted');
+    }
+    if (btnAjustes) {
+      btnAjustes.textContent = `${icono} ${texto}`;
+    }
+    actualizarSelectorAnticipacion();
   }
 
   async function pedirPermisoNotificaciones() {
@@ -1438,13 +1495,14 @@
     mostrarToast(`${titulo} — ${cuerpo}`, 'ok');
   }
 
-  /* Programa (con setTimeout) el aviso de un episodio que estrena dentro de las próximas 48hs.
-     Solo dispara mientras la app siga abierta en el navegador/celular. */
+  /* Programa (con setTimeout) el aviso de un episodio que estrena dentro de la
+     ventana configurada (horasAnticipacionNotif). Solo dispara mientras la
+     app/pestaña siga abierta. */
   function programarNotificacionEpisodio(ep) {
     if (!ep.episodioId || notificados[ep.episodioId] || timersNotif[ep.episodioId]) return;
     const msFaltantes = new Date(ep.airstamp).getTime() - Date.now();
-    const LIMITE_48H = 48 * 60 * 60 * 1000;
-    if (msFaltantes < 0 || msFaltantes > LIMITE_48H) return;
+    const limiteMs = horasAnticipacionNotif * 60 * 60 * 1000;
+    if (msFaltantes < 0 || msFaltantes > limiteMs) return;
 
     const etiqueta = ep.numero === 1
       ? `Estreno de Temporada ${ep.temporada}`
@@ -1456,10 +1514,29 @@
     }, msFaltantes);
   }
 
-  /* Recorre los próximos estrenos ya cargados y programa los que entren en la ventana de 48hs. */
+  /* Recorre los próximos estrenos ya cargados y programa los que entren en la ventana configurada. */
   function programarTodasLasPendientes() {
     if (!notificacionesSoportadas() || Notification.permission !== 'granted') return;
     ultimosProximos.forEach(programarNotificacionEpisodio);
+  }
+
+  /* Cambia la anticipación de aviso y reprograma todo desde cero: los timers
+     ya armados quedaban calculados con la ventana vieja (algunos episodios que
+     antes quedaban afuera del límite ahora pueden entrar, y viceversa). */
+  function cambiarAnticipacionNotif(horas) {
+    horas = Number(horas);
+    if (!OPCIONES_ANTICIPACION_HORAS.includes(horas)) return;
+    horasAnticipacionNotif = horas;
+    localStorage.setItem('hobi_notif_horas', String(horas));
+    Object.values(timersNotif).forEach(id => clearTimeout(id));
+    Object.keys(timersNotif).forEach(id => delete timersNotif[id]);
+    programarTodasLasPendientes();
+    actualizarSelectorAnticipacion();
+  }
+
+  function actualizarSelectorAnticipacion() {
+    const sel = document.getElementById('anticipacionNotifSelect');
+    if (sel) sel.value = String(horasAnticipacionNotif);
   }
 
   let ultimosProximos = []; // se actualiza cada vez que se carga el calendario
@@ -2839,7 +2916,32 @@
 
       container.innerHTML = '';
 
-      if (proximos.length > 0) {
+      // "En emisión hoy": mismo criterio de fecha que usa el resto de la app
+      // (comparar el string de fecha local, no la hora exacta — TVMaze no da
+      // duración de episodio, así que "hoy" es la definición práctica de
+      // "se está emitiendo ahora"). Se muestra aparte, arriba de todo, para
+      // no tener que buscarlo mezclado en la línea de tiempo de "Próximos".
+      const hoyStr = formatearFechaISO(new Date());
+      const enEmisionHoy = proximos.filter(ep => formatearFechaISO(new Date(ep.airstamp)) === hoyStr);
+      const proximosSinHoy = proximos.filter(ep => formatearFechaISO(new Date(ep.airstamp)) !== hoyStr);
+
+      if (enEmisionHoy.length > 0) {
+        const tituloHoy = document.createElement('h3');
+        tituloHoy.className = 'marquee';
+        tituloHoy.style.margin = '4px 0 16px';
+        tituloHoy.style.fontSize = '22px';
+        tituloHoy.style.color = 'var(--teal)';
+        tituloHoy.style.letterSpacing = '0.5px';
+        tituloHoy.textContent = '🔴 ' + t('enEmisionHoy');
+        container.appendChild(tituloHoy);
+
+        const holderHoy = document.createElement('div');
+        holderHoy.style.marginBottom = '24px';
+        container.appendChild(holderHoy);
+        renderizarTimeline(holderHoy, enEmisionHoy);
+      }
+
+      if (proximosSinHoy.length > 0) {
         const titulo = document.createElement('h3');
         titulo.className = 'marquee';
         titulo.style.margin = '4px 0 16px';
@@ -2851,7 +2953,7 @@
 
         const timelineHolder = document.createElement('div');
         container.appendChild(timelineHolder);
-        renderizarTimeline(timelineHolder, proximos);
+        renderizarTimeline(timelineHolder, proximosSinHoy);
       }
 
       if (temporadas.length > 0) {
@@ -3051,6 +3153,51 @@
       container.appendChild(crearTarjetaSerie(show, true));
     });
   }
+
+  /* ==================== PWA: manifest generado en runtime ====================
+     El ícono va como SVG inline (una "H" dorada sobre el fondo de la app,
+     misma paleta que el resto) para no depender de ningún archivo externo.
+     Se arma el manifest como Blob y se linkea dinámicamente — a diferencia
+     de un Service Worker, un manifest SÍ puede servirse desde un blob URL
+     sin restricción del navegador, así que este patrón funciona bien acá. */
+  (function inicializarPWA() {
+    const iconoSVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+      <rect width="512" height="512" rx="96" fill="#0a0a13"/>
+      <rect x="86" y="378" width="340" height="10" rx="5" fill="#2dd7c4"/>
+      <text x="256" y="330" font-family="Georgia, 'Times New Roman', serif" font-size="290" font-weight="700" fill="#f2a93b" text-anchor="middle">H</text>
+    </svg>`;
+    const iconoDataUri = 'data:image/svg+xml,' + encodeURIComponent(iconoSVG);
+
+    // apple-touch-icon: iOS no soporta bien SVG como touch icon en todas las
+    // versiones, pero lo intentamos igual (fallback silencioso si no lo toma).
+    const appleIcon = document.getElementById('appleTouchIcon');
+    if (appleIcon) appleIcon.href = iconoDataUri;
+
+    const manifest = {
+      name: 'Hobbi: Control de Series',
+      short_name: 'Hobbi',
+      description: 'Seguí tus series favoritas: episodios vistos, próximos estrenos y calendario.',
+      start_url: '.',
+      display: 'standalone',
+      background_color: '#0a0a13',
+      theme_color: '#0a0a13',
+      orientation: 'portrait',
+      icons: [
+        { src: iconoDataUri, sizes: '512x512', type: 'image/svg+xml', purpose: 'any maskable' }
+      ]
+    };
+
+    try {
+      const blob = new Blob([JSON.stringify(manifest)], { type: 'application/manifest+json' });
+      const link = document.createElement('link');
+      link.rel = 'manifest';
+      link.href = URL.createObjectURL(blob);
+      document.head.appendChild(link);
+    } catch {
+      // Si el navegador no soporta esto, la app sigue funcionando igual,
+      // solo que sin el prompt de "instalar" — no es crítico.
+    }
+  })();
 
 </script>
 </body>
