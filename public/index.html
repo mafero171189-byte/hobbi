@@ -438,9 +438,6 @@
 <div class="app-container">
   <div id="offlineBanner" role="status" aria-live="polite">📡 Sin conexión a internet — mostrando datos guardados</div>
   <header>
-    <div style="display:flex; justify-content:flex-end; align-items:center; gap:8px; margin-bottom:-4px;">
-      <button id="notifBtn" class="info-btn" onclick="pedirPermisoNotificaciones()" title="Activar avisos de estrenos" aria-label="Activar avisos de estrenos">🔔</button>
-    </div>
     <h1>HOBBI</h1>
     <p id="appTagline" style="text-align:center; color:var(--ink-muted); font-size:12px; letter-spacing:0.5px; margin-top:-10px; margin-bottom:12px;">Control de Series</p>
     <div id="syncBadge" class="sync-badge" role="status" aria-live="polite"></div>
@@ -1622,7 +1619,7 @@
       btn.classList.toggle('on', notificacionesSoportadas() && Notification.permission === 'granted');
     }
     if (btnAjustes) {
-      btnAjustes.textContent = `${icono} ${texto}`;
+      btnAjustes.textContent = texto;
     }
     actualizarSelectorAnticipacion();
   }
@@ -1693,7 +1690,14 @@
 
   function actualizarSelectorAnticipacion() {
     const sel = document.getElementById('anticipacionNotifSelect');
-    if (sel) sel.value = String(horasAnticipacionNotif);
+    if (!sel) return;
+    sel.value = String(horasAnticipacionNotif);
+    // El selector solo tiene efecto real si las notificaciones están
+    // concedidas — deshabilitado (sin bloquear el valor guardado) deja claro
+    // que es parte del mismo permiso de arriba, no una opción aparte.
+    const activo = notificacionesSoportadas() && Notification.permission === 'granted';
+    sel.disabled = !activo;
+    sel.style.opacity = activo ? '1' : '0.5';
   }
 
   let ultimosProximos = []; // se actualiza cada vez que se carga el calendario
@@ -1860,6 +1864,57 @@
      más elaborado. */
   function vibrarTap() {
     if (navigator.vibrate) navigator.vibrate(15);
+  }
+
+  /* Deslizar el dedo horizontalmente sobre la barra de navegación (no hace
+     falta soltar justo sobre un botón) avanza o retrocede un paso entre
+     Inicio → Favoritos → Calendario, en ese orden. Ajustes queda afuera del
+     recorrido a propósito: abre un modal, no es una "vista" más. */
+  function inicializarSwipeBottomNav() {
+    const ORDEN_VISTAS = ['inicio', 'favoritos', 'calendario'];
+    const nav = document.querySelector('.bottom-nav');
+    if (!nav) return;
+
+    const UMBRAL_CAMBIO = 50;
+    let startX = 0, startY = 0, arrastrando = false, esHorizontal = null;
+
+    nav.addEventListener('touchstart', (e) => {
+      startX = e.touches[0].clientX;
+      startY = e.touches[0].clientY;
+      arrastrando = true;
+      esHorizontal = null;
+    }, { passive: true });
+
+    nav.addEventListener('touchmove', (e) => {
+      if (!arrastrando) return;
+      const dx = e.touches[0].clientX - startX;
+      const dy = e.touches[0].clientY - startY;
+      if (esHorizontal === null) esHorizontal = Math.abs(dx) > Math.abs(dy);
+      // No hace falta preventDefault: la barra no scrollea verticalmente igual.
+    }, { passive: true });
+
+    nav.addEventListener('touchend', (e) => {
+      if (!arrastrando) return;
+      arrastrando = false;
+      if (!esHorizontal) return; // fue un tap normal en un botón, no un swipe: no interferimos
+
+      const dx = e.changedTouches[0].clientX - startX;
+      if (Math.abs(dx) < UMBRAL_CAMBIO) return;
+
+      // Si el swipe empezó o terminó no fue una vista "de las 3" (ej. estamos
+      // con Ajustes abierto o en el detalle de una serie), no hacemos nada:
+      // evita saltos raros de vista mientras hay un modal encima.
+      const indiceActual = ORDEN_VISTAS.indexOf(vistaActual);
+      if (indiceActual === -1) return;
+
+      const siguiente = dx < 0
+        ? ORDEN_VISTAS[indiceActual + 1]
+        : ORDEN_VISTAS[indiceActual - 1];
+      if (!siguiente) return; // ya estaba en la primera/última, no hay hacia dónde ir
+
+      vibrarTap();
+      cambiarVista(siguiente);
+    });
   }
 
   function cambiarVista(vista, push = true) {
@@ -3427,6 +3482,7 @@
 
   inicializarPullToRefresh('calendarView', 'pullIndicator', () => vistaActual === 'calendario', () => cargarCalendario(true));
   inicializarPullToRefresh('listView', 'pullIndicatorFavs', () => vistaActual === 'favoritos', () => actualizarFavoritos(true));
+  inicializarSwipeBottomNav();
 
   function volverALista() {
     // Mismo camino que el botón físico Atrás: pop del historial y el listener
