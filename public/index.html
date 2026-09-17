@@ -159,14 +159,14 @@
     .onboarding-toggle-mode { background: none; border: none; color: var(--teal); font-size: 13px; font-weight: 600; cursor: pointer; padding: 12px 6px 4px; }
     .onboarding-error { color: var(--danger); font-size: 13px; min-height: 16px; max-width: 280px; }
     /* Modal de créditos */
-    .modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.6); z-index: 1000; display: none; align-items: center; justify-content: center; }
+    .modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: var(--bg); z-index: 1000; display: none; align-items: flex-start; justify-content: center; }
     .modal-overlay.show { display: flex; }
-    .modal-content { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 24px; max-width: 90%; max-height: 80vh; overflow-y: auto; }
-    .modal-content h3 { color: var(--gold); font-size: 20px; margin-bottom: 16px; }
+    .modal-content { background: var(--bg); border: none; border-radius: 0; padding: 24px; padding-top: max(24px, env(safe-area-inset-top)); width: 100%; max-width: 100%; height: 100vh; max-height: 100vh; overflow-y: auto; box-sizing: border-box; }
+    .modal-content h3 { color: var(--gold); font-size: 20px; margin-bottom: 16px; padding-right: 44px; }
     .modal-content p { color: var(--ink-muted); font-size: 13px; line-height: 1.6; margin-bottom: 12px; }
     .modal-content a { color: var(--teal); text-decoration: none; }
     .modal-content a:hover { text-decoration: underline; }
-    .modal-close { position: absolute; top: 12px; right: 12px; background: var(--surface-2); border: 1px solid var(--border); color: var(--ink); width: 32px; height: 32px; border-radius: 8px; cursor: pointer; font-size: 18px; display: flex; align-items: center; justify-content: center; }
+    .modal-close { position: fixed; top: max(12px, env(safe-area-inset-top)); right: 12px; background: var(--surface-2); border: 1px solid var(--border); color: var(--ink); width: 36px; height: 36px; border-radius: 10px; cursor: pointer; font-size: 18px; display: flex; align-items: center; justify-content: center; z-index: 1001; }
 
     /* ==================== MODAL DE AJUSTES ==================== */
     .ajustes-seccion { border-top: 1px solid var(--border); padding-top: 16px; margin-top: 16px; }
@@ -407,9 +407,9 @@
     <p id="appTagline" style="text-align:center; color:var(--ink-muted); font-size:12px; letter-spacing:0.5px; margin-top:-10px; margin-bottom:12px;">Control de Series</p>
     <div id="syncBadge" class="sync-badge" role="status" aria-live="polite"></div>
     <div class="nav-tabs" role="tablist">
-      <button class="tab-btn active" id="tabSearch" onclick="cambiarVista('inicio')" role="tab" aria-selected="true">🏠 <span id="tSearch">Inicio</span></button>
-      <button class="tab-btn" id="tabFavs" onclick="cambiarVista('favoritos')" role="tab" aria-selected="false">❤️ <span id="tFavs">Favoritos</span></button>
-      <button class="tab-btn" id="tabCalendar" onclick="cambiarVista('calendario')" role="tab" aria-selected="false">📅 <span id="tCalendar">Calendario</span></button>
+      <button class="tab-btn active" id="tabSearch" onclick="vibrarTap(); cambiarVista('inicio')" role="tab" aria-selected="true">🏠 <span id="tSearch">Inicio</span></button>
+      <button class="tab-btn" id="tabFavs" onclick="vibrarTap(); cambiarVista('favoritos')" role="tab" aria-selected="false">❤️ <span id="tFavs">Favoritos</span></button>
+      <button class="tab-btn" id="tabCalendar" onclick="vibrarTap(); cambiarVista('calendario')" role="tab" aria-selected="false">📅 <span id="tCalendar">Calendario</span></button>
     </div>
   </header>
 
@@ -1765,6 +1765,14 @@
     el.classList.remove('vista-entrando');
     void el.offsetWidth;
     el.classList.add('vista-entrando');
+  }
+
+  /* Vibración corta al tocar un tab principal. navigator.vibrate no existe en
+     iOS Safari (ni como PWA) ni en algunos navegadores de escritorio, así que
+     directamente no hace nada ahí — no rompe ni hace falta feature-detect
+     más elaborado. */
+  function vibrarTap() {
+    if (navigator.vibrate) navigator.vibrate(15);
   }
 
   function cambiarVista(vista, push = true) {
