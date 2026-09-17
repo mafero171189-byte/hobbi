@@ -369,6 +369,7 @@
     /* Swipe-to-delete en las cards de Favoritos */
     .swipe-wrapper { position: relative; border-radius: 14px; overflow: hidden; }
     .swipe-delete-bg { position: absolute; inset: 0; background: var(--danger); display: flex; align-items: center; justify-content: flex-end; padding-right: 22px; font-size: 22px; }
+    .swipe-visto-bg { position: absolute; inset: 0; background: var(--teal); display: flex; align-items: center; justify-content: flex-start; padding-left: 22px; font-size: 22px; color: var(--bg); font-weight: 700; }
     .swipe-wrapper .card { position: relative; transition: transform 0.2s; touch-action: pan-y; background-color: var(--surface); }
 
     /* Pull-to-refresh del Calendario */
@@ -472,9 +473,13 @@
                 <option value="finalizada">Finalizadas</option>
               </select>
             </div>
-            <label class="pendientes-toggle">
+            <label class="pendientes-toggle" id="labelOcultarCompletas">
               <input type="checkbox" id="soloPendientes" onchange="renderizarFavoritos()">
               Ocultar las que ya vi completas
+            </label>
+            <label class="pendientes-toggle" id="labelMostrarFinalizadasCompletas">
+              <input type="checkbox" id="mostrarFinalizadasCompletas" onchange="renderizarFavoritos()">
+              Mostrar finalizadas que ya vi completas
             </label>
           </div>
         </div>
@@ -624,6 +629,7 @@
       ordenRecientes: 'Recién agregadas', ordenAlfabetico: 'Alfabético',
       estadoTodas: 'Todas', estadoEnEmisionOpt: 'En emisión', estadoFinalizadas: 'Finalizadas',
       ocultarCompletas: 'Ocultar las que ya vi completas',
+      mostrarFinalizadasCompletas: 'Mostrar finalizadas que ya vi completas',
       noFavoritos: 'No tenés series en favoritos.',
       ningunaCoincide: 'Ninguna coincide con ese filtro.',
       buscando: 'Buscando...',
@@ -638,6 +644,9 @@
       estrenosMes: 'Estrenos este mes', vuelvenMes: 'Vuelven este mes',
       upcoming: 'Upcoming', proximasTemporadas: '🎬 Próximas temporadas', enEmisionHoy: 'En emisión hoy',
       sinVer: 'Episodios sin ver', marcarVisto: 'Marcar como visto',
+      errorMarcarVisto: 'No se pudo marcar el episodio. Probá de nuevo.',
+      yaVioTodo: (nombre) => `Ya viste todos los episodios de ${nombre}`,
+      episodioMarcadoVisto: (nombre) => `Episodio de ${nombre} marcado como visto`,
       episodiosSinVer: (n) => `${n} episodios sin ver`,
       cancelar: 'Cancelar', eliminar: 'Eliminar',
       traducirBtn: '🌐 Traducir', verOriginalBtn: '↩ Ver original',
@@ -757,6 +766,7 @@
       ordenRecientes: 'Recently added', ordenAlfabetico: 'Alphabetical',
       estadoTodas: 'All', estadoEnEmisionOpt: 'On air', estadoFinalizadas: 'Ended',
       ocultarCompletas: 'Hide the ones I already watched fully',
+      mostrarFinalizadasCompletas: 'Show finished shows I\'ve fully watched',
       noFavoritos: "You don't have any favorite shows yet.",
       ningunaCoincide: 'None match that filter.',
       buscando: 'Searching...',
@@ -771,6 +781,9 @@
       estrenosMes: 'Premiering this month', vuelvenMes: 'Returning this month',
       upcoming: 'Upcoming', proximasTemporadas: '🎬 Upcoming seasons', enEmisionHoy: 'Airing today',
       sinVer: 'Unwatched episodes', marcarVisto: 'Mark as watched',
+      errorMarcarVisto: 'Couldn\'t mark the episode. Try again.',
+      yaVioTodo: (nombre) => `You've already watched every episode of ${nombre}`,
+      episodioMarcadoVisto: (nombre) => `Marked an episode of ${nombre} as watched`,
       episodiosSinVer: (n) => `${n} unwatched episodes`,
       cancelar: 'Cancel', eliminar: 'Delete',
       traducirBtn: '🌐 Translate', verOriginalBtn: '↩ Show original',
@@ -938,7 +951,8 @@
     estadoSel.options[1].textContent = t('estadoEnEmisionOpt');
     estadoSel.options[2].textContent = t('estadoFinalizadas');
 
-    document.querySelector('.pendientes-toggle').lastChild.textContent = ' ' + t('ocultarCompletas');
+    document.getElementById('labelOcultarCompletas').lastChild.textContent = ' ' + t('ocultarCompletas');
+    document.getElementById('labelMostrarFinalizadasCompletas').lastChild.textContent = ' ' + t('mostrarFinalizadasCompletas');
     document.getElementById('detailBackBtn').textContent = t('volver');
     document.getElementById('notifBtn') && actualizarBotonNotif();
     document.getElementById('offlineBanner').textContent = t('sinConexionBanner');
@@ -989,9 +1003,15 @@
      en vez de dejar Ajustes abierto sin ninguna función de cierre asociada.
      Cada entrada es { elementoPrevio, onCerrar }. */
   const pilaModales = [];
+  let cerrandoModalPorUI = false; // ver devolverFocoTrasModal() y el listener de popstate más abajo
 
   function enfocarModal(modal, onCerrar) {
     pilaModales.push({ elementoPrevio: document.activeElement, onCerrar });
+    // Una entrada de historial por modal abierto: así el gesto de "deslizar
+    // atrás" (o el botón físico Atrás de Android), que dispara popstate igual
+    // que un tap en la ✕, cierra el modal en vez de salir de la app o volver
+    // a una vista anterior sin cerrar nada.
+    history.pushState({ view: 'modal' }, '', location.hash);
     const primerBoton = modal.querySelector('.modal-close');
     if (primerBoton) primerBoton.focus();
   }
@@ -1000,6 +1020,16 @@
     const entrada = pilaModales.pop();
     if (entrada && entrada.elementoPrevio && typeof entrada.elementoPrevio.focus === 'function') {
       entrada.elementoPrevio.focus();
+    }
+    // Si cerramos tocando la ✕ (no con el gesto/botón Atrás), la entrada de
+    // historial que pushState agregó al abrir el modal queda "colgada" — el
+    // próximo Atrás del usuario no haría nada visible. La sacamos nosotros
+    // mismos con back(), pero marcando cerrandoModalPorUI para que nuestro
+    // propio popstate no interprete este back() como si el usuario hubiese
+    // deslizado atrás (que cerraría un segundo modal de la pila si había).
+    if (history.state && history.state.view === 'modal') {
+      cerrandoModalPorUI = true;
+      history.back();
     }
   }
 
@@ -1787,6 +1817,7 @@
       overlay.querySelector('.delete').onclick = () => cerrar(true);
       overlay.onclick = (e) => { if (e.target === overlay) cerrar(false); };
       pilaModales.push({ elementoPrevio: document.activeElement, onCerrar: () => cerrar(false) });
+      history.pushState({ view: 'modal' }, '', location.hash);
       overlay.querySelector('.cancel').focus();
     });
   }
@@ -1881,7 +1912,26 @@
     }
   }
 
-  window.addEventListener('popstate', (e) => aplicarEstadoHistorial(e.state));
+  window.addEventListener('popstate', (e) => {
+    // Si este back() lo disparamos nosotros mismos al cerrar un modal por la
+    // ✕ (ver devolverFocoTrasModal), no hay nada más que hacer: la pila ya
+    // se actualizó ahí, y actuar de nuevo acá cerraría un segundo modal de
+    // encima si lo había (ej. Créditos abierto desde Ajustes).
+    if (cerrandoModalPorUI) {
+      cerrandoModalPorUI = false;
+      return;
+    }
+    // Si hay un modal abierto, el gesto/botón Atrás lo cierra a él primero
+    // (ni toca la vista de fondo) — igual que tocar la ✕. Si hay más de uno
+    // apilado (ej. Créditos abierto desde Ajustes), cierra solo el de arriba;
+    // el siguiente Atrás cierra el que queda debajo.
+    if (pilaModales.length) {
+      const { onCerrar } = pilaModales[pilaModales.length - 1];
+      onCerrar();
+      return;
+    }
+    aplicarEstadoHistorial(e.state);
+  });
   history.replaceState({ view: 'inicio' }, '', '#inicio'); // punto de partida: un back más allá de esto cierra la app
   actualizarBandaOffline(); // por si la app arranca sin conexión
   mostrarPlaceholderBusqueda(); // pantalla inicial: "Buscá una serie para empezar"
@@ -2447,19 +2497,24 @@
 
     if (!esVistaFavoritos) return card;
 
-    // En Favoritos: la card va envuelta para permitir deslizarla y eliminarla con el dedo.
+    // En Favoritos: la card va envuelta para permitir deslizarla — a la
+    // izquierda para eliminar, a la derecha para marcar visto el próximo
+    // episodio pendiente.
     const wrapper = document.createElement('div');
     wrapper.className = 'swipe-wrapper';
-    wrapper.innerHTML = '<div class="swipe-delete-bg">🗑️</div>';
+    wrapper.innerHTML = '<div class="swipe-delete-bg">🗑️</div><div class="swipe-visto-bg">✓</div>';
     wrapper.appendChild(card);
     habilitarSwipeEliminar(wrapper, card, show);
     return wrapper;
   }
 
-  /* Deslizar una card de Favoritos hacia la izquierda la elimina (como en cualquier lista nativa). */
+  /* Desliza una card de Favoritos hacia la izquierda para eliminarla (como en
+     cualquier lista nativa), o hacia la derecha para marcar como visto el
+     próximo episodio pendiente de esa serie, sin tener que entrar al detalle. */
   function habilitarSwipeEliminar(wrapper, card, show) {
     let startX = 0, startY = 0, deltaX = 0, arrastrando = false, esHorizontal = null;
-    const UMBRAL_BORRAR = 90;
+    const UMBRAL_ACCION = 90;
+    const LIMITE_ARRASTRE_DERECHA = 110; // no dejamos que se vaya de la pantalla, no hay nada que borrar hacia ese lado
 
     card.addEventListener('touchstart', (e) => {
       startX = e.touches[0].clientX;
@@ -2481,6 +2536,9 @@
       if (dx < 0) {
         deltaX = dx;
         card.style.transform = `translateX(${deltaX}px)`;
+      } else if (dx > 0) {
+        deltaX = Math.min(dx, LIMITE_ARRASTRE_DERECHA);
+        card.style.transform = `translateX(${deltaX}px)`;
       }
     }, { passive: true });
 
@@ -2489,34 +2547,105 @@
       arrastrando = false;
       card.style.transition = 'transform 0.2s';
 
-      if (esHorizontal && Math.abs(deltaX) > UMBRAL_BORRAR) {
-        const ok = await confirmarEliminar(
-          t('confirmarSacarTitulo')(show.name),
-          t('confirmarSacarMsg')
-        );
-        if (!ok) {
-          card.style.transform = 'translateX(0)';
-          return;
-        }
-
-        card.style.transform = `translateX(-${wrapper.offsetWidth}px)`;
-        wrapper.style.transition = 'height 0.2s, margin 0.2s';
-        setTimeout(() => {
-          const idx = favoritos.findIndex(f => f.id === show.id);
-          if (idx > -1) {
-            limpiarEpisodiosVistos(favoritos[idx]);
-            favoritos.splice(idx, 1);
-          }
-          guardarDatos();
-          wrapper.style.height = wrapper.offsetHeight + 'px';
-          requestAnimationFrame(() => { wrapper.style.height = '0px'; wrapper.style.marginBottom = '0px'; wrapper.style.overflow = 'hidden'; });
-          mostrarToast(t('sacasteDeFavoritos')(show.name), 'ok');
-          setTimeout(() => wrapper.remove(), 220);
-        }, 150);
+      if (esHorizontal && deltaX < 0 && Math.abs(deltaX) > UMBRAL_ACCION) {
+        await ejecutarSwipeEliminar(wrapper, card, show);
+      } else if (esHorizontal && deltaX > 0 && deltaX > UMBRAL_ACCION) {
+        card.style.transform = 'translateX(0)';
+        await ejecutarSwipeMarcarVisto(card, show);
       } else {
         card.style.transform = 'translateX(0)';
       }
     });
+  }
+
+  async function ejecutarSwipeEliminar(wrapper, card, show) {
+    const ok = await confirmarEliminar(
+      t('confirmarSacarTitulo')(show.name),
+      t('confirmarSacarMsg')
+    );
+    if (!ok) {
+      card.style.transform = 'translateX(0)';
+      return;
+    }
+
+    card.style.transform = `translateX(-${wrapper.offsetWidth}px)`;
+    wrapper.style.transition = 'height 0.2s, margin 0.2s';
+    setTimeout(() => {
+      const idx = favoritos.findIndex(f => f.id === show.id);
+      if (idx > -1) {
+        limpiarEpisodiosVistos(favoritos[idx]);
+        favoritos.splice(idx, 1);
+      }
+      guardarDatos();
+      wrapper.style.height = wrapper.offsetHeight + 'px';
+      requestAnimationFrame(() => { wrapper.style.height = '0px'; wrapper.style.marginBottom = '0px'; wrapper.style.overflow = 'hidden'; });
+      mostrarToast(t('sacasteDeFavoritos')(show.name), 'ok');
+      setTimeout(() => wrapper.remove(), 220);
+    }, 150);
+  }
+
+  /* Busca el próximo episodio sin ver de una serie y lo marca como visto.
+     episodeIds ya viene ordenado cronológicamente (es el mismo array que
+     entrega TVMaze en /episodes), así que el primer id ausente en
+     episodiosVistos es el episodio pendiente más viejo. Si esta serie
+     todavía no tiene episodeIds cargado (nunca se visitó su detalle ni pasó
+     por Calendario), se pide una sola vez acá y se guarda para la próxima. */
+  async function ejecutarSwipeMarcarVisto(card, show) {
+    const favIndex = favoritos.findIndex(f => f.id === show.id);
+    if (favIndex === -1) return;
+    const fav = favoritos[favIndex];
+
+    let episodeIds = fav.episodeIds;
+    if (!episodeIds || !episodeIds.length) {
+      try {
+        const episodios = await fetchJSON(`https://api.tvmaze.com/shows/${fav.id}/episodes`, `eps_${fav.id}`);
+        episodeIds = episodios.map(e => e.id);
+        fav.episodeIds = episodeIds;
+        fav.totalEpisodesCount = episodios.length;
+      } catch {
+        mostrarToast(t('errorMarcarVisto'), 'error');
+        return;
+      }
+    }
+
+    const idPendiente = episodeIds.find(id => !episodiosVistos[id]);
+    if (!idPendiente) {
+      mostrarToast(t('yaVioTodo')(show.name), 'ok');
+      return;
+    }
+
+    episodiosVistos[idPendiente] = true;
+    guardarDatos();
+
+    // Refresca el contador de progreso de la card sin re-renderizar toda la lista.
+    const vistosCount = episodeIds.filter(id => episodiosVistos[id]).length;
+    const progressText = card.querySelector('.progress-text');
+    const progressFill = card.querySelector('.progress-bar-fill');
+    if (progressText && fav.totalEpisodesCount) {
+      const porcentaje = Math.round((vistosCount / fav.totalEpisodesCount) * 100) || 0;
+      progressText.textContent = `${vistosCount}/${fav.totalEpisodesCount} vistos (${porcentaje}%)`;
+      if (progressFill) progressFill.style.width = porcentaje + '%';
+    }
+
+    mostrarToast(t('episodioMarcadoVisto')(show.name), 'ok');
+
+    // Si este era el último episodio pendiente y la serie ya está finalizada,
+    // se oculta sola de Favoritos (mismo criterio que renderizarFavoritos) —
+    // salvo que el usuario tenga tildado "Mostrar finalizadas que ya vi
+    // completas", en cuyo caso se queda donde está.
+    const mostrarFinalizadasCompletas = document.getElementById('mostrarFinalizadasCompletas')?.checked;
+    if (!mostrarFinalizadasCompletas && esFinalizadaYCompleta(fav)) {
+      const wrapper = card.closest('.swipe-wrapper');
+      if (wrapper) {
+        wrapper.style.transition = 'opacity 0.25s ease, height 0.25s ease, margin 0.25s ease';
+        wrapper.style.opacity = '0';
+        setTimeout(() => {
+          wrapper.style.height = wrapper.offsetHeight + 'px';
+          requestAnimationFrame(() => { wrapper.style.height = '0px'; wrapper.style.marginBottom = '0px'; wrapper.style.overflow = 'hidden'; });
+          setTimeout(() => wrapper.remove(), 250);
+        }, 250);
+      }
+    }
   }
 
   async function verDetalles(showId, push = true) {
@@ -3428,8 +3557,9 @@
     if (!btn) return;
     const estado = document.getElementById('estadoFavoritos').value;
     const soloPendientes = document.getElementById('soloPendientes').checked;
+    const mostrarFinalizadasCompletas = document.getElementById('mostrarFinalizadasCompletas').checked;
     const orden = document.getElementById('ordenFavoritos').value;
-    const hayFiltroActivo = estado !== 'todas' || soloPendientes || orden !== 'agregada';
+    const hayFiltroActivo = estado !== 'todas' || soloPendientes || mostrarFinalizadasCompletas || orden !== 'agregada';
     btn.classList.toggle('activo', hayFiltroActivo);
   }
 
@@ -3439,6 +3569,7 @@
     const estado = document.getElementById('estadoFavoritos').value;
     const filtroTexto = document.getElementById('filtroFavoritos').value.trim().toLowerCase();
     const soloPendientes = document.getElementById('soloPendientes').checked;
+    const mostrarFinalizadasCompletas = document.getElementById('mostrarFinalizadasCompletas').checked;
 
     let lista = favoritos.slice();
 
@@ -3457,6 +3588,13 @@
         return vistosCount < f.totalEpisodesCount;
       });
     }
+    // Por defecto, una serie finalizada que ya viste por completo se oculta
+    // sola de la lista (ya no tiene nada pendiente ni puede sumar episodios
+    // nuevos) — así no ocupa lugar entre las que sí siguen activas. El
+    // checkbox "Mostrar finalizadas que ya vi completas" la trae de vuelta.
+    if (!mostrarFinalizadasCompletas) {
+      lista = lista.filter(f => !esFinalizadaYCompleta(f));
+    }
 
     if (orden === 'alfabetico') {
       lista.sort((a, b) => a.name.localeCompare(b.name));
@@ -3474,6 +3612,18 @@
     lista.forEach(show => {
       container.appendChild(crearTarjetaSerie(show, true));
     });
+  }
+
+  /* Una serie cuenta como "finalizada y completa" (candidata a ocultarse sola
+     de Favoritos) solo si TVMaze la marca como no-en-emisión Y ya viste todos
+     sus episodios conocidos. Si todavía no se cargó totalEpisodesCount (nunca
+     se visitó el detalle), no se oculta — preferimos mostrarla de más a
+     esconder algo por falta de datos. */
+  function esFinalizadaYCompleta(f) {
+    if (f.status === 'Running') return false;
+    if (!f.totalEpisodesCount) return false;
+    const vistosCount = f.episodeIds ? f.episodeIds.filter(id => episodiosVistos[id]).length : 0;
+    return vistosCount >= f.totalEpisodesCount;
   }
 
   /* ==================== PWA: manifest generado en runtime ====================
