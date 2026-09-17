@@ -546,7 +546,7 @@
       verMas: 'Ver más →',
       estrenanPronto: 'Estrenan pronto', nuevas: 'Nuevas', populares: 'Populares',
       estrenosMes: 'Estrenos este mes', vuelvenMes: 'Vuelven este mes',
-      upcoming: 'Upcoming', proximasTemporadas: '🎬 Próximas temporadas',
+      upcoming: 'Upcoming', proximasTemporadas: '🎬 Próximas temporadas', enEmisionHoy: 'En emisión hoy',
       cancelar: 'Cancelar', eliminar: 'Eliminar',
       traducirBtn: '🌐 Traducir', verOriginalBtn: '↩ Ver original',
       buscarSerieEmpezar: 'Escribí el nombre arriba y tocá el ❤️ de las que quieras seguir.',
@@ -671,7 +671,7 @@
       verMas: 'See more →',
       estrenanPronto: 'Coming soon', nuevas: 'New', populares: 'Popular',
       estrenosMes: 'Premiering this month', vuelvenMes: 'Returning this month',
-      upcoming: 'Upcoming', proximasTemporadas: '🎬 Upcoming seasons',
+      upcoming: 'Upcoming', proximasTemporadas: '🎬 Upcoming seasons', enEmisionHoy: 'Airing today',
       cancelar: 'Cancel', eliminar: 'Delete',
       traducirBtn: '🌐 Translate', verOriginalBtn: '↩ Show original',
       buscarSerieEmpezar: 'Type a name above and tap ❤️ on the ones you want to follow.',
@@ -2900,10 +2900,31 @@
 
       container.innerHTML = '';
 
-      if (proximos.length > 0) {
+      // Separamos los episodios que ya salen hoy (misma fecha local) del resto,
+      // para destacarlos arriba de todo en su propia sección.
+      const hoyISO = formatearFechaISO(new Date());
+      const enEmisionHoy = proximos.filter(ep => formatearFechaISO(new Date(ep.airstamp)) === hoyISO);
+      const proximosSinHoy = proximos.filter(ep => formatearFechaISO(new Date(ep.airstamp)) !== hoyISO);
+
+      if (enEmisionHoy.length > 0) {
+        const tituloHoy = document.createElement('h3');
+        tituloHoy.className = 'marquee';
+        tituloHoy.style.margin = '4px 0 16px';
+        tituloHoy.style.fontSize = '22px';
+        tituloHoy.style.color = 'var(--teal)';
+        tituloHoy.style.letterSpacing = '0.5px';
+        tituloHoy.textContent = '🔴 ' + t('enEmisionHoy');
+        container.appendChild(tituloHoy);
+
+        const timelineHoyHolder = document.createElement('div');
+        container.appendChild(timelineHoyHolder);
+        renderizarTimeline(timelineHoyHolder, enEmisionHoy);
+      }
+
+      if (proximosSinHoy.length > 0) {
         const titulo = document.createElement('h3');
         titulo.className = 'marquee';
-        titulo.style.margin = '4px 0 16px';
+        titulo.style.margin = enEmisionHoy.length ? '24px 0 16px' : '4px 0 16px';
         titulo.style.fontSize = '22px';
         titulo.style.color = 'var(--gold)';
         titulo.style.letterSpacing = '0.5px';
@@ -2912,7 +2933,7 @@
 
         const timelineHolder = document.createElement('div');
         container.appendChild(timelineHolder);
-        renderizarTimeline(timelineHolder, proximos);
+        renderizarTimeline(timelineHolder, proximosSinHoy);
       }
 
       if (temporadas.length > 0) {
