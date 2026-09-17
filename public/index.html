@@ -45,6 +45,20 @@
     .app-container { width: 100%; max-width: 480px; display: flex; flex-direction: column; gap: 16px; }
     .marquee { font-family: 'Bebas Neue', -apple-system, sans-serif; letter-spacing: 0.5px; }
 
+    /* Fade suave al cambiar de pestaña o entrar/salir del detalle, en vez del
+       corte seco de display:none -> block. prefers-reduced-motion respeta a
+       quien prefiere sin animaciones. */
+    @keyframes vistaFadeIn {
+      from { opacity: 0; transform: translateY(4px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    .vista-entrando {
+      animation: vistaFadeIn 0.22s ease-out;
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .vista-entrando { animation: none; }
+    }
+
     /* Header y Navegación */
     header h1 { font-family: 'Bebas Neue', -apple-system, sans-serif; color: var(--gold); font-size: 36px; letter-spacing: 3px; font-weight: 400; text-align: center; margin-bottom: 12px; text-shadow: 0 0 24px var(--gold-dim); }
     .nav-tabs { display: flex; gap: 6px; background: var(--surface); padding: 4px; border-radius: 12px; border: 1px solid var(--border); }
@@ -816,6 +830,36 @@
     }
   }
 
+  /* ==================== ACCESIBILIDAD DE MODALES ====================
+     Mueve el foco al abrir un modal (así un lector de pantalla anuncia que
+     apareció algo nuevo, en vez de quedarse leyendo el botón que ya no está
+     visible) y lo devuelve a quien lo abrió al cerrar. Escape cierra el modal
+     que esté abierto en ese momento. Es una pila, no una sola variable: desde
+     Ajustes se puede abrir Créditos encima, así que hace falta recordar más
+     de un nivel — cerrar el de arriba con Escape debe reactivar el de abajo
+     en vez de dejar Ajustes abierto sin ninguna función de cierre asociada.
+     Cada entrada es { elementoPrevio, onCerrar }. */
+  const pilaModales = [];
+
+  function enfocarModal(modal, onCerrar) {
+    pilaModales.push({ elementoPrevio: document.activeElement, onCerrar });
+    const primerBoton = modal.querySelector('.modal-close');
+    if (primerBoton) primerBoton.focus();
+  }
+
+  function devolverFocoTrasModal() {
+    const entrada = pilaModales.pop();
+    if (entrada && entrada.elementoPrevio && typeof entrada.elementoPrevio.focus === 'function') {
+      entrada.elementoPrevio.focus();
+    }
+  }
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape' || !pilaModales.length) return;
+    const { onCerrar } = pilaModales[pilaModales.length - 1];
+    onCerrar();
+  });
+
   /* Modal de créditos y atribución a TVmaze */
   function abrirAjustes() {
     const modal = document.getElementById('ajustesModal');
@@ -828,10 +872,12 @@
     document.getElementById('menuIdioma').style.display = 'none';
     actualizarMenuIdioma();
     actualizarChipUsuario();
+    enfocarModal(modal, cerrarAjustes);
   }
 
   function cerrarAjustes() {
     document.getElementById('ajustesModal').classList.remove('show');
+    devolverFocoTrasModal();
   }
 
   function abrirCreditos() {
@@ -843,11 +889,13 @@
     document.getElementById('creditosData').innerHTML = t('creditosData').replace('TVmaze', '<a href="https://www.tvmaze.com/api" target="_blank">TVmaze</a>');
     document.getElementById('creditosAttribution').innerHTML = t('creditosAttribution').replace(/TVmaze/g, '<a href="https://www.tvmaze.com" target="_blank">TVmaze</a>');
     document.getElementById('creditosNote').innerHTML = t('creditosNote').replace(/TVmaze/g, '<a href="https://www.tvmaze.com" target="_blank">TVmaze</a>');
+    enfocarModal(modal, cerrarCreditos);
   }
 
   function cerrarCreditos() {
     const modal = document.getElementById('creditosModal');
     modal.classList.remove('show');
+    devolverFocoTrasModal();
   }
 
   /* Placeholder para pósters/fotos que TVMaze no tiene cargados: un SVG generado
@@ -1520,10 +1568,20 @@
       `;
       document.body.appendChild(overlay);
 
-      const cerrar = (resultado) => { overlay.remove(); resolve(resultado); };
+      // Usa la misma pilaModales que Ajustes/Créditos (en vez de su propio
+      // listener de Escape) para que, si este modal se abre encima de otro
+      // (ej. "Cerrar sesión" desde Ajustes), un solo Escape cierre nada más
+      // que el de arriba, y el siguiente reactive el de abajo correctamente.
+      const cerrar = (resultado) => {
+        overlay.remove();
+        devolverFocoTrasModal();
+        resolve(resultado);
+      };
       overlay.querySelector('.cancel').onclick = () => cerrar(false);
       overlay.querySelector('.delete').onclick = () => cerrar(true);
       overlay.onclick = (e) => { if (e.target === overlay) cerrar(false); };
+      pilaModales.push({ elementoPrevio: document.activeElement, onCerrar: () => cerrar(false) });
+      overlay.querySelector('.cancel').focus();
     });
   }
 
@@ -1550,10 +1608,29 @@
      en vez de cerrarla de golpe en la primera pantalla que se le ocurra. */
   let vistaActual = 'inicio';
 
+  // Reinicia la animación de fade-in de un contenedor aunque ya tenga la clase
+  // puesta (sacarla y forzar reflow con offsetWidth antes de volver a ponerla).
+  function reiniciarFadeIn(el) {
+    if (!el) return;
+    el.classList.remove('vista-entrando');
+    void el.offsetWidth;
+    el.classList.add('vista-entrando');
+  }
+
   function cambiarVista(vista, push = true) {
+    // Si el usuario toca el tab en el que ya está parado (común sin querer en
+    // mobile), no relanzamos nada: evita borrar una búsqueda en curso en Inicio
+    // o refetchear Calendario de nuevo por las dudas. push=false se usa también
+    // para forzar un refresco real (cambio de idioma, volver del detalle), así
+    // que la guarda solo aplica cuando push=true (o sea, un tap real del tab).
+    if (push && vistaActual === vista) return;
+
     document.getElementById('detailView').style.display = 'none';
     document.getElementById('listView').style.display = (vista === 'inicio' || vista === 'favoritos') ? 'block' : 'none';
     document.getElementById('calendarView').style.display = vista === 'calendario' ? 'block' : 'none';
+
+    const contenedorVisible = vista === 'calendario' ? document.getElementById('calendarView') : document.getElementById('listView');
+    reiniciarFadeIn(contenedorVisible);
 
     document.getElementById('tabSearch').classList.toggle('active', vista === 'inicio');
     document.getElementById('tabFavs').classList.toggle('active', vista === 'favoritos');
@@ -1787,13 +1864,14 @@
     `;
     const lista = document.createElement('div');
     lista.className = 'series-list';
+    const idsFav = new Set(favoritos.map(f => f.id));
     shows.forEach((show) => {
       lista.appendChild(crearTarjetaSerie({
         id: show.id,
         name: show.name,
         image: show.image ? (show.image.medium || show.image.original) : '',
         status: show.status
-      }, false));
+      }, false, idsFav));
     });
     container.appendChild(lista);
   }
@@ -1909,13 +1987,14 @@
 
       const lista = document.createElement('div');
       lista.className = 'series-list';
+      const idsFav = new Set(favoritos.map(f => f.id));
       shows.forEach((show) => {
         lista.appendChild(crearTarjetaSerie({
           id: show.id,
           name: show.name,
           image: show.image ? (show.image.medium || show.image.original) : '',
           status: show.status
-        }, false));
+        }, false, idsFav));
       });
       container.appendChild(lista);
     } catch {
@@ -1981,6 +2060,7 @@
         return aCalza - bCalza;
       });
 
+      const idsFav = new Set(favoritos.map(f => f.id));
       data.forEach(item => {
         const show = item.show;
         const card = crearTarjetaSerie({
@@ -1988,7 +2068,7 @@
           name: show.name,
           image: show.image?.medium,
           status: show.status
-        }, false);
+        }, false, idsFav);
         container.appendChild(card);
       });
     } catch {
@@ -2085,8 +2165,11 @@
     return { texto: t('estadoEsperandoCard'), clase: 'paused' };
   }
 
-  function crearTarjetaSerie(show, esVistaFavoritos) {
-    const esFav = favoritos.some(f => f.id === show.id);
+  // O(1) por card en vez de recorrer favoritos.length en cada una (crearTarjetaSerie
+  // se llama en loop al renderizar listas de resultados/descubrir). Se recalcula
+  // solo cuando hace falta, no en cada card individual.
+  function crearTarjetaSerie(show, esVistaFavoritos, idsFavoritosSet) {
+    const esFav = idsFavoritosSet ? idsFavoritosSet.has(show.id) : favoritos.some(f => f.id === show.id);
     const card = document.createElement('div');
     card.className = 'card';
 
@@ -2212,6 +2295,7 @@
     const detailView = document.getElementById('detailView');
     const container = document.getElementById('detailContent');
     detailView.style.display = 'block';
+    reiniciarFadeIn(detailView);
     container.innerHTML = `<p style="text-align:center; color:var(--ink-muted);">${t('cargandoEpisodios')}</p>`;
     detalleActualId = showId;
     marcarBadgeNuevoVisto(showId);
@@ -2227,6 +2311,10 @@
         fetchJSON(`https://api.tvmaze.com/shows/${showId}/episodes`, `eps_${showId}`),
         fetchJSON(`https://api.tvmaze.com/shows/${showId}/seasons`, `seasons_${showId}`).catch(() => null)
       ]);
+      // Si mientras esperábamos el usuario ya entró a ver otra serie (o volvió
+      // a la lista), detalleActualId cambió — descartamos esta respuesta vieja
+      // en vez de pintarla encima de lo que se esté mostrando ahora.
+      if (detalleActualId !== showId) return;
 
       const favIndex = favoritos.findIndex(f => f.id === show.id);
       if (favIndex > -1) {
@@ -2399,6 +2487,7 @@
       container.innerHTML = html;
       actualizarBotonesTemporada();
     } catch {
+      if (detalleActualId !== showId) return; // el error es de una serie que ya no estamos viendo
       container.innerHTML = navigator.onLine
         ? `<p style="text-align:center; color:var(--danger);">${t('errorEpisodios')}</p>`
         : `<p style="text-align:center; color:var(--danger);">${t('sinConexionEpisodios')}</p>`;
