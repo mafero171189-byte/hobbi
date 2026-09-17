@@ -7,6 +7,11 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&display=swap" rel="stylesheet">
+  <!-- Optimización de imágenes: prefetch DNS de proveedores y preconnect a APIs -->
+  <link rel="dns-prefetch" href="https://api.tvmaze.com">
+  <link rel="preconnect" href="https://api.tvmaze.com" crossorigin>
+  <!-- Para Google Profile Pictures (si autentican con Google) -->
+  <link rel="dns-prefetch" href="https://lh3.googleusercontent.com">
   <script src="https://accounts.google.com/gsi/client" async defer></script>
   <style>
     :root {
@@ -83,8 +88,23 @@
     }
     #onboardingPosters img {
       width: 100%; height: 100%; object-fit: cover; border-radius: 6px;
-      background: var(--surface);
+      background: linear-gradient(135deg, var(--surface) 0%, var(--surface-2) 100%);
       aspect-ratio: 2 / 3;
+      animation: fadeInImage 0.4s ease-in-out forwards;
+      opacity: 0;
+    }
+    #onboardingPosters img[src*="tvmaze"] { opacity: 1; }
+    @keyframes fadeInImage {
+      to { opacity: 1; }
+    }
+    @keyframes shimmer {
+      0% { background-position: -1000px 0; }
+      100% { background-position: 1000px 0; }
+    }
+    img.loading-image {
+      background: linear-gradient(90deg, var(--surface-2) 25%, var(--surface) 50%, var(--surface-2) 75%);
+      background-size: 1000px 100%;
+      animation: shimmer 2s infinite;
     }
     .onboarding-scrim {
       position: absolute; inset: 0;
@@ -152,7 +172,13 @@
     .card.paused { border-left-color: var(--ink-muted); }
     .card.ended { border-left-color: var(--border); }
     .card-top { display: flex; gap: 12px; align-items: center; }
-    .card img { width: 60px; height: 85px; object-fit: cover; border-radius: 8px; background-color: var(--bg); cursor: pointer; flex-shrink: 0; }
+    .card img {
+      width: 60px; height: 85px; object-fit: cover; border-radius: 8px;
+      background: linear-gradient(135deg, var(--surface) 0%, var(--surface-2) 100%);
+      cursor: pointer; flex-shrink: 0;
+      animation: fadeInImage 0.3s ease-in-out forwards;
+      opacity: 0;
+    }
     .card-info { flex: 1; cursor: pointer; min-width: 0; }
     .card-info h3 { font-size: 16px; margin-bottom: 4px; }
     .card-info .status { font-size: 11px; color: var(--teal); font-weight: bold; margin-bottom: 6px; }
@@ -172,7 +198,13 @@
     /* Detalle de Serie */
     .back-btn { background: var(--surface-2); color: var(--ink); border: none; padding: 8px 14px; border-radius: 8px; cursor: pointer; margin-bottom: 12px; font-weight: bold; }
     .detail-header { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 10px; background: var(--surface); padding: 20px 16px; border-radius: 14px; margin-bottom: 16px; border: 1px solid var(--border); position: relative; }
-    .detail-header .detail-poster { width: 160px; height: 230px; object-fit: cover; border-radius: 12px; box-shadow: 0 8px 28px rgba(0,0,0,0.5); }
+    .detail-header .detail-poster {
+      width: 160px; height: 230px; object-fit: cover; border-radius: 12px;
+      box-shadow: 0 8px 28px rgba(0,0,0,0.5);
+      background: linear-gradient(135deg, var(--surface) 0%, var(--surface-2) 100%);
+      animation: fadeInImage 0.35s ease-in-out forwards;
+      opacity: 0;
+    }
     .detail-header .detail-rating { font-size: 13px; font-weight: 700; color: var(--gold); display: flex; align-items: center; gap: 5px; }
     .detail-header h2 { font-size: 20px; }
     .detail-header .detail-tags { font-size: 12px; color: var(--ink-muted); }
@@ -874,6 +906,11 @@
   const GOOGLE_CLIENT_ID = '403618822429-pshtrss0fg4nnojujh6aqqagaboia66h.apps.googleusercontent.com';
   let usuarioActual = null; // { email, nombre, foto } o null si no logueó
   let timeoutSyncNube = null;
+  // true desde que hay un cambio local sin confirmar en el servidor todavía
+  // (debounce de 2s o request en vuelo) hasta que ese push efectivamente termina.
+  // sincronizarDesdeNube() la consulta para no pisar un cambio que el usuario
+  // acaba de hacer y todavía no llegó a la nube.
+  let hayPushPendiente = false;
 
   function mostrarSyncBadge(texto, esError = false) {
     const el = document.getElementById('syncBadge');
@@ -909,7 +946,10 @@
         usuarioActual = { email: data.email, nombre: data.nombre, foto: data.foto };
         actualizarChipUsuario();
         cerrarOnboarding(); // ya está logueado: no tiene sentido mostrarle la bienvenida
-        await sincronizarDesdeNube();
+        // modoMerge=true: si había favoritos guardados solo en local (ej. se
+        // marcaron offline y todavía no llegaron a subirse), no queremos que
+        // el primer fetch del día los pise con lo que el server tenía antes.
+        await sincronizarDesdeNube(true);
       }
     } catch {
       // Sin conexión o API no disponible: seguimos con localStorage nomás.
@@ -989,17 +1029,38 @@
 
   const POSTERS_ONBOARDING = ['Wednesday', 'Stranger Things', 'Breaking Bad', 'Squid Game', 'The Last of Us', 'Game of Thrones', 'Loki', 'House of the Dragon', 'The Mandalorian'];
 
+  // Precargar imágenes de onboarding apenas se inicializa la app, usando lo que
+  // ya esté en caché (guardarCache/leerCache guardan bajo la clave 'cache_' + key,
+  // con shape { data, ts } — hay que leer del mismo lugar y con el mismo shape).
+  function precargarImagenesOnboarding() {
+    POSTERS_ONBOARDING.forEach(nombre => {
+      const cache = leerCache('onboarding_' + nombre.toLowerCase());
+      const src = cache?.data?.[0]?.show?.image?.medium || cache?.data?.[0]?.show?.image?.original;
+      if (!src) return;
+      // Preload declarativo para que el navegador priorice la descarga.
+      const link = document.createElement('link');
+      link.rel = 'preload';
+      link.as = 'image';
+      link.href = src;
+      link.fetchPriority = 'high';
+      link.onload = link.onerror = () => link.remove(); // no dejar basura en el <head>
+      document.head.appendChild(link);
+    });
+  }
+
   async function cargarPostersOnboarding() {
     const contenedor = document.getElementById('onboardingPosters');
     try {
       const resultados = await Promise.all(POSTERS_ONBOARDING.map(nombre =>
         fetchJSON(`https://api.tvmaze.com/search/shows?q=${encodeURIComponent(nombre)}`, 'onboarding_' + nombre.toLowerCase())
-          .then(r => r[0]?.show?.image?.original || r[0]?.show?.image?.medium || null)
+          .then(r => r[0]?.show?.image?.medium || r[0]?.show?.image?.original || null)
           .catch(() => null)
       ));
       const imagenes = resultados.filter(Boolean);
-      if (!imagenes.length) return; // sin conexión ni caché: queda solo el fondo liso, no rompe nada
-      contenedor.innerHTML = imagenes.map(src => `<img src="${src}" alt="" loading="eager">`).join('');
+      if (!imagenes.length) return;
+      // El propio <img> con fetchpriority="high" ya dispara la descarga con prioridad;
+      // un fetch() extra acá sería una segunda descarga redundante de la misma imagen.
+      contenedor.innerHTML = imagenes.map(src => `<img src="${src}" alt="" loading="eager" fetchpriority="high">`).join('');
     } catch {
       // Si falla todo, la pantalla igual funciona (solo sin el collage de fondo).
     }
@@ -1008,7 +1069,10 @@
   function mostrarOnboarding() {
     document.body.classList.add('sin-scroll');
     document.getElementById('onboardingScreen').style.display = 'flex';
-    if (!document.getElementById('onboardingPosters').children.length) cargarPostersOnboarding();
+    if (!document.getElementById('onboardingPosters').children.length) {
+      precargarImagenesOnboarding(); // precarga caché (si existe)
+      cargarPostersOnboarding(); // trae nuevas o desde caché
+    }
   }
 
   function cerrarOnboarding() {
@@ -1104,6 +1168,12 @@
      desaparecería de la PC). */
   async function sincronizarDesdeNube(modoMerge = false) {
     if (!usuarioActual) return;
+    // Si hay un cambio local recién hecho que todavía no llegó al servidor,
+    // traer el estado de la nube ahora lo pisaría (el server todavía no lo
+    // tiene). Nos salteamos esta bajada: cuando el push pendiente termine,
+    // el servidor va a estar al día, y la próxima sync (visibilitychange,
+    // recarga, etc.) va a traer el estado correcto igual.
+    if (hayPushPendiente) return;
     try {
       const res = await fetch('/api/data');
       if (!res.ok) throw new Error('sync down falló');
@@ -1136,6 +1206,7 @@
   function sincronizarHaciaNube(forzar = false) {
     if (!usuarioActual) return Promise.resolve();
     clearTimeout(timeoutSyncNube);
+    hayPushPendiente = true;
     const hacerPush = async () => {
       try {
         const res = await fetch('/api/data', {
@@ -1149,6 +1220,8 @@
         // que de verdad necesita que el usuario se entere.
       } catch {
         mostrarSyncBadge(t('errorSync'), true);
+      } finally {
+        hayPushPendiente = false;
       }
     };
     if (forzar) return hacerPush();
@@ -1240,6 +1313,7 @@
       throw err;
     }
   }
+
 
   /* ==================== NOTIFICACIONES LOCALES ====================
      Mientras la app corre como página web, usamos la Web Notification API:
@@ -1454,16 +1528,13 @@
   }
 
   /* Borra del historial de "vistos" todos los capítulos de una serie que se sacó de favoritos. */
+  // Solo muta episodiosVistos en memoria; no guarda por sí sola. Los dos lugares
+  // que la llaman (toggleFavorito y el swipe-to-delete de la card) ya hacen su
+  // propio guardarDatos() justo después, así que guardar acá también sería
+  // una segunda sync redundante por la misma acción del usuario.
   function limpiarEpisodiosVistos(favorito) {
     if (!favorito || !favorito.episodeIds || !favorito.episodeIds.length) return;
-    let cambio = false;
-    favorito.episodeIds.forEach((id) => {
-      if (episodiosVistos[id]) {
-        delete episodiosVistos[id];
-        cambio = true;
-      }
-    });
-    if (cambio) guardarDatos();
+    favorito.episodeIds.forEach((id) => { delete episodiosVistos[id]; });
   }
 
   function migrarFavorito(f) {
@@ -1852,11 +1923,18 @@
     }
   }
 
+  // Token de la búsqueda en curso: cada llamada a buscarOnline() toma un número
+  // propio. Si para cuando termina de resolver ya no es el token más reciente,
+  // significa que el usuario siguió escribiendo y llegó una búsqueda más nueva
+  // — descartamos el resultado viejo en vez de pintarlo encima del actual.
+  let tokenBusquedaActual = 0;
+
   async function buscarOnline() {
     const query = document.getElementById('searchInput').value.trim();
     const container = document.getElementById('seriesList');
     if (!query) return mostrarPlaceholderBusqueda();
 
+    const miToken = ++tokenBusquedaActual;
     container.innerHTML = `<p style="text-align:center; color:var(--ink-muted);">${t('buscando')}</p>`;
 
     try {
@@ -1870,6 +1948,7 @@
         buscarTexto(query),
         buscarPersonas(query)
       ]);
+      if (miToken !== tokenBusquedaActual) return; // llegó una búsqueda más nueva mientras esperábamos
       let data = dataInicial;
 
       // Si buscar la frase completa no encontró nada (ej: "dark matter"), probamos
@@ -1880,6 +1959,7 @@
         while (data.length === 0 && palabras.length > 1) {
           palabras.pop();
           data = await buscarTexto(palabras.join(' '));
+          if (miToken !== tokenBusquedaActual) return; // idem, chequeamos de nuevo tras cada vuelta
         }
       }
 
@@ -1912,6 +1992,7 @@
         container.appendChild(card);
       });
     } catch {
+      if (miToken !== tokenBusquedaActual) return; // el error es de una búsqueda vieja, no pisamos la actual
       container.innerHTML = navigator.onLine
         ? `<p style="text-align:center; color:var(--danger);">${t('errorBuscador')}</p>`
         : `<p style="text-align:center; color:var(--danger);">${t('sinConexionBuscador')}</p>`;
@@ -2040,7 +2121,7 @@
 
     card.innerHTML = `
       <div class="card-top">
-        <img src="${show.image || placeholderPorNombre(show.name)}" onclick="verDetalles(${show.id})" loading="lazy" alt="${show.name}">
+        <img src="${show.image || placeholderPorNombre(show.name)}" onclick="verDetalles(${show.id})" loading="eager" decoding="async" alt="${show.name}">
         <div class="card-info" onclick="verDetalles(${show.id})">
           <h3>${show.name}${badgeNuevo}</h3>
           <div class="status ${estado.clase}">${estado.texto}</div>
@@ -2272,7 +2353,7 @@
           <button class="fav-btn" id="detailFavBtn" onclick="toggleFavorito(event, ${JSON.stringify(serieParaFav).replace(/"/g, '&quot;')})" aria-label="${esFavActual ? t('quitarDeFavoritos') : t('agregarAFavoritos')}">
             ${esFavActual ? '❤️' : '🤍'}
           </button>
-          <img class="detail-poster" src="${show.image ? (show.image.medium || show.image.original) : placeholderPorNombre(show.name)}" srcset="${show.image ? `${show.image.medium || show.image.original} 1x${show.image.original ? `, ${show.image.original} 2x` : ''}` : ''}" alt="${show.name}" loading="lazy">
+          <img class="detail-poster" src="${show.image ? (show.image.medium || show.image.original) : placeholderPorNombre(show.name)}" srcset="${show.image ? `${show.image.medium || show.image.original} 1x${show.image.original ? `, ${show.image.original} 2x` : ''}` : ''}" alt="${show.name}" loading="eager" fetchpriority="high" decoding="async">
           ${ratingHTML}
           <h2>${show.name}</h2>
           <p class="detail-tags">${show.genres.join(', ')}</p>
