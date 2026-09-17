@@ -55,7 +55,7 @@
     }
 
     * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
-    body { background: radial-gradient(ellipse 100% 40% at 50% -5%, var(--bg-glow) 0%, var(--bg) 60%) var(--bg); color: var(--ink); padding: 16px; display: flex; justify-content: center; }
+    body { background: radial-gradient(ellipse 100% 40% at 50% -5%, var(--bg-glow) 0%, var(--bg) 60%) var(--bg); color: var(--ink); padding: 16px; padding-bottom: calc(84px + env(safe-area-inset-bottom)); display: flex; justify-content: center; }
     .app-container { width: 100%; max-width: 480px; display: flex; flex-direction: column; gap: 16px; }
     .marquee { font-family: 'Bebas Neue', -apple-system, sans-serif; letter-spacing: 0.5px; }
 
@@ -79,6 +79,20 @@
     .nav-tabs { display: flex; gap: 6px; background: var(--surface); padding: 4px; border-radius: 12px; border: 1px solid var(--border); }
     .tab-btn { flex: 1; padding: 10px 4px; border: none; background: transparent; color: var(--ink-muted); font-weight: 600; font-size: 13px; border-radius: 8px; cursor: pointer; text-align: center; }
     .tab-btn.active { background: var(--gold); color: var(--gold-ink); }
+
+    /* Barra de navegación inferior, fija — estilo minimalista tipo app store:
+       ícono arriba, etiqueta chica abajo, sin fondo de "pastilla" en el activo
+       (solo cambia de color). Reemplaza a .nav-tabs, que queda sin usar en el
+       HTML pero se deja en el CSS por si se vuelve a necesitar. */
+    .bottom-nav { position: fixed; left: 0; right: 0; bottom: 0; z-index: 500; display: flex; justify-content: center; background: rgba(10,10,19,0.92); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border-top: 1px solid var(--border); padding-bottom: env(safe-area-inset-bottom); }
+    .bottom-nav-inner { width: 100%; max-width: 480px; display: flex; }
+    .bottom-nav-btn { flex: 1; background: none; border: none; color: var(--ink-muted); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; padding: 10px 4px 8px; cursor: pointer; font-size: 10px; font-weight: 600; letter-spacing: 0.2px; }
+    .bottom-nav-btn .bottom-nav-icon { font-size: 22px; line-height: 1; filter: grayscale(1) opacity(0.7); transition: filter 0.15s ease; }
+    .bottom-nav-btn.active { color: var(--gold); }
+    .bottom-nav-btn.active .bottom-nav-icon { filter: none; }
+    @media (prefers-reduced-motion: reduce) {
+      .bottom-nav-btn .bottom-nav-icon { transition: none; }
+    }
     .lang-toggle { background: var(--surface); border: 1px solid var(--border); color: var(--ink-muted); font-size: 11px; font-weight: 700; padding: 5px 10px; border-radius: 20px; cursor: pointer; }
     .info-btn { background: var(--surface); border: 1px solid var(--border); color: var(--ink-muted); font-size: 14px; padding: 5px 8px; border-radius: 6px; cursor: pointer; width: 30px; height: 30px; display: flex; align-items: center; justify-content: center; }
 
@@ -425,16 +439,10 @@
   <header>
     <div style="display:flex; justify-content:flex-end; align-items:center; gap:8px; margin-bottom:-4px;">
       <button id="notifBtn" class="info-btn" onclick="pedirPermisoNotificaciones()" title="Activar avisos de estrenos" aria-label="Activar avisos de estrenos">🔔</button>
-      <button id="ajustesBtn" class="info-btn" onclick="abrirAjustes()" title="Ajustes" aria-label="Ajustes">⚙️</button>
     </div>
     <h1>HOBBI</h1>
     <p id="appTagline" style="text-align:center; color:var(--ink-muted); font-size:12px; letter-spacing:0.5px; margin-top:-10px; margin-bottom:12px;">Control de Series</p>
     <div id="syncBadge" class="sync-badge" role="status" aria-live="polite"></div>
-    <div class="nav-tabs" role="tablist">
-      <button class="tab-btn active" id="tabSearch" onclick="vibrarTap(); cambiarVista('inicio')" role="tab" aria-selected="true">🏠 <span id="tSearch">Inicio</span></button>
-      <button class="tab-btn" id="tabFavs" onclick="vibrarTap(); cambiarVista('favoritos')" role="tab" aria-selected="false">❤️ <span id="tFavs">Favoritos</span></button>
-      <button class="tab-btn" id="tabCalendar" onclick="vibrarTap(); cambiarVista('calendario')" role="tab" aria-selected="false">📅 <span id="tCalendar">Calendario</span></button>
-    </div>
   </header>
 
   <!-- VISTA DE BÚSQUEDA Y FAVORITOS -->
@@ -578,6 +586,23 @@
     </div>
   </div>
 </div>
+
+<nav class="bottom-nav" role="tablist" aria-label="Navegación principal">
+  <div class="bottom-nav-inner">
+    <button class="bottom-nav-btn active" id="tabSearch" onclick="vibrarTap(); cambiarVista('inicio')" role="tab" aria-selected="true">
+      <span class="bottom-nav-icon">🏠</span><span id="tSearch">Inicio</span>
+    </button>
+    <button class="bottom-nav-btn" id="tabFavs" onclick="vibrarTap(); cambiarVista('favoritos')" role="tab" aria-selected="false">
+      <span class="bottom-nav-icon">❤️</span><span id="tFavs">Favoritos</span>
+    </button>
+    <button class="bottom-nav-btn" id="tabCalendar" onclick="vibrarTap(); cambiarVista('calendario')" role="tab" aria-selected="false">
+      <span class="bottom-nav-icon">📅</span><span id="tCalendar">Calendario</span>
+    </button>
+    <button class="bottom-nav-btn" id="tabAjustes" onclick="vibrarTap(); abrirAjustes()" role="tab" aria-selected="false">
+      <span class="bottom-nav-icon">⚙️</span><span id="tAjustes">Ajustes</span>
+    </button>
+  </div>
+</nav>
 
 <script>
   /* ==================== IDIOMA (ES/EN) ====================
@@ -896,8 +921,7 @@
     document.getElementById('onboardingPassword').setAttribute('aria-label', t('onboardingPasswordPlaceholder'));
     actualizarTextosModoOnboarding();
     document.getElementById('tSearch').textContent = t('inicio');
-    document.getElementById('ajustesBtn').title = t('ajustesAria');
-    document.getElementById('ajustesBtn').setAttribute('aria-label', t('ajustesAria'));
+    document.getElementById('tAjustes') && (document.getElementById('tAjustes').textContent = t('ajustesTitle'));
     document.getElementById('ajustesAcercaDeTexto') && (document.getElementById('ajustesAcercaDeTexto').textContent = t('ajustesAcercaDe'));
     document.getElementById('ajustesFAQTexto') && (document.getElementById('ajustesFAQTexto').textContent = t('ajustesFAQTexto'));
     document.getElementById('tFavs').textContent = t('favoritos');
@@ -1000,11 +1024,15 @@
     actualizarMenuIdioma();
     actualizarChipUsuario();
     actualizarBotonNotif();
+    document.getElementById('tabAjustes')?.classList.add('active');
+    document.getElementById('tabAjustes')?.setAttribute('aria-selected', 'true');
     enfocarModal(modal, cerrarAjustes);
   }
 
   function cerrarAjustes() {
     document.getElementById('ajustesModal').classList.remove('show');
+    document.getElementById('tabAjustes')?.classList.remove('active');
+    document.getElementById('tabAjustes')?.setAttribute('aria-selected', 'false');
     devolverFocoTrasModal();
   }
 
