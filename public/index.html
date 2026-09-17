@@ -192,6 +192,15 @@
     .filter-row { display: flex; gap: 8px; }
     .filter-row select { flex: 1; padding: 8px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface); color: var(--ink); font-size: 12px; }
 
+    /* Dropdown de filtros de Favoritos: el ícono 🔽 abre un panel flotante
+       con orden/estado/checkbox, en vez de mostrarlos siempre en pantalla. */
+    .favs-filtro-wrap { position: relative; }
+    .favs-filtro-btn { background: var(--surface); border: 1px solid var(--border); color: var(--ink-muted); font-size: 14px; padding: 5px 8px; border-radius: 6px; cursor: pointer; width: 42px; height: 42px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+    .favs-filtro-btn.activo { border-color: var(--gold); color: var(--gold); }
+    .favs-filtro-panel { position: absolute; top: calc(100% + 8px); right: 0; z-index: 20; width: 240px; background: var(--surface-2); border: 1px solid var(--border); border-radius: 12px; padding: 14px; display: flex; flex-direction: column; gap: 10px; box-shadow: 0 8px 24px rgba(0,0,0,0.4); }
+    .favs-filtro-panel .filter-row { flex-direction: column; }
+    .favs-filtro-panel .filter-row select { width: 100%; }
+
     /* Cards de Series */
     .series-list { display: flex; flex-direction: column; gap: 12px; }
     .card { background-color: var(--surface); border-radius: 14px; padding: 12px; display: flex; flex-direction: column; gap: 8px; border: 1px solid var(--border); border-left: 4px solid var(--border); position: relative; overflow: hidden; }
@@ -403,24 +412,31 @@
     <div id="pullIndicatorFavs" class="pull-indicator" role="status" aria-live="polite"></div>
 
     <div id="favsToolbar" style="display:none; flex-direction: column; gap: 10px; margin-bottom: 12px;">
-      <div class="fav-search">
-        <input type="text" id="filtroFavoritos" placeholder="🔍 Filtrar tus favoritos..." oninput="renderizarFavoritos()">
+      <div style="display:flex; gap:8px; align-items:center;">
+        <div class="fav-search" style="flex:1;">
+          <input type="text" id="filtroFavoritos" placeholder="🔍 Filtrar tus favoritos..." oninput="renderizarFavoritos()">
+        </div>
+        <div class="favs-filtro-wrap">
+          <button type="button" class="favs-filtro-btn" id="favsFiltroBtn" onclick="toggleFavsFiltroPanel()" title="Filtros" aria-label="Filtros" aria-haspopup="true" aria-expanded="false">🔽</button>
+          <div class="favs-filtro-panel" id="favsFiltroPanel" style="display:none;">
+            <div class="filter-row">
+              <select id="ordenFavoritos" onchange="renderizarFavoritos()">
+                <option value="agregada">Recién agregadas</option>
+                <option value="alfabetico">Alfabético</option>
+              </select>
+              <select id="estadoFavoritos" onchange="renderizarFavoritos()">
+                <option value="todas">Todas</option>
+                <option value="emision">En emisión</option>
+                <option value="finalizada">Finalizadas</option>
+              </select>
+            </div>
+            <label class="pendientes-toggle">
+              <input type="checkbox" id="soloPendientes" onchange="renderizarFavoritos()">
+              Ocultar las que ya vi completas
+            </label>
+          </div>
+        </div>
       </div>
-      <div class="filter-row">
-        <select id="ordenFavoritos" onchange="renderizarFavoritos()">
-          <option value="agregada">Recién agregadas</option>
-          <option value="alfabetico">Alfabético</option>
-        </select>
-        <select id="estadoFavoritos" onchange="renderizarFavoritos()">
-          <option value="todas">Todas</option>
-          <option value="emision">En emisión</option>
-          <option value="finalizada">Finalizadas</option>
-        </select>
-      </div>
-      <label class="pendientes-toggle">
-        <input type="checkbox" id="soloPendientes" onchange="renderizarFavoritos()">
-        Ocultar las que ya vi completas
-      </label>
     </div>
 
     <div class="series-list" id="seriesList" style="margin-top: 16px;"></div>
@@ -3092,6 +3108,43 @@
     `).join('');
   }
 
+  /* ==================== Dropdown de filtros de Favoritos ====================
+     El ícono 🔽 muestra/oculta un panel flotante con orden, estado y el
+     checkbox de "ocultar completas", para no ocupar pantalla con controles
+     que se usan poco. Se cierra solo al tocar afuera o con Escape. */
+  function toggleFavsFiltroPanel(forzarEstado) {
+    const panel = document.getElementById('favsFiltroPanel');
+    const btn = document.getElementById('favsFiltroBtn');
+    const abrir = forzarEstado !== undefined ? forzarEstado : panel.style.display === 'none';
+    panel.style.display = abrir ? 'flex' : 'none';
+    btn.setAttribute('aria-expanded', abrir ? 'true' : 'false');
+  }
+
+  document.addEventListener('click', (e) => {
+    const panel = document.getElementById('favsFiltroPanel');
+    const wrap = document.querySelector('.favs-filtro-wrap');
+    if (!panel || panel.style.display === 'none') return;
+    if (wrap && !wrap.contains(e.target)) toggleFavsFiltroPanel(false);
+  });
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape') return;
+    const panel = document.getElementById('favsFiltroPanel');
+    if (panel && panel.style.display !== 'none') toggleFavsFiltroPanel(false);
+  });
+
+  /* Pinta el ícono de filtro en dorado cuando hay algún filtro no-default
+     aplicado, para que se note sin necesidad de abrir el panel. */
+  function actualizarIndicadorFiltroFavs() {
+    const btn = document.getElementById('favsFiltroBtn');
+    if (!btn) return;
+    const estado = document.getElementById('estadoFavoritos').value;
+    const soloPendientes = document.getElementById('soloPendientes').checked;
+    const orden = document.getElementById('ordenFavoritos').value;
+    const hayFiltroActivo = estado !== 'todas' || soloPendientes || orden !== 'agregada';
+    btn.classList.toggle('activo', hayFiltroActivo);
+  }
+
   function renderizarFavoritos() {
     const container = document.getElementById('seriesList');
     const orden = document.getElementById('ordenFavoritos').value;
@@ -3124,6 +3177,7 @@
     }
 
     container.innerHTML = '';
+    actualizarIndicadorFiltroFavs();
     if (!lista.length) {
       const mensaje = favoritos.length ? t('ningunaCoincide') : t('noFavoritos');
       container.innerHTML = `<p style="text-align:center; color:var(--ink-muted); margin-top:20px;">${mensaje}</p>`;
