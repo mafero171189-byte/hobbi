@@ -1206,11 +1206,11 @@
   // acaba de hacer y todavía no llegó a la nube.
   let hayPushPendiente = false;
 
-  function mostrarSyncBadge(texto, esError = false) {
+  function mostrarSyncBadge(texto, esError = false, duracionMs = 2500) {
     const el = document.getElementById('syncBadge');
     el.textContent = texto;
     el.classList.toggle('error', esError);
-    if (texto) setTimeout(() => { if (el.textContent === texto) el.textContent = ''; }, 2500);
+    if (texto) setTimeout(() => { if (el.textContent === texto) el.textContent = ''; }, duracionMs);
   }
 
   /* Actualiza los datos de la cuenta mostrados adentro de Ajustes (avatar,
@@ -1504,7 +1504,14 @@
     if (hayPushPendiente) return;
     try {
       const res = await fetch('/api/data');
-      if (!res.ok) throw new Error('sync down falló');
+      if (!res.ok) {
+        let detalle = `HTTP ${res.status}`;
+        try {
+          const cuerpo = await res.text();
+          if (cuerpo) detalle += ': ' + cuerpo.slice(0, 200);
+        } catch {}
+        throw new Error(detalle);
+      }
       const nube = await res.json();
 
       if (modoMerge) {
@@ -1524,8 +1531,8 @@
 
       guardarDatosLocal();
       if (vistaActual === 'favoritos') renderizarFavoritos();
-    } catch {
-      mostrarSyncBadge(t('errorSync'), true);
+    } catch (err) {
+      mostrarSyncBadge(`${t('errorSync')} (${err.message || 'error de red'})`, true, 8000);
     }
   }
 
@@ -1542,12 +1549,22 @@
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ favoritos, episodiosVistos, idioma })
         });
-        if (!res.ok) throw new Error('sync up falló');
+        if (!res.ok) {
+          let detalle = `HTTP ${res.status}`;
+          try {
+            const cuerpo = await res.text();
+            if (cuerpo) detalle += ': ' + cuerpo.slice(0, 200);
+          } catch {}
+          throw new Error(detalle);
+        }
         // Éxito: no molestamos con un aviso cada vez (pasa todo el tiempo, con
         // cada favorito o episodio marcado). Solo avisamos si falla, que es lo
         // que de verdad necesita que el usuario se entere.
-      } catch {
-        mostrarSyncBadge(t('errorSync'), true);
+      } catch (err) {
+        // Mensaje con el detalle real (código HTTP o motivo de red) en vez del
+        // genérico "no se pudo sincronizar" — así se puede diagnosticar sin
+        // necesitar herramientas de desarrollador.
+        mostrarSyncBadge(`${t('errorSync')} (${err.message || 'error de red'})`, true, 8000);
       } finally {
         hayPushPendiente = false;
       }
