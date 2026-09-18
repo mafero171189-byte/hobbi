@@ -2435,7 +2435,32 @@
      como si fueran originarias de ese país. */
   const PAISES_LATINOS = new Set(['AR', 'MX', 'CO', 'CL', 'PE', 'UY', 'PY', 'BO', 'VE', 'EC', 'CR', 'PA', 'GT', 'HN', 'SV', 'NI', 'DO', 'CU', 'ES', 'BR', 'PT']);
 
+  /* Plataformas y canales grandes de EE.UU., para separar los estrenos que de
+     verdad importan (Netflix, HBO, Disney+, etc.) del resto de canales locales
+     de baja audiencia que TVMaze igual programa. Comparamos por nombre porque
+     TVMaze no da un id estable de network/webChannel utilizable acá; el nombre
+     alcanza para las plataformas grandes (no cambian de nombre seguido).
+
+     OJO: los streamers globales (Netflix, HBO Max, Paramount+, Apple TV+...)
+     casi nunca traen país en TVMaze — emiten mundialmente y TVMaze no les
+     asigna un country. Por eso "es de Hollywood" NO puede depender de
+     paisCanal === 'US' para estas plataformas: si dependiera de eso, nunca
+     matchearían aunque sean claramente productoras/distribuidoras de EE.UU. */
+  const PLATAFORMAS_GRANDES = new Set([
+    'netflix', 'hbo', 'hbo max', 'max', 'disney+', 'disney plus', 'apple tv+', 'apple tv plus', 'apple tv',
+    'amazon', 'prime video', 'hulu', 'paramount+', 'paramount plus', 'peacock', 'mgm+',
+    'abc', 'nbc', 'cbs', 'fox', 'the cw', 'cw', 'fx', 'amc', 'showtime', 'starz'
+  ]);
+
+  function esPlataformaGrande(show) {
+    const nombre = ((show.network && show.network.name) || (show.webChannel && show.webChannel.name) || '').trim().toLowerCase();
+    return PLATAFORMAS_GRANDES.has(nombre);
+  }
+
   function regionDeShow(show) {
+    // Estar en una plataforma grande de streaming/cable de EE.UU. ya alcanza
+    // para contar como Hollywood, sin necesitar el país (ver nota arriba).
+    if (esPlataformaGrande(show)) return 'hollywood';
     const paisCanal = (show.network && show.network.country && show.network.country.code)
       || (show.webChannel && show.webChannel.country && show.webChannel.country.code);
     if (paisCanal === 'US') return 'hollywood';
@@ -2443,22 +2468,6 @@
     if (paisCanal === 'TR') return 'turca';
     if (paisCanal && PAISES_LATINOS.has(paisCanal)) return 'latina';
     return 'otra';
-  }
-
-  /* Plataformas y canales grandes de EE.UU., para separar los estrenos que de
-     verdad importan (Netflix, HBO, Disney+, etc.) del resto de canales locales
-     de baja audiencia que TVMaze igual programa. Comparamos por nombre porque
-     TVMaze no da un id estable de network/webChannel utilizable acá; el nombre
-     alcanza para las plataformas grandes (no cambian de nombre seguido). */
-  const PLATAFORMAS_GRANDES = new Set([
-    'netflix', 'hbo', 'hbo max', 'max', 'disney+', 'disney plus', 'apple tv+', 'apple tv plus',
-    'amazon', 'prime video', 'hulu', 'paramount+', 'paramount plus', 'peacock',
-    'abc', 'nbc', 'cbs', 'fox', 'the cw', 'cw', 'fx', 'amc', 'showtime', 'starz'
-  ]);
-
-  function esPlataformaGrande(show) {
-    const nombre = ((show.network && show.network.name) || (show.webChannel && show.webChannel.name) || '').trim().toLowerCase();
-    return PLATAFORMAS_GRANDES.has(nombre);
   }
 
   /* A partir del mismo pool de populares que ya se pide para "🔥 Populares",
@@ -2482,11 +2491,11 @@
 
   /* Estrenos Hollywood: dentro de la lista general de "estrenos" (ya viene
      ordenada por weight desde obtenerNuevasYProximos), nos quedamos solo con
-     los que son de EE.UU. Y de una plataforma/canal grande — así esta sección
-     no se llena de estrenos de canales chicos de otros países. */
+     los que regionDeShow clasifica como Hollywood (plataforma grande de
+     EE.UU., o canal con país US aunque no esté en la lista de grandes). */
   function armarEstrenosHollywood(estrenos) {
     return estrenos
-      .filter(ep => regionDeShow(ep.show) === 'hollywood' && esPlataformaGrande(ep.show))
+      .filter(ep => regionDeShow(ep.show) === 'hollywood')
       .map(ep => ep.show);
   }
 
