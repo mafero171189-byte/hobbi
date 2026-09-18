@@ -1324,8 +1324,8 @@
   const POSTERS_ONBOARDING = ['Wednesday', 'Stranger Things', 'Breaking Bad', 'Squid Game', 'The Last of Us', 'Game of Thrones', 'Loki', 'House of the Dragon', 'The Mandalorian'];
 
   // Precargar imágenes de onboarding apenas se inicializa la app, usando lo que
-  // ya esté en caché (guardarCache/leerCache guardan bajo la clave 'cache_' + key,
-  // con shape { data, ts } — hay que leer del mismo lugar y con el mismo shape).
+  // ya esté en caché (guardarCache/leerCache ahora leen/escriben en memoriaCache,
+  // espejo en RAM de IndexedDB — ver hidratarCacheDesdeIDB más abajo).
   function precargarImagenesOnboarding() {
     POSTERS_ONBOARDING.forEach(nombre => {
       const cache = leerCache('onboarding_' + nombre.toLowerCase());
@@ -1434,11 +1434,35 @@
     return false;
   }
 
+  /* Compatibilidad con versiones anteriores: hasta ahora el caché de TVMaze
+     vivía en localStorage bajo claves 'cache_*', compitiendo por espacio con
+     hobi_favs/hobi_watched_eps (y a veces ganando esa competencia, dejando
+     sin guardar justo lo que no se podía perder). Se borra una sola vez acá
+     — no hace falta migrarlo a IndexedDB, es solo caché, se vuelve a pedir
+     a la red sin drama. */
+  function limpiarCacheViejoDeLocalStorage() {
+    try {
+      Object.keys(localStorage)
+        .filter(k => k.startsWith('cache_'))
+        .forEach(k => localStorage.removeItem(k));
+    } catch { /* si localStorage falla acá, no hay mucho más para hacer */ }
+  }
+  limpiarCacheViejoDeLocalStorage();
+
+  // Arranca la hidratación del caché (IndexedDB -> memoriaCache) apenas se
+  // parsea el script, sin esperar a 'load': así llega lo más lista posible
+  // para cuando algo pida buscar/mostrar pósters. Si algo lee caché antes de
+  // que esto termine, no pasa nada roto — solo pide a la red esa vez.
+  const cacheListo = hidratarCacheDesdeIDB().then(() => limpiarCacheViejo());
+
   window.addEventListener('load', async () => {
     if (window.google && google.accounts && google.accounts.id) {
       google.accounts.id.initialize({ client_id: GOOGLE_CLIENT_ID, callback: manejarCredencialGoogle });
       google.accounts.id.renderButton(document.getElementById('googleBtnOnboarding'), { theme: 'filled_black', size: 'large', shape: 'pill', text: 'signup_with' });
     }
+    // Esperamos a que el caché esté hidratado antes de arrancar cualquier
+    // pedido que pueda aprovecharlo (pósters de onboarding, sesión existente).
+    await cacheListo;
     // La pantalla de login ya se ve desde el primer render (CSS), así que no
     // hace falta "mostrarla" a mano acá. Primero confirmamos si ya había
     // sesión (revisarSesionExistente la cierra sola si es así) y solo si
@@ -1614,26 +1638,124 @@
   window.addEventListener('online', () => { actualizarBandaOffline(); mostrarToast(t('conexionRecuperada'), 'ok'); });
   window.addEventListener('offline', () => { actualizarBandaOffline(); mostrarToast(t('teQuedasteSinConexion'), 'error'); });
 
-  /* ==================== CACHÉ DE RESPUESTAS DE TVMAZE ====================
+  /* ==================== CACHÉ DE RESPUESTAS DE TVMAZE (IndexedDB) ====================
      Evita repetir pedidos a la API para lo mismo en poco tiempo, ahorra datos
-     y hace que la app funcione (con datos algo viejos) si no hay conexión. */
-  const CACHE_TTL_MS = 3 * 60 * 60 * 1000; // 3 horas
+     y hace que la app funcione (con datos algo viejos) si no hay conexión.
 
-  function leerCache(key) {
+     Antes esto vivía en localStorage junto con hobi_favs/hobi_watched_eps, y al
+     llenarse (localStorage suele tener ~5-10MB) el navegador empezaba a rechazar
+     CUALQUIER guardado — incluido el de tus favoritos y episodios vistos, que
+     son los datos que realmente importa no perder. Ahora el caché vive aparte,
+     en IndexedDB (con muchísimo más espacio disponible), y localStorage queda
+     libre solo para esos datos críticos.
+
+     Complicación: IndexedDB es asíncrono, pero varias funciones del código
+     (calcularEstadoSerie, hayEpisodioNuevoSinVer, precargarImagenesOnboarding)
+     necesitan leer el caché de forma síncrona para poder renderizar sin esperar
+     una Promise en medio de un innerHTML. La solución: un espejo en memoria
+     (memoriaCache, un Map) que se hidrata completo desde IndexedDB una sola vez
+     al arrancar la app (hidratarCacheDesdeIDB) y que se actualiza en el momento
+     cada vez que se guarda algo nuevo. leerCache() sigue siendo síncrona (lee
+     del Map); guardarCache() escribe al Map al toque Y persiste en IndexedDB
+     en segundo plano. */
+  const CACHE_TTL_MS = 3 * 60 * 60 * 1000; // 3 horas
+  const CACHE_MAX_EDAD_MS = 7 * 24 * 60 * 60 * 1000; // 7 días: más viejo que esto, se borra solo
+  const IDB_DB_NAME = 'hobbi_cache_db';
+  const IDB_STORE_NAME = 'tvmaze_cache';
+  const IDB_VERSION = 1;
+
+  const memoriaCache = new Map(); // key -> { data, ts } — espejo en RAM de lo que hay en IndexedDB
+  let idbPromise = null;
+
+  function abrirIDB() {
+    if (idbPromise) return idbPromise;
+    idbPromise = new Promise((resolve, reject) => {
+      if (!('indexedDB' in window)) { reject(new Error('IndexedDB no soportado')); return; }
+      const req = indexedDB.open(IDB_DB_NAME, IDB_VERSION);
+      req.onupgradeneeded = () => {
+        const db = req.result;
+        if (!db.objectStoreNames.contains(IDB_STORE_NAME)) {
+          db.createObjectStore(IDB_STORE_NAME); // keyPath implícito: la key que pasamos nosotros
+        }
+      };
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error);
+    });
+    return idbPromise;
+  }
+
+  /* Vuelca TODO el contenido de IndexedDB a memoriaCache. Se llama una vez al
+     arrancar, antes de que cualquier otra parte del código intente leer caché
+     (si algo lee antes de que esto termine, simplemente no encuentra nada
+     cacheado todavía y pide a la red — no rompe nada, solo pierde el caché
+     de esa primera vez). */
+  async function hidratarCacheDesdeIDB() {
     try {
-      const raw = localStorage.getItem('cache_' + key);
-      if (!raw) return null;
-      const { data, ts } = JSON.parse(raw);
-      return { data, vencido: (Date.now() - ts) > CACHE_TTL_MS };
+      const db = await abrirIDB();
+      await new Promise((resolve, reject) => {
+        const tx = db.transaction(IDB_STORE_NAME, 'readonly');
+        const store = tx.objectStore(IDB_STORE_NAME);
+        const req = store.openCursor();
+        req.onsuccess = () => {
+          const cursor = req.result;
+          if (cursor) {
+            memoriaCache.set(cursor.key, cursor.value);
+            cursor.continue();
+          } else {
+            resolve();
+          }
+        };
+        req.onerror = () => reject(req.error);
+      });
     } catch {
-      return null;
+      // Sin IndexedDB disponible (navegador viejo, modo privado estricto, etc.):
+      // la app sigue funcionando, solo que sin caché persistente entre sesiones.
     }
   }
 
-  function guardarCache(key, data) {
+  /* Borra de IndexedDB (y de memoriaCache) las entradas más viejas que
+     CACHE_MAX_EDAD_MS. Se llama una vez al arrancar, después de hidratar,
+     para que el caché no crezca sin límite con búsquedas y series viejas
+     que ya no se visitan. */
+  async function limpiarCacheViejo() {
+    const ahora = Date.now();
+    const keysVencidas = [];
+    memoriaCache.forEach((valor, key) => {
+      if (ahora - (valor.ts || 0) > CACHE_MAX_EDAD_MS) keysVencidas.push(key);
+    });
+    if (!keysVencidas.length) return;
+    keysVencidas.forEach(key => memoriaCache.delete(key));
     try {
-      localStorage.setItem('cache_' + key, JSON.stringify({ data, ts: Date.now() }));
-    } catch { /* localStorage lleno o no disponible: seguimos sin cachear */ }
+      const db = await abrirIDB();
+      const tx = db.transaction(IDB_STORE_NAME, 'readwrite');
+      const store = tx.objectStore(IDB_STORE_NAME);
+      keysVencidas.forEach(key => store.delete(key));
+    } catch {
+      // Si falla el borrado en IDB, no pasa nada grave: ya se borraron de memoriaCache,
+      // y la próxima vez que se hidrate desde IDB, esas entradas vencidas se van a
+      // volver a evaluar (y si siguen viejas, se van a volver a intentar borrar).
+    }
+  }
+
+  function leerCache(key) {
+    const entrada = memoriaCache.get(key);
+    if (!entrada) return null;
+    return { data: entrada.data, vencido: (Date.now() - entrada.ts) > CACHE_TTL_MS };
+  }
+
+  function guardarCache(key, data) {
+    const entrada = { data, ts: Date.now() };
+    memoriaCache.set(key, entrada); // disponible al instante para lecturas síncronas
+    (async () => {
+      try {
+        const db = await abrirIDB();
+        const tx = db.transaction(IDB_STORE_NAME, 'readwrite');
+        tx.objectStore(IDB_STORE_NAME).put(entrada, key);
+      } catch {
+        // Sin IndexedDB no queda persistido entre sesiones, pero memoriaCache
+        // ya lo tiene disponible para el resto de esta sesión.
+      }
+    })();
   }
 
   /* fetch con caché + reintento + mensaje de error entendible.
@@ -1857,8 +1979,9 @@
       localStorage.setItem('hobi_favs', JSON.stringify(favoritos));
       localStorage.setItem('hobi_watched_eps', JSON.stringify(episodiosVistos));
     } catch (err) {
-      // Típicamente QuotaExceededError: localStorage lleno (caché + favoritos + vistos).
-      // A diferencia de guardarCache(), acá sí avisamos: son datos del usuario, no algo descartable.
+      // QuotaExceededError acá ya no debería pasar por culpa del caché de TVMaze
+      // (que ahora vive aparte, en IndexedDB) — pero por las dudas seguimos
+      // avisando si localStorage falla igual: son datos del usuario, no algo descartable.
       console.error('No se pudieron guardar favoritos/vistos:', err);
       mostrarToast(t('errorGuardarDatos'), 'error');
     }
