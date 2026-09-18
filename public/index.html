@@ -203,14 +203,6 @@
     .search-box input { width: 100%; padding: 14px; border-radius: 12px; border: 1px solid var(--border); background-color: var(--surface); color: var(--ink); font-size: 15px; outline: none; }
     .search-box input:focus { border-color: var(--gold); }
 
-    /* Chips de filtro por región/país de origen, en la pantalla de Inicio.
-       Fila horizontal con scroll (como los rails de descubrimiento), para que
-       entren todas las opciones sin ocupar más de una línea en mobile. */
-    .region-filtro-wrap { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 2px; margin: 12px 0 4px; scrollbar-width: none; }
-    .region-filtro-wrap::-webkit-scrollbar { display: none; }
-    .region-chip { flex-shrink: 0; background: var(--surface); border: 1px solid var(--border); color: var(--ink-muted); font-size: 12px; font-weight: 700; padding: 7px 14px; border-radius: 20px; cursor: pointer; white-space: nowrap; }
-    .region-chip.activo { background: var(--gold); border-color: var(--gold); color: var(--gold-ink); }
-
     /* Orden de favoritos */
     .filter-row { display: flex; gap: 8px; }
     .filter-row select { flex: 1; padding: 8px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface); color: var(--ink); font-size: 12px; }
@@ -457,8 +449,6 @@
       <input type="text" id="searchInput" placeholder="Buscar serie online..." oninput="debouncedSearch()">
     </div>
 
-    <div id="regionFiltroWrap" class="region-filtro-wrap" style="display:none;"></div>
-
     <div id="pullIndicatorFavs" class="pull-indicator" role="status" aria-live="polite"></div>
 
     <div id="favsToolbar" style="display:none; flex-direction: column; gap: 10px; margin-bottom: 12px;">
@@ -649,8 +639,7 @@
       verMas: 'Ver más →',
       estrenanPronto: 'Estrenan pronto', nuevas: 'Nuevas', populares: 'Populares',
       estrenosMes: 'Estrenos este mes', vuelvenMes: 'Vuelven este mes',
-      regionTodas: 'Todas', regionHollywood: '🎬 Hollywood', regionCoreana: '🇰🇷 Coreanas', regionTurca: '🇹🇷 Turcas', regionLatina: '🌎 Latinas/España',
-      noHayEnRegion: 'No hay series de esta región en esta categoría por ahora.',
+      regionHollywood: 'Populares Hollywood', regionCoreana: 'Populares coreanas', regionTurca: 'Populares turcas', regionLatina: 'Populares Latinas/España',
       upcoming: 'Upcoming', proximasTemporadas: '🎬 Próximas temporadas', enEmisionHoy: 'En emisión hoy',
       sinVer: 'Episodios sin ver', marcarVisto: 'Marcar como visto',
       errorMarcarVisto: 'No se pudo marcar el episodio. Probá de nuevo.',
@@ -788,8 +777,7 @@
       verMas: 'See more →',
       estrenanPronto: 'Coming soon', nuevas: 'New', populares: 'Popular',
       estrenosMes: 'Premiering this month', vuelvenMes: 'Returning this month',
-      regionTodas: 'All', regionHollywood: '🎬 Hollywood', regionCoreana: '🇰🇷 Korean', regionTurca: '🇹🇷 Turkish', regionLatina: '🌎 Latin/Spain',
-      noHayEnRegion: 'No shows from this region in this category right now.',
+      regionHollywood: 'Popular Hollywood', regionCoreana: 'Popular Korean', regionTurca: 'Popular Turkish', regionLatina: 'Popular Latin/Spain',
       upcoming: 'Upcoming', proximasTemporadas: '🎬 Upcoming seasons', enEmisionHoy: 'Airing today',
       sinVer: 'Unwatched episodes', marcarVisto: 'Mark as watched',
       errorMarcarVisto: 'Couldn\'t mark the episode. Try again.',
@@ -2158,7 +2146,6 @@
     document.getElementById('tabCalendar').setAttribute('aria-selected', vista === 'calendario');
 
     document.getElementById('searchBoxContainer').style.display = vista === 'inicio' ? 'block' : 'none';
-    document.getElementById('regionFiltroWrap').style.display = vista === 'inicio' ? 'flex' : 'none';
     document.getElementById('favsToolbar').style.display = vista === 'favoritos' ? 'flex' : 'none';
 
     if (vista === 'favoritos') renderizarFavoritos();
@@ -2240,14 +2227,12 @@
   async function obtenerPopulares() {
     // TVMaze no tiene un endpoint de "populares", pero cada serie trae un campo
     // "weight" que ellos mismos usan como señal de relevancia/popularidad.
-    // Antes solo pedíamos la página 0 (~250 series, mayormente anglo), que
-    // alcanzaba para un catálogo genérico pero se quedaba corto para filtrar
-    // por región (con Coreanas o Turcas activo, quedaban muy pocos resultados).
-    // Pedimos 4 páginas (~1000 series) para tener bastante más de dónde elegir
-    // en cualquier región — cada página cachea aparte, así que solo se vuelve a
-    // pedir a la red la que esté vencida.
+    // Pedimos 2 páginas (~500 series) — con 4 la pantalla de Inicio se quedaba
+    // colgada en "Buscando..." mucho tiempo (4 pedidos grandes en paralelo a
+    // la vez que se pide el resto del descubrimiento). 2 sigue dando bastante
+    // más variedad que la 1 sola de antes, sin volver lenta la carga inicial.
     const paginas = await Promise.all(
-      [0, 1, 2, 3].map(p => fetchJSON(`https://api.tvmaze.com/shows?page=${p}`, `shows_page${p}`).catch(() => []))
+      [0, 1].map(p => fetchJSON(`https://api.tvmaze.com/shows?page=${p}`, `shows_page${p}`).catch(() => []))
     );
     return paginas.flat().sort((a, b) => (b.weight || 0) - (a.weight || 0));
   }
@@ -2359,12 +2344,16 @@
   }
 
   /* Guarda la última tanda completa de cada categoría para que "Ver más" no tenga que volver a pedir nada. */
-  let catalogoDescubrimiento = { estrenos: [], vuelven: [], nuevas: [], populares: [] };
+  let catalogoDescubrimiento = { estrenos: [], vuelven: [], nuevas: [], populares: [], popularesHollywood: [], popularesCoreana: [], popularesTurca: [], popularesLatina: [] };
   const CATEGORIAS_DESCUBRIMIENTO = {
     estrenos: { emoji: '🆕', clave: 'estrenosMes' },
     vuelven: { emoji: '🔁', clave: 'vuelvenMes' },
     nuevas: { emoji: '✨', clave: 'nuevas' },
-    populares: { emoji: '🔥', clave: 'populares' }
+    populares: { emoji: '🔥', clave: 'populares' },
+    popularesHollywood: { emoji: '🎬', clave: 'regionHollywood' },
+    popularesCoreana: { emoji: '🇰🇷', clave: 'regionCoreana' },
+    popularesTurca: { emoji: '🇹🇷', clave: 'regionTurca' },
+    popularesLatina: { emoji: '🌎', clave: 'regionLatina' }
   };
 
   function tituloConEmoji(id) {
@@ -2440,67 +2429,50 @@
     return 'otra';
   }
 
-  const REGIONES_FILTRO = ['todas', 'hollywood', 'coreana', 'turca', 'latina'];
-  const CLAVE_I18N_REGION = { todas: 'regionTodas', hollywood: 'regionHollywood', coreana: 'regionCoreana', turca: 'regionTurca', latina: 'regionLatina' };
-  let regionActiva = localStorage.getItem('hobi_region_filtro') || 'todas';
-  if (!REGIONES_FILTRO.includes(regionActiva)) regionActiva = 'todas';
-
-  /* Ordena poniendo primero la región activa (si es 'todas', deja el orden
-     original) — igual que hacía ordenarHollywoodPrimero, pero generalizado.
-     Ya NO filtra: eso ahora lo hace filtrarPorRegion antes de renderizar. */
-  function ordenarPorRegionActiva(shows) {
-    if (regionActiva === 'todas') return shows.slice();
-    return shows.slice().sort((a, b) => (regionDeShow(a) === regionActiva ? 0 : 1) - (regionDeShow(b) === regionActiva ? 0 : 1));
-  }
-
-  /* Si hay un filtro de región activo (no "todas"), deja pasar solo esas series. */
-  function filtrarPorRegion(shows) {
-    if (regionActiva === 'todas') return shows;
-    return shows.filter(show => regionDeShow(show) === regionActiva);
-  }
-
-  function renderizarChipsRegion() {
-    const wrap = document.getElementById('regionFiltroWrap');
-    if (!wrap) return;
-    wrap.style.display = 'flex';
-    wrap.innerHTML = REGIONES_FILTRO.map(region => `
-      <button type="button" class="region-chip ${region === regionActiva ? 'activo' : ''}" onclick="seleccionarRegion('${region}')">${t(CLAVE_I18N_REGION[region])}</button>
-    `).join('');
-  }
-
-  function seleccionarRegion(region) {
-    if (region === regionActiva) return;
-    regionActiva = region;
-    localStorage.setItem('hobi_region_filtro', region);
-    renderizarChipsRegion();
-    cargarDescubrimiento();
+  /* A partir del mismo pool de populares que ya se pide para "🔥 Populares",
+     arma un grupo aparte por cada región (sin filtro manual del usuario: se
+     muestran todas las que tengan resultados, como secciones fijas más del
+     catálogo — igual que Estrenos/Vuelven/Nuevas). Cada una sortea 24 shows
+     de esa región dentro del mismo pool ya cacheado, sin pedir nada nuevo. */
+  function armarPopularesPorRegion(popularesPool) {
+    const porRegion = { hollywood: [], coreana: [], turca: [], latina: [] };
+    popularesPool.forEach(show => {
+      const region = regionDeShow(show);
+      if (porRegion[region]) porRegion[region].push(show);
+    });
+    return {
+      popularesHollywood: elegirAlAzar(porRegion.hollywood, 24),
+      popularesCoreana: elegirAlAzar(porRegion.coreana, 24),
+      popularesTurca: elegirAlAzar(porRegion.turca, 24),
+      popularesLatina: elegirAlAzar(porRegion.latina, 24)
+    };
   }
 
   async function cargarDescubrimiento() {
-    renderizarChipsRegion();
     try {
       const [popularesPool, { nuevas, estrenos, vuelven }] = await Promise.all([
         obtenerPopulares().catch(() => []),
         obtenerNuevasYProximos().catch(() => ({ nuevas: [], estrenos: [], vuelven: [] }))
       ]);
-      // Filtramos por región ANTES de elegir al azar los populares: si no, con
-      // el filtro en "Coreanas" podíamos terminar sorteando entre poquísimas
-      // series coreanas dentro de un pool de 1000 mayormente no-coreanas.
-      const populares = elegirAlAzar(filtrarPorRegion(popularesPool), 24);
+      const populares = elegirAlAzar(popularesPool, 24);
+      const porRegion = armarPopularesPorRegion(popularesPool);
 
       // Si el usuario ya escribió algo o cambió de pestaña mientras esto cargaba, no pisamos nada.
       const holder = document.getElementById('discoverHolder');
       if (!holder) return;
 
       holder.innerHTML = '';
-      renderizarRailDescubrimiento(holder, 'estrenos', ordenarPorRegionActiva(filtrarPorRegion(estrenos.map(ep => ep.show))));
-      renderizarRailDescubrimiento(holder, 'vuelven', ordenarPorRegionActiva(filtrarPorRegion(vuelven.map(ep => ep.show))));
-      renderizarRailDescubrimiento(holder, 'nuevas', ordenarPorRegionActiva(filtrarPorRegion(nuevas.map(ep => ep.show))));
+      renderizarRailDescubrimiento(holder, 'estrenos', estrenos.map(ep => ep.show));
+      renderizarRailDescubrimiento(holder, 'vuelven', vuelven.map(ep => ep.show));
+      renderizarRailDescubrimiento(holder, 'nuevas', nuevas.map(ep => ep.show));
       renderizarRailDescubrimiento(holder, 'populares', populares);
+      renderizarRailDescubrimiento(holder, 'popularesHollywood', porRegion.popularesHollywood);
+      renderizarRailDescubrimiento(holder, 'popularesCoreana', porRegion.popularesCoreana);
+      renderizarRailDescubrimiento(holder, 'popularesTurca', porRegion.popularesTurca);
+      renderizarRailDescubrimiento(holder, 'popularesLatina', porRegion.popularesLatina);
 
       if (!holder.children.length) {
-        const mensaje = regionActiva === 'todas' ? t('noSePudoCargarCatalogo') : t('noHayEnRegion');
-        holder.innerHTML = `<p style="text-align:center; color:var(--ink-muted); font-size:13px;">${mensaje}</p>`;
+        holder.innerHTML = `<p style="text-align:center; color:var(--ink-muted); font-size:13px;">${t('noSePudoCargarCatalogo')}</p>`;
       }
     } catch {
       const holder = document.getElementById('discoverHolder');
@@ -2553,7 +2525,6 @@
       document.getElementById('detailView').style.display = 'none';
       document.getElementById('listView').style.display = 'block';
       document.getElementById('searchBoxContainer').style.display = 'none';
-      document.getElementById('regionFiltroWrap').style.display = 'none';
       document.getElementById('tabSearch').classList.add('active');
       document.getElementById('tabFavs').classList.remove('active');
       document.getElementById('tabCalendar').classList.remove('active');
@@ -2618,7 +2589,6 @@
     const container = document.getElementById('seriesList');
     if (!query) return mostrarPlaceholderBusqueda();
 
-    document.getElementById('regionFiltroWrap').style.display = 'none';
     const miToken = ++tokenBusquedaActual;
     container.innerHTML = `<p style="text-align:center; color:var(--ink-muted);">${t('buscando')}</p>`;
 
