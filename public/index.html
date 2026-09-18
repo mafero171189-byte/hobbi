@@ -640,6 +640,7 @@
       estrenanPronto: 'Estrenan pronto', nuevas: 'Nuevas', populares: 'Populares',
       estrenosMes: 'Estrenos este mes', vuelvenMes: 'Vuelven este mes',
       regionHollywood: 'Populares Hollywood', regionCoreana: 'Populares coreanas', regionTurca: 'Populares turcas', regionLatina: 'Populares Latinas/España',
+      estrenosHollywoodMes: 'Estrenos Hollywood',
       upcoming: 'Upcoming', proximasTemporadas: '🎬 Próximas temporadas', enEmisionHoy: 'En emisión hoy',
       sinVer: 'Episodios sin ver', marcarVisto: 'Marcar como visto',
       errorMarcarVisto: 'No se pudo marcar el episodio. Probá de nuevo.',
@@ -778,6 +779,7 @@
       estrenanPronto: 'Coming soon', nuevas: 'New', populares: 'Popular',
       estrenosMes: 'Premiering this month', vuelvenMes: 'Returning this month',
       regionHollywood: 'Popular Hollywood', regionCoreana: 'Popular Korean', regionTurca: 'Popular Turkish', regionLatina: 'Popular Latin/Spain',
+      estrenosHollywoodMes: 'Hollywood Premieres',
       upcoming: 'Upcoming', proximasTemporadas: '🎬 Upcoming seasons', enEmisionHoy: 'Airing today',
       sinVer: 'Unwatched episodes', marcarVisto: 'Mark as watched',
       errorMarcarVisto: 'Couldn\'t mark the episode. Try again.',
@@ -2329,24 +2331,31 @@
     const futurosE1 = episodiosFuturos.flat().flatMap(normalizarEntradaWeb).filter((ep) => ep.number === 1);
 
     // Estrenos: series totalmente nuevas (T1E1) que salen el resto de este mes.
+    // Antes solo se ordenaba por fecha, lo que mezclaba estrenos de canales
+    // masivos (Netflix, HBO) con contenido nicho de canales locales de
+    // cualquier país — TVMaze programa igual todo lo que sale en el mundo, sin
+    // distinguir relevancia. Ahora se ordena por "weight" (la misma señal de
+    // popularidad que usa Populares) para que lo más relevante salga primero.
     const estrenos = sinDuplicados(
       futurosE1.filter((ep) => ep.season === 1)
-        .sort((a, b) => new Date(a.airstamp || a.airdate) - new Date(b.airstamp || b.airdate))
+        .sort((a, b) => (b.show.weight || 0) - (a.show.weight || 0) || new Date(a.airstamp || a.airdate) - new Date(b.airstamp || b.airdate))
     );
 
     // Vuelven este mes: series que ya existían y arrancan una temporada nueva (T2+, E1).
+    // Mismo criterio: relevancia primero, fecha como desempate.
     const vuelven = sinDuplicados(
       futurosE1.filter((ep) => ep.season > 1)
-        .sort((a, b) => new Date(a.airstamp || a.airdate) - new Date(b.airstamp || b.airdate))
+        .sort((a, b) => (b.show.weight || 0) - (a.show.weight || 0) || new Date(a.airstamp || a.airdate) - new Date(b.airstamp || b.airdate))
     );
 
     return { nuevas, estrenos, vuelven };
   }
 
   /* Guarda la última tanda completa de cada categoría para que "Ver más" no tenga que volver a pedir nada. */
-  let catalogoDescubrimiento = { estrenos: [], vuelven: [], nuevas: [], populares: [], popularesHollywood: [], popularesCoreana: [], popularesTurca: [], popularesLatina: [] };
+  let catalogoDescubrimiento = { estrenos: [], estrenosHollywood: [], vuelven: [], nuevas: [], populares: [], popularesHollywood: [], popularesCoreana: [], popularesTurca: [], popularesLatina: [] };
   const CATEGORIAS_DESCUBRIMIENTO = {
     estrenos: { emoji: '🆕', clave: 'estrenosMes' },
+    estrenosHollywood: { emoji: '🎬', clave: 'estrenosHollywoodMes' },
     vuelven: { emoji: '🔁', clave: 'vuelvenMes' },
     nuevas: { emoji: '✨', clave: 'nuevas' },
     populares: { emoji: '🔥', clave: 'populares' },
@@ -2429,6 +2438,22 @@
     return 'otra';
   }
 
+  /* Plataformas y canales grandes de EE.UU., para separar los estrenos que de
+     verdad importan (Netflix, HBO, Disney+, etc.) del resto de canales locales
+     de baja audiencia que TVMaze igual programa. Comparamos por nombre porque
+     TVMaze no da un id estable de network/webChannel utilizable acá; el nombre
+     alcanza para las plataformas grandes (no cambian de nombre seguido). */
+  const PLATAFORMAS_GRANDES = new Set([
+    'netflix', 'hbo', 'hbo max', 'max', 'disney+', 'disney plus', 'apple tv+', 'apple tv plus',
+    'amazon', 'prime video', 'hulu', 'paramount+', 'paramount plus', 'peacock',
+    'abc', 'nbc', 'cbs', 'fox', 'the cw', 'cw', 'fx', 'amc', 'showtime', 'starz'
+  ]);
+
+  function esPlataformaGrande(show) {
+    const nombre = ((show.network && show.network.name) || (show.webChannel && show.webChannel.name) || '').trim().toLowerCase();
+    return PLATAFORMAS_GRANDES.has(nombre);
+  }
+
   /* A partir del mismo pool de populares que ya se pide para "🔥 Populares",
      arma un grupo aparte por cada región (sin filtro manual del usuario: se
      muestran todas las que tengan resultados, como secciones fijas más del
@@ -2448,6 +2473,16 @@
     };
   }
 
+  /* Estrenos Hollywood: dentro de la lista general de "estrenos" (ya viene
+     ordenada por weight desde obtenerNuevasYProximos), nos quedamos solo con
+     los que son de EE.UU. Y de una plataforma/canal grande — así esta sección
+     no se llena de estrenos de canales chicos de otros países. */
+  function armarEstrenosHollywood(estrenos) {
+    return estrenos
+      .filter(ep => regionDeShow(ep.show) === 'hollywood' && esPlataformaGrande(ep.show))
+      .map(ep => ep.show);
+  }
+
   async function cargarDescubrimiento() {
     try {
       const [popularesPool, { nuevas, estrenos, vuelven }] = await Promise.all([
@@ -2456,6 +2491,7 @@
       ]);
       const populares = elegirAlAzar(popularesPool, 24);
       const porRegion = armarPopularesPorRegion(popularesPool);
+      const estrenosHollywood = armarEstrenosHollywood(estrenos);
 
       // Si el usuario ya escribió algo o cambió de pestaña mientras esto cargaba, no pisamos nada.
       const holder = document.getElementById('discoverHolder');
@@ -2463,6 +2499,7 @@
 
       holder.innerHTML = '';
       renderizarRailDescubrimiento(holder, 'estrenos', estrenos.map(ep => ep.show));
+      renderizarRailDescubrimiento(holder, 'estrenosHollywood', estrenosHollywood);
       renderizarRailDescubrimiento(holder, 'vuelven', vuelven.map(ep => ep.show));
       renderizarRailDescubrimiento(holder, 'nuevas', nuevas.map(ep => ep.show));
       renderizarRailDescubrimiento(holder, 'populares', populares);
