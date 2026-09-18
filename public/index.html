@@ -563,6 +563,13 @@
         </button>
       </div>
 
+      <div class="ajustes-seccion">
+        <button class="ajustes-btn" onclick="mostrarDebugEstrenos()" id="ajustesDebugBtn">
+          <span>🐛 Debug: ver canales de Estrenos</span>
+          <span>→</span>
+        </button>
+      </div>
+
       <div class="ajustes-seccion" style="border-top:none; margin-top:4px; padding-top:0; text-align:center;">
         <button class="ajustes-link-sutil" onclick="eliminarCuenta()" id="ajustesEliminarCuentaBtn">Eliminar cuenta</button>
       </div>
@@ -2481,6 +2488,48 @@
     return estrenos
       .filter(ep => regionDeShow(ep.show) === 'hollywood' && esPlataformaGrande(ep.show))
       .map(ep => ep.show);
+  }
+
+  /* ==================== DEBUG TEMPORAL — sacar cuando esté resuelto ====================
+     Muestra en pantalla (sin necesitar DevTools) el listado de "Estrenos" con
+     su canal/plataforma y país tal como los devuelve TVMaze, para diagnosticar
+     por qué "Estrenos Hollywood" viene vacío: puede ser que el nombre del canal
+     no matchee con PLATAFORMAS_GRANDES, o que TVMaze no informe el país. */
+  function mostrarDebugEstrenos() {
+    const lista = catalogoDescubrimiento.estrenos || [];
+    let texto;
+    if (!lista.length) {
+      texto = 'catalogoDescubrimiento.estrenos está vacío — entrá a la pestaña Inicio primero para que se cargue, y después volvé a Ajustes y tocá este botón de nuevo.';
+    } else {
+      texto = lista.map(show => {
+        const canal = (show.network && show.network.name) || (show.webChannel && show.webChannel.name) || '(sin canal)';
+        const pais = (show.network && show.network.country && show.network.country.code) || (show.webChannel && show.webChannel.country && show.webChannel.country.code) || '(sin país)';
+        const esGrande = esPlataformaGrande(show) ? 'SÍ' : 'no';
+        const region = regionDeShow(show);
+        return `${show.name}\n  canal: "${canal}" | país: ${pais} | región: ${region} | plataforma grande: ${esGrande}`;
+      }).join('\n\n');
+    }
+
+    const overlay = document.createElement('div');
+    overlay.className = 'confirm-overlay';
+    overlay.innerHTML = `
+      <div class="confirm-box" style="max-width:100%; width:100%; max-height:80vh; display:flex; flex-direction:column;">
+        <div class="confirm-title">Debug: canales de Estrenos</div>
+        <textarea readonly style="flex:1; min-height:300px; background:var(--surface-2); color:var(--ink); border:1px solid var(--border); border-radius:8px; padding:10px; font-size:11px; font-family:monospace; white-space:pre; overflow:auto; margin-bottom:12px;">${texto}</textarea>
+        <div class="confirm-actions">
+          <button class="confirm-btn cancel" id="debugCerrarBtn">Cerrar</button>
+          <button class="confirm-btn delete" id="debugCopiarBtn" style="background:var(--teal);">Copiar</button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(overlay);
+    overlay.querySelector('#debugCerrarBtn').onclick = () => overlay.remove();
+    overlay.querySelector('#debugCopiarBtn').onclick = () => {
+      const ta = overlay.querySelector('textarea');
+      ta.select();
+      navigator.clipboard?.writeText(texto).then(() => mostrarToast('Copiado', 'ok')).catch(() => {});
+    };
+    overlay.onclick = (e) => { if (e.target === overlay) overlay.remove(); };
   }
 
   async function cargarDescubrimiento() {
