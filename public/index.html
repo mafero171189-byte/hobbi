@@ -2783,13 +2783,26 @@
     const cacheEps = leerCache(`eps_${show.id}`);
 
     if (!cacheEps || !cacheEps.data || !cacheEps.data.length) {
-      // Sin caché todavía (recién agregada, nunca se abrió el detalle): usamos lo que haya.
+      // Sin caché todavía (recién agregada o recién encontrada en el buscador,
+      // nunca se abrió el detalle): usamos lo que haya.
       if (show.proximoEstreno && new Date(show.proximoEstreno + 'T23:59:59').getTime() >= ahora) {
         return { texto: t('estadoEnEmisionCard'), clase: '' };
       }
+      // TVMaze da status "Ended" o "Canceled" cuando la serie terminó de verdad.
+      // Cualquier otro valor (incluido null antes de estrenar, "To Be Determined",
+      // o algo no-"Running" para una serie que directamente no arrancó todavía)
+      // NO alcanza para decir "Finalizada": antes cualquier status distinto de
+      // "Running" cerraba como Finalizada, y eso marcaba mal series que ni
+      // siquiera estrenaron su primer episodio (ver caso VisionQuest).
+      if (show.status === 'Ended' || show.status === 'Canceled' || show.status === 'To Be Determined') {
+        return { texto: t('estadoFinalizadaCard'), clase: 'ended' };
+      }
+      if (show.status === 'In Development') {
+        return { texto: t('estadoEsperandoCard'), clase: 'paused' };
+      }
       return show.status === 'Running'
         ? { texto: t('estadoEnPausaCard'), clase: 'paused' }
-        : { texto: t('estadoFinalizadaCard'), clase: 'ended' };
+        : { texto: t('estadoEnEmisionCard'), clase: '' };
     }
 
     const episodios = cacheEps.data;
@@ -2857,9 +2870,13 @@
     }
 
     const badgeNuevo = esVistaFavoritos && hayEpisodioNuevoSinVer(show) ? '<span class="badge-nuevo">🔴 Nuevo</span>' : '';
-    const estado = esVistaFavoritos
-      ? calcularEstadoSerie(show)
-      : { texto: show.status === 'Running' ? t('estadoEnEmisionCard') : t('estadoFinalizadaCard'), clase: show.status !== 'Running' ? 'ended' : '' };
+    // Antes, fuera de Favoritos (buscador/descubrir) se usaba un atajo que solo
+    // miraba show.status === 'Running': una serie que todavía no estrenó ningún
+    // episodio y que TVMaze marca con otro status (no exactamente "Running",
+    // por ejemplo antes del estreno) caía como "Finalizada" por error, aunque
+    // esté por salir. calcularEstadoSerie ya contempla ese caso (mira fecha de
+    // estreno / caché de episodios si existe), así que la usamos siempre.
+    const estado = calcularEstadoSerie(show);
     card.classList.add(estado.clase || 'live');
 
     let extraHTML = '';
