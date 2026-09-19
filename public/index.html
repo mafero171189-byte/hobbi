@@ -2248,10 +2248,20 @@
       document.getElementById('searchInput').value = '';
     }
 
-    // Solo agregamos una entrada nueva al historial si de verdad cambiamos de pantalla
-    // (evita que tocar la misma pestaña dos veces obligue a apretar Atrás dos veces).
+    // Los 3 tabs principales (Inicio/Favoritos/Calendario) NO se apilan entre
+    // sí en el historial: reemplazamos la entrada actual en vez de agregar
+    // una nueva. Si se apilaran (como antes), ir Inicio → Favoritos →
+    // Calendario → Inicio → Favoritos dejaba 5 entradas en la pila, y Atrás
+    // había que tocarlo 5 veces (recorriendo cada tab visitado) antes de que
+    // recién ahí saliera de la app. Con replaceState, estando en cualquier
+    // tab, Atrás va directo a Inicio (si no estabas ahí) o sale de la app (si
+    // ya estabas en Inicio) — la entrada de "inicio" de más abajo sigue
+    // siendo el piso que hace de límite (ver history.replaceState de más abajo).
+    // Detalle de serie y catálogo completo (verDetalles/verCatalogoCompleto)
+    // no pasan por acá: esos sí siguen apilándose, para que Atrás vuelva bien
+    // a la pantalla desde la que entraste.
     if (push && vistaActual !== vista) {
-      history.pushState({ view: vista }, '', '#' + vista);
+      history.replaceState({ view: vista }, '', '#' + vista);
     }
     vistaActual = vista;
   }
@@ -3301,8 +3311,17 @@
     // pantalla principal ya mostraba esta fecha (entrada.airstamp/airdate);
     // acá faltaba porque crearTarjetaSerie solo tenía el status genérico de
     // calcularEstadoSerie ("Próximo estreno", sin día concreto).
-    const fechaEstrenoHTML = fechaEstrenoTexto
-      ? `<div class="status" style="color:var(--gold); font-weight:700;">${fechaEstrenoTexto}</div>`
+    //
+    // En Favoritos pasa lo mismo pero por otro camino: cuando el status es
+    // "renewed" (calcularEstadoSerie no encontró premiered ni episodios
+    // emitidos), el texto es igual de genérico. show.proximoEstreno SÍ suele
+    // tener la fecha (la calculan toggleFavorito/actualizarFavoritos aparte),
+    // así que si no vino fechaEstrenoTexto por otro lado, la sacamos de ahí.
+    const fechaEstrenoFavoritos = (!fechaEstrenoTexto && esVistaFavoritos && estado.clase === 'renewed' && show.proximoEstreno)
+      ? formatearFechaEstrenoTexto({ airdate: show.proximoEstreno })
+      : '';
+    const fechaEstrenoHTML = (fechaEstrenoTexto || fechaEstrenoFavoritos)
+      ? `<div class="status" style="color:var(--gold); font-weight:700;">${fechaEstrenoTexto || fechaEstrenoFavoritos}</div>`
       : '';
 
     let extraHTML = '';
