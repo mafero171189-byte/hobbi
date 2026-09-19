@@ -474,10 +474,6 @@
               <input type="checkbox" id="soloPendientes" onchange="renderizarFavoritos()">
               Ocultar las que ya vi completas
             </label>
-            <label class="pendientes-toggle" id="labelMostrarFinalizadasCompletas">
-              <input type="checkbox" id="mostrarFinalizadasCompletas" onchange="renderizarFavoritos()">
-              Mostrar finalizadas que ya vi completas
-            </label>
           </div>
         </div>
       </div>
@@ -633,7 +629,7 @@
       ordenRecientes: 'Recién agregadas', ordenAlfabetico: 'Alfabético',
       estadoTodas: 'Todas', estadoEnEmisionOpt: 'En emisión', estadoFinalizadas: 'Finalizadas',
       ocultarCompletas: 'Ocultar las que ya vi completas',
-      mostrarFinalizadasCompletas: 'Mostrar finalizadas que ya vi completas',
+      finalizadasVistasTitulo: '✅ Finalizadas y vistas',
       noFavoritos: 'No tenés series en favoritos.',
       ningunaCoincide: 'Ninguna coincide con ese filtro.',
       buscando: 'Buscando...',
@@ -777,7 +773,7 @@
       ordenRecientes: 'Recently added', ordenAlfabetico: 'Alphabetical',
       estadoTodas: 'All', estadoEnEmisionOpt: 'On air', estadoFinalizadas: 'Ended',
       ocultarCompletas: 'Hide the ones I already watched fully',
-      mostrarFinalizadasCompletas: 'Show finished shows I\'ve fully watched',
+      finalizadasVistasTitulo: '✅ Finished & watched',
       noFavoritos: "You don't have any favorite shows yet.",
       ningunaCoincide: 'None match that filter.',
       buscando: 'Searching...',
@@ -970,7 +966,6 @@
     estadoSel.options[2].textContent = t('estadoFinalizadas');
 
     document.getElementById('labelOcultarCompletas').lastChild.textContent = ' ' + t('ocultarCompletas');
-    document.getElementById('labelMostrarFinalizadasCompletas').lastChild.textContent = ' ' + t('mostrarFinalizadasCompletas');
     document.getElementById('detailBackBtn').textContent = t('volver');
     document.getElementById('notifBtn') && actualizarBotonNotif();
     document.getElementById('offlineBanner').textContent = t('sinConexionBanner');
@@ -3496,17 +3491,14 @@
     mostrarToast(t('episodioMarcadoVisto')(show.name), 'ok');
 
     // Si este era el último episodio pendiente, la card puede tener que
-    // desaparecer por dos motivos, los mismos que aplica renderizarFavoritos:
-    // "Ocultar las que ya vi completas" (cualquier serie 100% vista) o el
-    // auto-ocultamiento de finalizadas completas (solo si además terminó).
-    // Sin este chequeo acá, la card se queda visible hasta el próximo cambio
-    // de vista, aunque ya no debería estar en la lista con esos filtros.
+    // desaparecer (si "Ocultar las que ya vi completas" está tildado) o, si
+    // además la serie ya finalizó, reubicarse en el grupo de "Finalizadas y
+    // vistas" de más abajo. Sin este chequeo acá, la card se queda donde
+    // estaba hasta el próximo cambio de vista.
     const soloPendientes = document.getElementById('soloPendientes')?.checked;
-    const mostrarFinalizadasCompletas = document.getElementById('mostrarFinalizadasCompletas')?.checked;
     const yaEstaCompleta = fav.totalEpisodesCount && vistosCount >= fav.totalEpisodesCount;
-    const debeOcultarse = (soloPendientes && yaEstaCompleta) || (!mostrarFinalizadasCompletas && esFinalizadaYCompleta(fav));
 
-    if (debeOcultarse) {
+    if (soloPendientes && yaEstaCompleta) {
       const wrapper = card.closest('.swipe-wrapper');
       if (wrapper) {
         wrapper.style.transition = 'opacity 0.25s ease, height 0.25s ease, margin 0.25s ease';
@@ -3517,6 +3509,12 @@
           setTimeout(() => wrapper.remove(), 250);
         }, 250);
       }
+    } else if (esFinalizadaYCompleta(fav)) {
+      // No se oculta: se re-renderiza toda la lista para que esta card pase
+      // a aparecer en el grupo de abajo en vez de quedarse arriba mezclada
+      // con las activas. Un pequeño delay para que el toast de "marcado
+      // como visto" se alcance a leer antes de que la lista se reordene.
+      setTimeout(() => renderizarFavoritos(), 600);
     }
   }
 
@@ -4438,9 +4436,8 @@
     if (!btn) return;
     const estado = document.getElementById('estadoFavoritos').value;
     const soloPendientes = document.getElementById('soloPendientes').checked;
-    const mostrarFinalizadasCompletas = document.getElementById('mostrarFinalizadasCompletas').checked;
     const orden = document.getElementById('ordenFavoritos').value;
-    const hayFiltroActivo = estado !== 'todas' || soloPendientes || mostrarFinalizadasCompletas || orden !== 'agregada';
+    const hayFiltroActivo = estado !== 'todas' || soloPendientes || orden !== 'agregada';
     btn.classList.toggle('activo', hayFiltroActivo);
   }
 
@@ -4450,7 +4447,6 @@
     const estado = document.getElementById('estadoFavoritos').value;
     const filtroTexto = document.getElementById('filtroFavoritos').value.trim().toLowerCase();
     const soloPendientes = document.getElementById('soloPendientes').checked;
-    const mostrarFinalizadasCompletas = document.getElementById('mostrarFinalizadasCompletas').checked;
 
     let lista = favoritos.slice();
 
@@ -4469,13 +4465,6 @@
         return vistosCount < f.totalEpisodesCount;
       });
     }
-    // Por defecto, una serie finalizada que ya viste por completo se oculta
-    // sola de la lista (ya no tiene nada pendiente ni puede sumar episodios
-    // nuevos) — así no ocupa lugar entre las que sí siguen activas. El
-    // checkbox "Mostrar finalizadas que ya vi completas" la trae de vuelta.
-    if (!mostrarFinalizadasCompletas) {
-      lista = lista.filter(f => !esFinalizadaYCompleta(f));
-    }
 
     if (orden === 'alfabetico') {
       lista.sort((a, b) => a.name.localeCompare(b.name));
@@ -4490,9 +4479,42 @@
       container.innerHTML = `<p style="text-align:center; color:var(--ink-muted); margin-top:20px;">${mensaje}</p>`;
       return;
     }
-    lista.forEach(show => {
+
+    // Ya no se ocultan solas: las finalizadas que ya viste completas siguen
+    // apareciendo siempre, pero agrupadas al final bajo su propio título, en
+    // vez de mezcladas con las que siguen activas/pendientes. Si "soloPendientes"
+    // está tildado, ese filtro de arriba ya sacó a todas las completas de
+    // "lista" — no tendría sentido separar un grupo que siempre va a estar vacío.
+    if (soloPendientes) {
+      lista.forEach(show => {
+        container.appendChild(crearTarjetaSerie(show, true));
+      });
+      dispararFallbackImagenes(container);
+      return;
+    }
+
+    const activas = lista.filter(f => !esFinalizadaYCompleta(f));
+    const finalizadasVistas = lista.filter(f => esFinalizadaYCompleta(f));
+
+    activas.forEach(show => {
       container.appendChild(crearTarjetaSerie(show, true));
     });
+
+    if (finalizadasVistas.length) {
+      const titulo = document.createElement('h3');
+      titulo.className = 'marquee';
+      titulo.style.margin = activas.length ? '24px 0 16px' : '4px 0 16px';
+      titulo.style.fontSize = '20px';
+      titulo.style.color = 'var(--ink-muted)';
+      titulo.style.letterSpacing = '0.5px';
+      titulo.textContent = t('finalizadasVistasTitulo');
+      container.appendChild(titulo);
+
+      finalizadasVistas.forEach(show => {
+        container.appendChild(crearTarjetaSerie(show, true));
+      });
+    }
+
     dispararFallbackImagenes(container);
   }
 
