@@ -1204,6 +1204,85 @@
     return 'data:image/svg+xml,' + encodeURIComponent(svg);
   }
 
+  /* ==================== FALLBACK DE PÓSTER VÍA OMDb ====================
+     Cuando TVMaze no trae imagen para una serie (show.image === null, pasa
+     bastante con series nuevas/de nicho), en vez de quedarnos directo con el
+     placeholder de iniciales, probamos pedirle el póster a OMDb (omdbapi.com,
+     1000 requests/día gratis) buscando por nombre. Si tampoco tiene, se sigue
+     usando el placeholder como hasta ahora — esto es un respaldo, no un
+     reemplazo de TVMaze.
+
+     Cómo se integra sin tocar los 7 lugares que ya arman <img>: cada <img>
+     que hoy cae al placeholder se marca con data-fallback-nombre (el nombre
+     de la serie, para buscarlo en OMDb) y data-fallback-buscado="0". Después
+     de insertar esas tarjetas en el DOM, se llama a
+     dispararFallbackImagenes(contenedor), que junta esas <img> pendientes,
+     pide el póster de cada nombre distinto UNA sola vez (aunque aparezca en
+     varias tarjetas a la vez, ej. la misma serie en dos rails), y si lo
+     encuentra, actualiza el src de todas las <img> visibles con ese nombre.
+     Si la serie ya no está en pantalla cuando responde OMDb (cambiaste de
+     pestaña), simplemente no encuentra ninguna <img> que actualizar y no
+     rompe nada. */
+  const OMDB_API_KEY = 'ba5c4b62';
+  const cacheFallbackPoster = new Map(); // nombre normalizado -> URL de póster (o null si ya se buscó y no hay)
+  const fallbackEnVuelo = new Set(); // nombres con un pedido a OMDb ya en curso, para no duplicar
+
+  async function buscarPosterFallback(nombre) {
+    const clave = (nombre || '').trim().toLowerCase();
+    if (!clave) return null;
+    if (cacheFallbackPoster.has(clave)) return cacheFallbackPoster.get(clave);
+    if (fallbackEnVuelo.has(clave)) return null; // ya hay un pedido en curso para este nombre; esta llamada no espera
+    fallbackEnVuelo.add(clave);
+    try {
+      const data = await fetchJSON(
+        `https://www.omdbapi.com/?t=${encodeURIComponent(nombre)}&apikey=${OMDB_API_KEY}`,
+        `omdb_${clave}`
+      );
+      // OMDb devuelve 200 OK aunque no encuentre nada: Response:"False" es el
+      // caso de "no existe" (no un error de red), y Poster:"N/A" es "existe
+      // pero no tiene póster cargado" — ambos casos se cachean como null para
+      // no volver a pedirlo cada vez que aparece esta serie.
+      const url = (data && data.Response === 'True' && data.Poster && data.Poster !== 'N/A') ? data.Poster : null;
+      cacheFallbackPoster.set(clave, url);
+      return url;
+    } catch {
+      // Sin conexión o falló OMDb: no cacheamos el null acá (a diferencia de
+      // arriba) para que se pueda reintentar la próxima vez que aparezca esta
+      // serie, en vez de quedar marcada como "sin póster" por una falla de red puntual.
+      return null;
+    } finally {
+      fallbackEnVuelo.delete(clave);
+    }
+  }
+
+  /* Recorre las <img data-fallback-nombre> pendientes dentro de contenedor y,
+     para cada nombre distinto, pide el póster una sola vez y actualiza el src
+     de todas las <img> de ese nombre que sigan en pantalla. Se llama al final
+     de cada función que arma tarjetas con placeholderPorNombre como opción. */
+  function dispararFallbackImagenes(contenedor) {
+    if (!contenedor || !contenedor.querySelectorAll) return;
+    const pendientes = contenedor.querySelectorAll('img[data-fallback-nombre][data-fallback-buscado="0"]');
+    if (!pendientes.length) return;
+
+    const nombresUnicos = new Set();
+    pendientes.forEach(img => {
+      img.dataset.fallbackBuscado = '1'; // evita volver a encolar esta misma <img> si se llama de nuevo
+      nombresUnicos.add(img.dataset.fallbackNombre);
+    });
+
+    nombresUnicos.forEach(nombre => {
+      buscarPosterFallback(nombre).then(url => {
+        if (!url) return;
+        // Buscamos de nuevo en document (no en "contenedor", que puede ya no
+        // existir si se cambió de pantalla) por si esta serie aparece en más
+        // de un lugar visible ahora mismo.
+        document.querySelectorAll(`img[data-fallback-nombre="${CSS.escape(nombre)}"]`).forEach(img => {
+          img.src = url;
+        });
+      });
+    });
+  }
+
   let favoritos = JSON.parse(localStorage.getItem('hobi_favs')) || [];
 
 
@@ -2447,6 +2526,17 @@
      obtenerEstrenosYProximos) — en ese caso se muestra la fecha de estreno
      debajo del nombre, útil para "Próximos Estrenos" donde lo que más importa
      es cuándo sale cada una. */
+  /* Formatea la fecha de una entrada {airstamp, airdate} al mismo texto corto
+     que ya usaba el rail chico ("19 sept"). Se comparte entre
+     renderizarRailDescubrimiento y verCatalogoCompleto para que la fecha se
+     vea igual en ambos lugares. Devuelve '' si la entrada no trae fecha. */
+  function formatearFechaEstrenoTexto(entrada) {
+    const ts = entrada && (entrada.airstamp || entrada.airdate);
+    if (!ts) return '';
+    const fecha = new Date(entrada.airstamp || `${entrada.airdate}T00:00:00`);
+    return fecha.toLocaleDateString(t('localeFecha'), { day: 'numeric', month: 'short' });
+  }
+
   function renderizarRailDescubrimiento(container, id, items, mostrarFechas = false) {
     if (!items.length) return;
     catalogoDescubrimiento[id] = items;
@@ -2468,21 +2558,20 @@
       const item = document.createElement('div');
       item.className = 'discover-item';
       item.onclick = () => verDetalles(show.id);
-      const imagen = (show.image && (show.image.medium || show.image.original)) || placeholderPorNombre(show.name);
+      const tieneImagen = show.image && (show.image.medium || show.image.original);
+      const imagen = tieneImagen || placeholderPorNombre(show.name);
+      const atrsFallback = tieneImagen ? '' : `data-fallback-nombre="${show.name.replace(/"/g, '&quot;')}" data-fallback-buscado="0"`;
       let fechaHTML = '';
       if (mostrarFechas) {
-        const ts = entrada.airstamp || entrada.airdate;
-        if (ts) {
-          const fecha = new Date(entrada.airstamp || `${entrada.airdate}T00:00:00`);
-          const fechaTexto = fecha.toLocaleDateString(t('localeFecha'), { day: 'numeric', month: 'short' });
-          fechaHTML = `<div class="discover-name" style="color:var(--gold); font-weight:700;">${fechaTexto}</div>`;
-        }
+        const fechaTexto = formatearFechaEstrenoTexto(entrada);
+        if (fechaTexto) fechaHTML = `<div class="discover-name" style="color:var(--gold); font-weight:700;">${fechaTexto}</div>`;
       }
-      item.innerHTML = `<img src="${imagen}" alt="${show.name}" loading="lazy"><div class="discover-name">${show.name}</div>${fechaHTML}`;
+      item.innerHTML = `<img src="${imagen}" alt="${show.name}" loading="lazy" ${atrsFallback}><div class="discover-name">${show.name}</div>${fechaHTML}`;
       rail.appendChild(item);
     });
     section.appendChild(rail);
     container.appendChild(section);
+    dispararFallbackImagenes(section);
   }
 
   /* Muestra el catálogo completo de una categoría como lista vertical, con vuelta al descubrimiento. */
@@ -2494,7 +2583,18 @@
     const items = catalogoDescubrimiento[id] || [];
     // Estas categorías guardan entradas {show, airstamp, ...} (para tener la
     // fecha disponible); el resto de categorías guarda shows directos.
-    const shows = CATEGORIAS_CON_FECHA.has(id) ? items.map(entrada => entrada.show) : items;
+    const conFecha = CATEGORIAS_CON_FECHA.has(id);
+    const shows = conFecha ? items.map(entrada => entrada.show) : items;
+    // Mapa show.id -> texto de fecha, para no perder la referencia a la
+    // entrada original una vez que ya separamos "shows" arriba.
+    const fechasPorId = new Map();
+    if (conFecha) {
+      items.forEach((entrada) => {
+        if (entrada.show && entrada.show.id) {
+          fechasPorId.set(entrada.show.id, formatearFechaEstrenoTexto(entrada));
+        }
+      });
+    }
 
     // Esto era lo que faltaba: el contenido de #seriesList se actualizaba bien,
     // pero #detailView (que queda con display:block después de ver una serie)
@@ -2537,9 +2637,10 @@
         image: show.image ? (show.image.medium || show.image.original) : '',
         status: show.status,
         premiered: show.premiered
-      }, false, idsFav));
+      }, false, idsFav, fechasPorId.get(show.id) || ''));
     });
     container.appendChild(lista);
+    dispararFallbackImagenes(lista);
   }
 
   /* Heurística de región/origen de una serie: mira el país del canal o
@@ -2964,6 +3065,7 @@
         }, false, idsFav));
       });
       container.appendChild(lista);
+      dispararFallbackImagenes(lista);
     } catch {
       container.innerHTML = `<p style="text-align:center; color:var(--danger);">${t('errorBuscador')}</p>`;
     }
@@ -3039,6 +3141,7 @@
         }, false, idsFav);
         container.appendChild(card);
       });
+      dispararFallbackImagenes(container);
     } catch {
       if (miToken !== tokenBusquedaActual) return; // el error es de una búsqueda vieja, no pisamos la actual
       container.innerHTML = navigator.onLine
@@ -3171,7 +3274,7 @@
   // O(1) por card en vez de recorrer favoritos.length en cada una (crearTarjetaSerie
   // se llama en loop al renderizar listas de resultados/descubrir). Se recalcula
   // solo cuando hace falta, no en cada card individual.
-  function crearTarjetaSerie(show, esVistaFavoritos, idsFavoritosSet) {
+  function crearTarjetaSerie(show, esVistaFavoritos, idsFavoritosSet, fechaEstrenoTexto) {
     const esFav = idsFavoritosSet ? idsFavoritosSet.has(show.id) : favoritos.some(f => f.id === show.id);
     const card = document.createElement('div');
     card.className = 'card';
@@ -3198,6 +3301,15 @@
     const estado = calcularEstadoSerie(show);
     card.classList.add(estado.clase || 'live');
 
+    // fechaEstrenoTexto: solo lo pasa verCatalogoCompleto para categorías de
+    // "Próximos estrenos" (general o por plataforma). El rail chico de la
+    // pantalla principal ya mostraba esta fecha (entrada.airstamp/airdate);
+    // acá faltaba porque crearTarjetaSerie solo tenía el status genérico de
+    // calcularEstadoSerie ("Próximo estreno", sin día concreto).
+    const fechaEstrenoHTML = fechaEstrenoTexto
+      ? `<div class="status" style="color:var(--gold); font-weight:700;">${fechaEstrenoTexto}</div>`
+      : '';
+
     let extraHTML = '';
     if (esVistaFavoritos && estado.clase === '' && show.proximoEstreno) {
       extraHTML = `<div class="next-air">${t('proximoEpisodioLabel')(show.proximoEstreno)}</div>`;
@@ -3209,12 +3321,17 @@
           ${esFav ? '❤️' : '🤍'}
         </button>`;
 
+    const tieneImagen = !!show.image;
+    const imgSrc = tieneImagen ? show.image : placeholderPorNombre(show.name);
+    const atrsFallback = tieneImagen ? '' : `data-fallback-nombre="${show.name.replace(/"/g, '&quot;')}" data-fallback-buscado="0"`;
+
     card.innerHTML = `
       <div class="card-top">
-        <img src="${show.image || placeholderPorNombre(show.name)}" onclick="verDetalles(${show.id})" loading="eager" decoding="async" alt="${show.name}">
+        <img src="${imgSrc}" onclick="verDetalles(${show.id})" loading="eager" decoding="async" alt="${show.name}" ${atrsFallback}>
         <div class="card-info" onclick="verDetalles(${show.id})">
           <h3>${show.name}${badgeNuevo}</h3>
           <div class="status ${estado.clase}">${estado.texto}</div>
+          ${fechaEstrenoHTML}
           ${progresoHTML}
         </div>
         ${botonFavHTML}
@@ -3581,7 +3698,7 @@
           <button class="fav-btn" id="detailFavBtn" onclick="toggleFavorito(event, ${JSON.stringify(serieParaFav).replace(/"/g, '&quot;')})" aria-label="${esFavActual ? t('quitarDeFavoritos') : t('agregarAFavoritos')}">
             ${esFavActual ? '❤️' : '🤍'}
           </button>
-          <img class="detail-poster" src="${show.image ? (show.image.medium || show.image.original) : placeholderPorNombre(show.name)}" srcset="${show.image ? `${show.image.medium || show.image.original} 1x${show.image.original ? `, ${show.image.original} 2x` : ''}` : ''}" alt="${show.name}" loading="eager" fetchpriority="high" decoding="async">
+          <img class="detail-poster" src="${show.image ? (show.image.medium || show.image.original) : placeholderPorNombre(show.name)}" srcset="${show.image ? `${show.image.medium || show.image.original} 1x${show.image.original ? `, ${show.image.original} 2x` : ''}` : ''}" alt="${show.name}" loading="eager" fetchpriority="high" decoding="async" ${show.image ? '' : `data-fallback-nombre="${show.name.replace(/"/g, '&quot;')}" data-fallback-buscado="0"`}>
           ${ratingHTML}
           <h2>${show.name}</h2>
           <p class="detail-tags">${show.genres.join(', ')}</p>
@@ -3627,6 +3744,7 @@
 
       container.innerHTML = html;
       actualizarBotonesTemporada();
+      dispararFallbackImagenes(container);
     } catch {
       if (detalleActualId !== showId) return; // el error es de una serie que ya no estamos viendo
       container.innerHTML = navigator.onLine
@@ -3826,6 +3944,7 @@
         epsDeLaSerie.forEach(ep => container.appendChild(crearCardEpisodioSinVer(ep)));
       }
     });
+    dispararFallbackImagenes(container);
   }
 
   function crearCardEpisodioSinVer(ep) {
@@ -3838,8 +3957,9 @@
     const card = document.createElement('div');
     card.className = 'sinver-card';
     card.id = `sinver-${ep.episodioId}`;
+    const atrsFallbackSinVer = ep.imagen ? '' : `data-fallback-nombre="${ep.serieNombre.replace(/"/g, '&quot;')}" data-fallback-buscado="0"`;
     card.innerHTML = `
-      <img src="${ep.imagen || placeholderPorNombre(ep.serieNombre)}" loading="lazy" onclick="verDetalles(${ep.serieId})">
+      <img src="${ep.imagen || placeholderPorNombre(ep.serieNombre)}" loading="lazy" onclick="verDetalles(${ep.serieId})" ${atrsFallbackSinVer}>
       <div class="sinver-info" onclick="verDetalles(${ep.serieId})">
         <h4>${ep.serieNombre}</h4>
         <div class="sinver-badge">📺 ${etiquetaEpisodio}</div>
@@ -3858,8 +3978,9 @@
     const header = document.createElement('button');
     header.type = 'button';
     header.className = 'sinver-grupo-header';
+    const atrsFallbackGrupo = serie.imagen ? '' : `data-fallback-nombre="${serie.serieNombre.replace(/"/g, '&quot;')}" data-fallback-buscado="0"`;
     header.innerHTML = `
-      <img src="${serie.imagen || placeholderPorNombre(serie.serieNombre)}" loading="lazy">
+      <img src="${serie.imagen || placeholderPorNombre(serie.serieNombre)}" loading="lazy" ${atrsFallbackGrupo}>
       <div class="sinver-info">
         <h4>${serie.serieNombre}</h4>
         <div class="sinver-badge">${t('episodiosSinVer')(epsDeLaSerie.length)}</div>
@@ -3935,6 +4056,7 @@
 
       const item = document.createElement('div');
       item.className = 'timeline-item';
+      const atrsFallbackTimeline = ep.imagen ? '' : `data-fallback-nombre="${ep.serieNombre.replace(/"/g, '&quot;')}" data-fallback-buscado="0"`;
       item.innerHTML = `
         <div class="timeline-marker">
           <span class="time-value">${valor}</span>
@@ -3942,7 +4064,7 @@
           <div class="timeline-dot"></div>
         </div>
         <div class="timeline-card" onclick="verDetalles(${ep.serieId})">
-          <img src="${ep.imagen || placeholderPorNombre(ep.serieNombre)}" loading="lazy">
+          <img src="${ep.imagen || placeholderPorNombre(ep.serieNombre)}" loading="lazy" ${atrsFallbackTimeline}>
           <div class="timeline-card-info">
             <h4>${ep.serieNombre}</h4>
             <div class="timeline-badge">📺 ${etiquetaEpisodio}</div>
@@ -3954,6 +4076,7 @@
     });
 
     container.appendChild(wrapper);
+    dispararFallbackImagenes(wrapper);
 
     // Ajusta la píldora del degradado para que empiece y termine exactamente en el primer y último punto
     const posicionarTrack = () => {
@@ -4030,10 +4153,11 @@
       const capitulosTexto = temp.cantidad
         ? (temp.esRegistrado ? t('capitulosRegistrados')(temp.cantidad) : t('capitulosPrevistos')(temp.cantidad))
         : t('capitulosPorConfirmar');
+      const atrsFallbackTemp = temp.imagen ? '' : `data-fallback-nombre="${temp.serieNombre.replace(/"/g, '&quot;')}" data-fallback-buscado="0"`;
 
       card.innerHTML = `
         <div class="season-upcoming-top" onclick="verDetalles(${temp.serieId})">
-          <img src="${temp.imagen || placeholderPorNombre(temp.serieNombre)}" alt="${temp.serieNombre}" loading="lazy">
+          <img src="${temp.imagen || placeholderPorNombre(temp.serieNombre)}" alt="${temp.serieNombre}" loading="lazy" ${atrsFallbackTemp}>
           <div class="season-upcoming-info">
             <h4>${temp.serieNombre}</h4>
             <div class="season-label">${t('temporadaLabel')(temp.temporada)}</div>
@@ -4048,6 +4172,7 @@
     });
 
     container.appendChild(section);
+    dispararFallbackImagenes(section);
   }
 
   /* PESTAÑA CALENDARIO: próximos episodios + próximas temporadas de los favoritos */
@@ -4368,6 +4493,7 @@
     lista.forEach(show => {
       container.appendChild(crearTarjetaSerie(show, true));
     });
+    dispararFallbackImagenes(container);
   }
 
   /* Una serie cuenta como "finalizada y completa" (candidata a ocultarse sola
