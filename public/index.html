@@ -2454,6 +2454,23 @@
     // "próximosEstrenos" guarda entradas {show, airstamp, ...} (para tener la
     // fecha disponible); el resto de categorías guarda shows directos.
     const shows = id === 'proximosEstrenos' ? items.map(entrada => entrada.show) : items;
+
+    // Esto era lo que faltaba: el contenido de #seriesList se actualizaba bien,
+    // pero #detailView (que queda con display:block después de ver una serie)
+    // nunca se ocultaba acá. Resultado: al volver del detalle con Atrás, por
+    // debajo ya estaba el catálogo, pero en pantalla seguía tapando todo la
+    // vista de detalle — parecía que Atrás "no hacía nada" hasta el segundo
+    // toque (que sí pasaba por cambiarVista, que sí oculta detailView).
+    document.getElementById('detailView').style.display = 'none';
+    document.getElementById('calendarView').style.display = 'none';
+    document.getElementById('listView').style.display = 'block';
+    document.getElementById('searchBoxContainer').style.display = 'none';
+    document.getElementById('favsToolbar').style.display = 'none';
+    document.getElementById('tabSearch').classList.add('active');
+    document.getElementById('tabFavs').classList.remove('active');
+    document.getElementById('tabCalendar').classList.remove('active');
+    reiniciarFadeIn(document.getElementById('listView'));
+
     const container = document.getElementById('seriesList');
     container.innerHTML = `
       <button class="back-btn" onclick="volverALista()" style="margin-bottom:12px;">${t('volver')}</button>
