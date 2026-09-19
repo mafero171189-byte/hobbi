@@ -649,6 +649,9 @@
       regionHollywood: 'Populares Hollywood', regionCoreana: 'Populares coreanas', regionTurca: 'Populares turcas', regionLatina: 'Populares Latinas/España',
       estrenosHollywoodMes: 'Estrenos Hollywood',
       proximosEstrenosClave: 'Próximos Estrenos',
+      proximosNetflix: 'Próximos en Netflix', proximosPrimeVideo: 'Próximos en Prime Video',
+      proximosHboMax: 'Próximos en HBO Max', proximosAppleTv: 'Próximos en Apple TV+', proximosDisney: 'Próximos en Disney+',
+      proximosHulu: 'Próximos en Hulu', proximosParamount: 'Próximos en Paramount+',
       upcoming: 'Upcoming', proximasTemporadas: '🎬 Próximas temporadas', enEmisionHoy: 'En emisión hoy',
       sinVer: 'Episodios sin ver', marcarVisto: 'Marcar como visto',
       errorMarcarVisto: 'No se pudo marcar el episodio. Probá de nuevo.',
@@ -790,6 +793,9 @@
       regionHollywood: 'Popular Hollywood', regionCoreana: 'Popular Korean', regionTurca: 'Popular Turkish', regionLatina: 'Popular Latin/Spain',
       estrenosHollywoodMes: 'Hollywood Premieres',
       proximosEstrenosClave: 'Upcoming Premieres',
+      proximosNetflix: 'Upcoming on Netflix', proximosPrimeVideo: 'Upcoming on Prime Video',
+      proximosHboMax: 'Upcoming on HBO Max', proximosAppleTv: 'Upcoming on Apple TV+', proximosDisney: 'Upcoming on Disney+',
+      proximosHulu: 'Upcoming on Hulu', proximosParamount: 'Upcoming on Paramount+',
       upcoming: 'Upcoming', proximasTemporadas: '🎬 Upcoming seasons', enEmisionHoy: 'Airing today',
       sinVer: 'Unwatched episodes', marcarVisto: 'Mark as watched',
       errorMarcarVisto: 'Couldn\'t mark the episode. Try again.',
@@ -2410,7 +2416,7 @@
   }
 
   /* Guarda la última tanda completa de cada categoría para que "Ver más" no tenga que volver a pedir nada. */
-  let catalogoDescubrimiento = { estrenos: [], estrenosHollywood: [], proximosEstrenos: [], vuelven: [], nuevas: [], populares: [], popularesHollywood: [], popularesCoreana: [], popularesTurca: [], popularesLatina: [] };
+  let catalogoDescubrimiento = { estrenos: [], estrenosHollywood: [], proximosEstrenos: [], vuelven: [], nuevas: [], populares: [], popularesHollywood: [], popularesCoreana: [], popularesTurca: [], popularesLatina: [], proximosNetflix: [], proximosPrimeVideo: [], proximosHboMax: [], proximosAppleTv: [], proximosDisney: [], proximosHulu: [], proximosParamount: [] };
   const CATEGORIAS_DESCUBRIMIENTO = {
     estrenos: { emoji: '🆕', clave: 'estrenosMes' },
     estrenosHollywood: { emoji: '🎬', clave: 'estrenosHollywoodMes' },
@@ -2421,7 +2427,14 @@
     popularesHollywood: { emoji: '🎬', clave: 'regionHollywood' },
     popularesCoreana: { emoji: '🇰🇷', clave: 'regionCoreana' },
     popularesTurca: { emoji: '🇹🇷', clave: 'regionTurca' },
-    popularesLatina: { emoji: '🌎', clave: 'regionLatina' }
+    popularesLatina: { emoji: '🌎', clave: 'regionLatina' },
+    proximosNetflix: { emoji: '📅', clave: 'proximosNetflix' },
+    proximosPrimeVideo: { emoji: '📅', clave: 'proximosPrimeVideo' },
+    proximosHboMax: { emoji: '📅', clave: 'proximosHboMax' },
+    proximosAppleTv: { emoji: '📅', clave: 'proximosAppleTv' },
+    proximosDisney: { emoji: '📅', clave: 'proximosDisney' },
+    proximosHulu: { emoji: '📅', clave: 'proximosHulu' },
+    proximosParamount: { emoji: '📅', clave: 'proximosParamount' }
   };
 
   function tituloConEmoji(id) {
@@ -2473,11 +2486,15 @@
   }
 
   /* Muestra el catálogo completo de una categoría como lista vertical, con vuelta al descubrimiento. */
+  const CATEGORIAS_CON_FECHA = new Set([
+    'proximosEstrenos', 'proximosNetflix', 'proximosPrimeVideo', 'proximosHboMax', 'proximosAppleTv', 'proximosDisney', 'proximosHulu', 'proximosParamount'
+  ]);
+
   function verCatalogoCompleto(id, push = true) {
     const items = catalogoDescubrimiento[id] || [];
-    // "próximosEstrenos" guarda entradas {show, airstamp, ...} (para tener la
+    // Estas categorías guardan entradas {show, airstamp, ...} (para tener la
     // fecha disponible); el resto de categorías guarda shows directos.
-    const shows = id === 'proximosEstrenos' ? items.map(entrada => entrada.show) : items;
+    const shows = CATEGORIAS_CON_FECHA.has(id) ? items.map(entrada => entrada.show) : items;
 
     // Esto era lo que faltaba: el contenido de #seriesList se actualizaba bien,
     // pero #detailView (que queda con display:block después de ver una serie)
@@ -2615,6 +2632,74 @@
       .map(ep => ep.show);
   }
 
+  /* Mapeo de nombre-de-canal-normalizado -> plataforma canónica, para poder
+     agrupar "Próximos Estrenos" por plataforma específica (Netflix, HBO,
+     Disney+, etc.) en vez de solo por región. A diferencia de PLATAFORMAS_GRANDES
+     (que es un Set de pertenencia, usado para decidir "es Hollywood sí/no"),
+     acá varias variantes de nombre apuntan a la MISMA plataforma real: 'hbo',
+     'hbo max' y 'max' son todas HBO/Max; 'amazon' y 'prime video' son Prime
+     Video; etc. Sin este mapeo, HBO y Max aparecerían como dos rails
+     separados aunque sean el mismo servicio. Se completan acá TODAS las
+     plataformas de PLATAFORMAS_GRANDES (no solo streaming) para que ningún
+     estreno de esa lista quede fuera de un rail. */
+  const PLATAFORMA_CANONICA = new Map([
+    ['netflix', { id: 'netflix', nombre: 'Netflix' }],
+    ['hbo', { id: 'hbomax', nombre: 'HBO Max' }],
+    ['hbo max', { id: 'hbomax', nombre: 'HBO Max' }],
+    ['max', { id: 'hbomax', nombre: 'HBO Max' }],
+    ['disney+', { id: 'disney', nombre: 'Disney+' }],
+    ['disney plus', { id: 'disney', nombre: 'Disney+' }],
+    ['apple tv+', { id: 'appletv', nombre: 'Apple TV+' }],
+    ['apple tv plus', { id: 'appletv', nombre: 'Apple TV+' }],
+    ['apple tv', { id: 'appletv', nombre: 'Apple TV+' }],
+    ['amazon', { id: 'primevideo', nombre: 'Prime Video' }],
+    ['prime video', { id: 'primevideo', nombre: 'Prime Video' }],
+    ['hulu', { id: 'hulu', nombre: 'Hulu' }],
+    ['paramount+', { id: 'paramount', nombre: 'Paramount+' }],
+    ['paramount plus', { id: 'paramount', nombre: 'Paramount+' }],
+    ['peacock', { id: 'peacock', nombre: 'Peacock' }],
+    ['mgm+', { id: 'mgmplus', nombre: 'MGM+' }],
+    ['abc', { id: 'abc', nombre: 'ABC' }],
+    ['nbc', { id: 'nbc', nombre: 'NBC' }],
+    ['cbs', { id: 'cbs', nombre: 'CBS' }],
+    ['fox', { id: 'fox', nombre: 'FOX' }],
+    ['the cw', { id: 'cw', nombre: 'The CW' }],
+    ['cw', { id: 'cw', nombre: 'The CW' }],
+    ['fx', { id: 'fx', nombre: 'FX' }],
+    ['amc', { id: 'amc', nombre: 'AMC' }],
+    ['showtime', { id: 'showtime', nombre: 'Showtime' }],
+    ['starz', { id: 'starz', nombre: 'Starz' }]
+  ]);
+
+  // Estas plataformas de streaming tienen rail propio fijo (en este orden);
+  // el resto de PLATAFORMA_CANONICA (Peacock, MGM+, ABC, NBC, CBS, FOX, etc.)
+  // sigue contando para "Hollywood" en general, pero no tiene rail separado —
+  // con menos estrenos confirmados en TVMaze, un rail dedicado quedaría casi
+  // siempre vacío.
+  const ORDEN_PLATAFORMAS_PROXIMOS = ['netflix', 'primevideo', 'hbomax', 'appletv', 'disney', 'hulu', 'paramount'];
+
+  /* Agrupa "proximosEstrenos" (T1E1 confirmados en los próximos 90 días, ya
+     vienen de obtenerEstrenosYProximos) por plataforma específica. Devuelve
+     un objeto { netflix: [...], primevideo: [...], ... } con las 5 claves de
+     ORDEN_PLATAFORMAS_PROXIMOS, cada una ya ordenada cronológicamente (mismo
+     criterio que "Próximos Estrenos" general: acá importa cuándo sale, no
+     tanto la relevancia). */
+  function armarProximosPorPlataforma(proximosEstrenos) {
+    const porPlataforma = {};
+    ORDEN_PLATAFORMAS_PROXIMOS.forEach(id => { porPlataforma[id] = []; });
+
+    proximosEstrenos.forEach((entrada) => {
+      const show = entrada.show;
+      const nombreCanal = ((show.network && show.network.name) || (show.webChannel && show.webChannel.name) || '').trim().toLowerCase();
+      const plataforma = PLATAFORMA_CANONICA.get(nombreCanal);
+      if (plataforma && porPlataforma[plataforma.id]) {
+        porPlataforma[plataforma.id].push(entrada);
+      }
+    });
+
+    return porPlataforma;
+  }
+
   /* ==================== DEBUG TEMPORAL — sacar cuando esté resuelto ====================
      Muestra en pantalla (sin necesitar DevTools) el listado de "Estrenos" con
      su canal/plataforma y país tal como los devuelve TVMaze, para diagnosticar
@@ -2665,7 +2750,9 @@
      antes que las lentas (Estrenos/Vuelven/Próximos, que dependen de ~91
      pedidos a la API). */
   const ORDEN_SECCIONES_DESCUBRIMIENTO = [
-    'estrenos', 'estrenosHollywood', 'proximosEstrenos', 'vuelven', 'nuevas',
+    'estrenos', 'estrenosHollywood', 'proximosEstrenos',
+    'proximosNetflix', 'proximosPrimeVideo', 'proximosHboMax', 'proximosAppleTv', 'proximosDisney', 'proximosHulu', 'proximosParamount',
+    'vuelven', 'nuevas',
     'populares', 'popularesHollywood', 'popularesCoreana', 'popularesTurca', 'popularesLatina'
   ];
 
@@ -2762,14 +2849,22 @@
     obtenerEstrenosYProximos().then(({ estrenos, vuelven, proximosEstrenos }) => {
       if (!holderVigente()) return;
       const estrenosHollywood = armarEstrenosHollywood(estrenos);
+      const proximosPorPlataforma = armarProximosPorPlataforma(proximosEstrenos);
       resolverSlotDescubrimiento(holder, 'estrenos', estrenos.map(ep => ep.show));
       resolverSlotDescubrimiento(holder, 'estrenosHollywood', estrenosHollywood);
       resolverSlotDescubrimiento(holder, 'proximosEstrenos', proximosEstrenos, true);
+      resolverSlotDescubrimiento(holder, 'proximosNetflix', proximosPorPlataforma.netflix, true);
+      resolverSlotDescubrimiento(holder, 'proximosPrimeVideo', proximosPorPlataforma.primevideo, true);
+      resolverSlotDescubrimiento(holder, 'proximosHboMax', proximosPorPlataforma.hbomax, true);
+      resolverSlotDescubrimiento(holder, 'proximosAppleTv', proximosPorPlataforma.appletv, true);
+      resolverSlotDescubrimiento(holder, 'proximosDisney', proximosPorPlataforma.disney, true);
+      resolverSlotDescubrimiento(holder, 'proximosHulu', proximosPorPlataforma.hulu, true);
+      resolverSlotDescubrimiento(holder, 'proximosParamount', proximosPorPlataforma.paramount, true);
       resolverSlotDescubrimiento(holder, 'vuelven', vuelven.map(ep => ep.show));
       quitarSlotSiQuedoVacio(holder);
     }).catch(() => {
       if (!holderVigente()) return;
-      ['estrenos', 'estrenosHollywood', 'proximosEstrenos', 'vuelven']
+      ['estrenos', 'estrenosHollywood', 'proximosEstrenos', 'proximosNetflix', 'proximosPrimeVideo', 'proximosHboMax', 'proximosAppleTv', 'proximosDisney', 'proximosHulu', 'proximosParamount', 'vuelven']
         .forEach((id) => resolverSlotDescubrimiento(holder, id, []));
       quitarSlotSiQuedoVacio(holder);
     });
