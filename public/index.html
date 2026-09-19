@@ -2225,9 +2225,7 @@
       <div style="text-align:center; margin: 20px 0 22px; padding: 0 10px;">
         <p style="color:var(--ink-muted); font-size:13px; line-height:1.5;">${t('buscarSerieEmpezar')}</p>
       </div>
-      <div id="discoverHolder">
-        <p style="text-align:center; color:var(--ink-muted); font-size:13px;">${t('buscando')}</p>
-      </div>
+      <div id="discoverHolder"></div>
     `;
     cargarDescubrimiento();
   }
@@ -2274,22 +2272,89 @@
     return resultados;
   }
 
-  async function obtenerNuevasYProximos() {
+  /* Antes esta única función pedía pasados y futuros juntos y devolvía todo
+     recién cuando ambos terminaban. Se separó en obtenerNuevas (rápida, 5
+     pedidos) y obtenerEstrenosYProximos (lenta, ~91 pedidos) para que
+     cargarDescubrimiento pueda pintar cada rail apenas está listo, sin que
+     la parte rápida quede esperando a la lenta. Ambas comparten
+     normalizarEntradaWeb, sinDuplicados y traerDia (definidas una sola vez
+     acá abajo). */
+
+  // /schedule/web no siempre trae el show en "ep.show" directo como /schedule:
+  // a veces viene anidado en "ep._embedded.show", y algunas entradas agrupan
+  // varios episodios juntos (estrenos de temporada completa) bajo "_embedded.episodes".
+  // Esta función deja todo normalizado en una sola forma: {show, season, number, airstamp, airdate}.
+  function normalizarEntradaWeb(ep) {
+    const show = ep.show || (ep._embedded && ep._embedded.show) || null;
+    if (!show) return [];
+
+    const episodiosAgrupados = ep._embedded && Array.isArray(ep._embedded.episodes) ? ep._embedded.episodes : null;
+    if (episodiosAgrupados && episodiosAgrupados.length) {
+      return episodiosAgrupados.map(sub => ({
+        show,
+        season: sub.season,
+        number: sub.number,
+        airstamp: sub.airstamp || ep.airstamp,
+        airdate: sub.airdate || ep.airdate
+      }));
+    }
+
+    return [{
+      show,
+      season: ep.season,
+      number: ep.number,
+      airstamp: ep.airstamp,
+      airdate: ep.airdate
+    }];
+  }
+
+  function sinDuplicadosDeShow(lista) {
+    const vistos = new Set();
+    return lista.filter((ep) => {
+      if (!ep.show || vistos.has(ep.show.id)) return false;
+      vistos.add(ep.show.id);
+      return true;
+    });
+  }
+
+  const traerDiaSchedule = (fecha) => fetchJSON(`https://api.tvmaze.com/schedule/web?date=${fecha}`, `schedule_web_${fecha}`).catch(() => []);
+
+  /* "Nuevas" sale sola de los últimos 5 días: son solo 5 pedidos en paralelo,
+     así que resuelve rápido. La separamos de los futuros (91 pedidos en
+     lotes de 8, mucho más lenta) para poder pintar este rail apenas está
+     listo, sin esperar a que termine el resto. */
+  async function obtenerNuevas() {
     const hoy = new Date();
     const fechasPasadas = [];
     for (let i = 1; i <= 5; i++) {
       const d = new Date(hoy); d.setDate(d.getDate() - i);
       fechasPasadas.push(formatearFechaISO(d));
     }
+    const episodiosPasados = await Promise.all(fechasPasadas.map(traerDiaSchedule));
 
-    // Desde hoy hasta 90 días adelante (~3 meses): antes solo se pedía hasta
-    // fin del mes actual, que alcanzaba para "Estrenos/Vuelven este mes" pero
-    // dejaba afuera cualquier estreno ya confirmado más allá de este mes. Con
-    // este horizonte más amplio armamos, aparte, una sección "Próximos
-    // Estrenos" con todo lo confirmado a futuro sin límite práctico de fecha.
-    // Se pide en lotes de a 8 días en paralelo (fetchEnLotes) para no saturar
-    // la API con ~90 pedidos a la vez; cada día queda cacheado 3hs aparte, así
-    // que solo se vuelve a pedir a la red lo que esté vencido.
+    // Nuevas: el primer capítulo de una serie (T1E1) salió en los últimos 5 días.
+    return sinDuplicadosDeShow(
+      episodiosPasados.flat().flatMap(normalizarEntradaWeb)
+        .filter((ep) => ep.season === 1 && ep.number === 1)
+        .sort((a, b) => new Date(b.airstamp || b.airdate) - new Date(a.airstamp || a.airdate))
+    );
+  }
+
+  /* Estrenos/Vuelven/Próximos Estrenos salen de los 90 días futuros: es la
+     parte lenta (91 pedidos, en lotes de 8 → ~12 rondas secuenciales). Va
+     aparte para que "Nuevas" y "Populares" (mucho más rápidas) no tengan
+     que esperarla.
+
+     Desde hoy hasta 90 días adelante (~3 meses): antes solo se pedía hasta
+     fin del mes actual, que alcanzaba para "Estrenos/Vuelven este mes" pero
+     dejaba afuera cualquier estreno ya confirmado más allá de este mes. Con
+     este horizonte más amplio armamos, aparte, "Próximos Estrenos" con todo
+     lo confirmado a futuro sin límite práctico de fecha. Se pide en lotes de
+     a 8 días en paralelo (fetchEnLotes) para no saturar la API con ~90
+     pedidos a la vez; cada día queda cacheado 3hs aparte, así que solo se
+     vuelve a pedir a la red lo que esté vencido. */
+  async function obtenerEstrenosYProximos() {
+    const hoy = new Date();
     const HORIZONTE_DIAS_FUTUROS = 90;
     const finDeMes = new Date(hoy.getFullYear(), hoy.getMonth() + 1, 0);
     const fechasFuturas = [];
@@ -2298,56 +2363,7 @@
       fechasFuturas.push(formatearFechaISO(d));
     }
 
-    const traerDia = (fecha) => fetchJSON(`https://api.tvmaze.com/schedule/web?date=${fecha}`, `schedule_web_${fecha}`).catch(() => []);
-
-    const [episodiosPasados, episodiosFuturos] = await Promise.all([
-      Promise.all(fechasPasadas.map(traerDia)),
-      fetchEnLotes(fechasFuturas, traerDia, 8)
-    ]);
-
-    // /schedule/web no siempre trae el show en "ep.show" directo como /schedule:
-    // a veces viene anidado en "ep._embedded.show", y algunas entradas agrupan
-    // varios episodios juntos (estrenos de temporada completa) bajo "_embedded.episodes".
-    // Esta función deja todo normalizado en una sola forma: {show, season, number, airstamp, airdate}.
-    function normalizarEntradaWeb(ep) {
-      const show = ep.show || (ep._embedded && ep._embedded.show) || null;
-      if (!show) return [];
-
-      const episodiosAgrupados = ep._embedded && Array.isArray(ep._embedded.episodes) ? ep._embedded.episodes : null;
-      if (episodiosAgrupados && episodiosAgrupados.length) {
-        return episodiosAgrupados.map(sub => ({
-          show,
-          season: sub.season,
-          number: sub.number,
-          airstamp: sub.airstamp || ep.airstamp,
-          airdate: sub.airdate || ep.airdate
-        }));
-      }
-
-      return [{
-        show,
-        season: ep.season,
-        number: ep.number,
-        airstamp: ep.airstamp,
-        airdate: ep.airdate
-      }];
-    }
-
-    const sinDuplicados = (lista) => {
-      const vistos = new Set();
-      return lista.filter((ep) => {
-        if (!ep.show || vistos.has(ep.show.id)) return false;
-        vistos.add(ep.show.id);
-        return true;
-      });
-    };
-
-    // Nuevas: el primer capítulo de una serie (T1E1) salió en los últimos 5 días.
-    const nuevas = sinDuplicados(
-      episodiosPasados.flat().flatMap(normalizarEntradaWeb)
-        .filter((ep) => ep.season === 1 && ep.number === 1)
-        .sort((a, b) => new Date(b.airstamp || b.airdate) - new Date(a.airstamp || a.airdate))
-    );
+    const episodiosFuturos = await fetchEnLotes(fechasFuturas, traerDiaSchedule, 8);
 
     const futurosE1 = episodiosFuturos.flat().flatMap(normalizarEntradaWeb).filter((ep) => ep.number === 1);
     const futurosDentroDeEsteMes = futurosE1.filter((ep) => {
@@ -2361,14 +2377,14 @@
     // cualquier país — TVMaze programa igual todo lo que sale en el mundo, sin
     // distinguir relevancia. Ahora se ordena por "weight" (la misma señal de
     // popularidad que usa Populares) para que lo más relevante salga primero.
-    const estrenos = sinDuplicados(
+    const estrenos = sinDuplicadosDeShow(
       futurosDentroDeEsteMes.filter((ep) => ep.season === 1)
         .sort((a, b) => (b.show.weight || 0) - (a.show.weight || 0) || new Date(a.airstamp || a.airdate) - new Date(b.airstamp || b.airdate))
     );
 
     // Vuelven este mes: series que ya existían y arrancan una temporada nueva (T2+, E1).
     // Mismo criterio: relevancia primero, fecha como desempate.
-    const vuelven = sinDuplicados(
+    const vuelven = sinDuplicadosDeShow(
       futurosDentroDeEsteMes.filter((ep) => ep.season > 1)
         .sort((a, b) => (b.show.weight || 0) - (a.show.weight || 0) || new Date(a.airstamp || a.airdate) - new Date(b.airstamp || b.airdate))
     );
@@ -2377,12 +2393,12 @@
     // el horizonte de 90 días (incluye las de este mes y las siguientes).
     // Acá el orden es cronológico — lo que importa en esta sección es "qué
     // sale primero", no tanto la relevancia (que ya se refleja en Estrenos).
-    const proximosEstrenos = sinDuplicados(
+    const proximosEstrenos = sinDuplicadosDeShow(
       futurosE1.filter((ep) => ep.season === 1)
         .sort((a, b) => new Date(a.airstamp || a.airdate) - new Date(b.airstamp || b.airdate))
     );
 
-    return { nuevas, estrenos, vuelven, proximosEstrenos };
+    return { estrenos, vuelven, proximosEstrenos };
   }
 
   /* Guarda la última tanda completa de cada categoría para que "Ver más" no tenga que volver a pedir nada. */
@@ -2407,7 +2423,7 @@
 
   /* items puede ser un array de shows (como siempre) o, si mostrarFechas=true,
      un array de entradas {show, airstamp, airdate} (como las que devuelve
-     obtenerNuevasYProximos) — en ese caso se muestra la fecha de estreno
+     obtenerEstrenosYProximos) — en ese caso se muestra la fecha de estreno
      debajo del nombre, útil para "Próximos Estrenos" donde lo que más importa
      es cuándo sale cada una. */
   function renderizarRailDescubrimiento(container, id, items, mostrarFechas = false) {
@@ -2582,7 +2598,7 @@
   }
 
   /* Estrenos Hollywood: dentro de la lista general de "estrenos" (ya viene
-     ordenada por weight desde obtenerNuevasYProximos), nos quedamos solo con
+     ordenada por weight desde obtenerEstrenosYProximos), nos quedamos solo con
      los que regionDeShow clasifica como Hollywood (plataforma grande de
      EE.UU., o canal con país US aunque no esté en la lista de grandes). */
   function armarEstrenosHollywood(estrenos) {
@@ -2633,39 +2649,122 @@
     overlay.onclick = (e) => { if (e.target === overlay) overlay.remove(); };
   }
 
+  /* Un slot por categoría, en el orden fijo en que siempre se mostraron.
+     Cada slot arranca con un esqueleto (mismo estilo shimmer que ya se usa
+     en el resto de la app) y se reemplaza por el rail real apenas su fetch
+     termina — sin esperar a las demás categorías. Así el orden visual queda
+     fijo aunque las categorías más rápidas (Populares, Nuevas) resuelvan
+     antes que las lentas (Estrenos/Vuelven/Próximos, que dependen de ~91
+     pedidos a la API). */
+  const ORDEN_SECCIONES_DESCUBRIMIENTO = [
+    'estrenos', 'estrenosHollywood', 'proximosEstrenos', 'vuelven', 'nuevas',
+    'populares', 'popularesHollywood', 'popularesCoreana', 'popularesTurca', 'popularesLatina'
+  ];
+
+  function esqueletoRailDescubrimiento() {
+    const items = Array.from({ length: 4 }).map(() => `
+      <div style="flex-shrink:0; width:102px;">
+        <div class="skeleton-block" style="width:102px; height:145px; border-radius:8px;"></div>
+        <div class="skeleton-block" style="height:11px; width:80%; margin-top:6px;"></div>
+      </div>
+    `).join('');
+    return `
+      <div style="display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:10px;">
+        <div class="skeleton-block" style="height:16px; width:140px;"></div>
+      </div>
+      <div class="discover-rail">${items}</div>
+    `;
+  }
+
+  function crearSlotsDescubrimiento(holder) {
+    const slots = {};
+    holder.innerHTML = '';
+    ORDEN_SECCIONES_DESCUBRIMIENTO.forEach((id) => {
+      const slot = document.createElement('div');
+      slot.className = 'discover-section';
+      slot.dataset.seccion = id;
+      slot.innerHTML = esqueletoRailDescubrimiento();
+      holder.appendChild(slot);
+      slots[id] = slot;
+    });
+    return slots;
+  }
+
+  /* Reemplaza el esqueleto de un slot por su rail real (o lo saca del todo
+     si la categoría terminó vacía, igual que antes). holder puede haber sido
+     reemplazado (cambio de pestaña y vuelta) — por eso siempre se revalida
+     que el slot siga siendo el que está en pantalla antes de tocarlo. */
+  function resolverSlotDescubrimiento(holder, id, items, mostrarFechas = false) {
+    const slot = holder.querySelector(`[data-seccion="${id}"]`);
+    if (!slot || !slot.isConnected) return;
+    if (!items.length) {
+      slot.remove();
+      return;
+    }
+    catalogoDescubrimiento[id] = items;
+    const seccionTemp = document.createElement('div');
+    renderizarRailDescubrimiento(seccionTemp, id, items, mostrarFechas);
+    // renderizarRailDescubrimiento ya vuelve a guardar en catalogoDescubrimiento
+    // y arma la sección completa (título + rail) — solo hace falta pisar el slot.
+    if (seccionTemp.firstChild) slot.replaceWith(seccionTemp.firstChild);
+  }
+
+  function quitarSlotSiQuedoVacio(holder) {
+    if (holder.children.length) return;
+    holder.innerHTML = `<p style="text-align:center; color:var(--ink-muted); font-size:13px;">${t('noSePudoCargarCatalogo')}</p>`;
+  }
+
   async function cargarDescubrimiento() {
-    try {
-      const [popularesPool, { nuevas, estrenos, vuelven, proximosEstrenos }] = await Promise.all([
-        obtenerPopulares().catch(() => []),
-        obtenerNuevasYProximos().catch(() => ({ nuevas: [], estrenos: [], vuelven: [], proximosEstrenos: [] }))
-      ]);
+    const holder = document.getElementById('discoverHolder');
+    if (!holder) return;
+    crearSlotsDescubrimiento(holder);
+
+    // Cada categoría se pide y se pinta de forma independiente: si el usuario
+    // cambia de pestaña mientras algo todavía está en vuelo, resolverSlotDescubrimiento
+    // revalida que el holder siga siendo el actual antes de tocar el DOM.
+    const holderVigente = () => document.getElementById('discoverHolder') === holder;
+
+    obtenerPopulares().then((popularesPool) => {
+      if (!holderVigente()) return;
       const populares = elegirAlAzar(popularesPool, 120);
       const porRegion = armarPopularesPorRegion(popularesPool);
+      resolverSlotDescubrimiento(holder, 'populares', populares);
+      resolverSlotDescubrimiento(holder, 'popularesHollywood', porRegion.popularesHollywood);
+      resolverSlotDescubrimiento(holder, 'popularesCoreana', porRegion.popularesCoreana);
+      resolverSlotDescubrimiento(holder, 'popularesTurca', porRegion.popularesTurca);
+      resolverSlotDescubrimiento(holder, 'popularesLatina', porRegion.popularesLatina);
+      quitarSlotSiQuedoVacio(holder);
+    }).catch(() => {
+      if (!holderVigente()) return;
+      ['populares', 'popularesHollywood', 'popularesCoreana', 'popularesTurca', 'popularesLatina']
+        .forEach((id) => resolverSlotDescubrimiento(holder, id, []));
+      quitarSlotSiQuedoVacio(holder);
+    });
+
+    obtenerNuevas().then((nuevas) => {
+      if (!holderVigente()) return;
+      resolverSlotDescubrimiento(holder, 'nuevas', nuevas.map(ep => ep.show));
+      quitarSlotSiQuedoVacio(holder);
+    }).catch(() => {
+      if (!holderVigente()) return;
+      resolverSlotDescubrimiento(holder, 'nuevas', []);
+      quitarSlotSiQuedoVacio(holder);
+    });
+
+    obtenerEstrenosYProximos().then(({ estrenos, vuelven, proximosEstrenos }) => {
+      if (!holderVigente()) return;
       const estrenosHollywood = armarEstrenosHollywood(estrenos);
-
-      // Si el usuario ya escribió algo o cambió de pestaña mientras esto cargaba, no pisamos nada.
-      const holder = document.getElementById('discoverHolder');
-      if (!holder) return;
-
-      holder.innerHTML = '';
-      renderizarRailDescubrimiento(holder, 'estrenos', estrenos.map(ep => ep.show));
-      renderizarRailDescubrimiento(holder, 'estrenosHollywood', estrenosHollywood);
-      renderizarRailDescubrimiento(holder, 'proximosEstrenos', proximosEstrenos, true);
-      renderizarRailDescubrimiento(holder, 'vuelven', vuelven.map(ep => ep.show));
-      renderizarRailDescubrimiento(holder, 'nuevas', nuevas.map(ep => ep.show));
-      renderizarRailDescubrimiento(holder, 'populares', populares);
-      renderizarRailDescubrimiento(holder, 'popularesHollywood', porRegion.popularesHollywood);
-      renderizarRailDescubrimiento(holder, 'popularesCoreana', porRegion.popularesCoreana);
-      renderizarRailDescubrimiento(holder, 'popularesTurca', porRegion.popularesTurca);
-      renderizarRailDescubrimiento(holder, 'popularesLatina', porRegion.popularesLatina);
-
-      if (!holder.children.length) {
-        holder.innerHTML = `<p style="text-align:center; color:var(--ink-muted); font-size:13px;">${t('noSePudoCargarCatalogo')}</p>`;
-      }
-    } catch {
-      const holder = document.getElementById('discoverHolder');
-      if (holder) holder.innerHTML = '';
-    }
+      resolverSlotDescubrimiento(holder, 'estrenos', estrenos.map(ep => ep.show));
+      resolverSlotDescubrimiento(holder, 'estrenosHollywood', estrenosHollywood);
+      resolverSlotDescubrimiento(holder, 'proximosEstrenos', proximosEstrenos, true);
+      resolverSlotDescubrimiento(holder, 'vuelven', vuelven.map(ep => ep.show));
+      quitarSlotSiQuedoVacio(holder);
+    }).catch(() => {
+      if (!holderVigente()) return;
+      ['estrenos', 'estrenosHollywood', 'proximosEstrenos', 'vuelven']
+        .forEach((id) => resolverSlotDescubrimiento(holder, id, []));
+      quitarSlotSiQuedoVacio(holder);
+    });
   }
 
   /* ==================== BUSCAR POR ACTOR ==================== */
