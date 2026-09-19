@@ -2544,6 +2544,19 @@
     return 'otra';
   }
 
+  /* Ordena por rating real de la comunidad de TVMaze (show.rating.average,
+     0-10), no por "weight" (que mide tráfico/actividad en TVMaze, no calidad)
+     y no al azar. Las que no tienen rating cargado (suele pasar con series
+     poco conocidas o muy nuevas) quedan al final en vez de arriba: así el
+     rail arranca con series que la gente puntuó bien de verdad. */
+  function ordenarPorRating(lista) {
+    return lista.slice().sort((a, b) => {
+      const ratingA = (a.rating && a.rating.average) || 0;
+      const ratingB = (b.rating && b.rating.average) || 0;
+      return ratingB - ratingA;
+    });
+  }
+
   /* A partir del mismo pool de populares que ya se pide para "🔥 Populares",
      arma un grupo aparte por cada región (sin filtro manual del usuario: se
      muestran todas las que tengan resultados, como secciones fijas más del
@@ -2557,8 +2570,11 @@
     });
     // 120 en vez de 24: el rail muestra solo los primeros 12, pero "Ver más"
     // abre la lista completa de la categoría — con 24 quedaba muy corta.
+    // Hollywood va por rating real (no al azar): es la región con más volumen
+    // y más ruido de series mediocres, así que ahí es donde más se nota si no
+    // se prioriza calidad. Las demás regiones siguen al azar como antes.
     return {
-      popularesHollywood: elegirAlAzar(porRegion.hollywood, 120),
+      popularesHollywood: ordenarPorRating(porRegion.hollywood).slice(0, 120),
       popularesCoreana: elegirAlAzar(porRegion.coreana, 120),
       popularesTurca: elegirAlAzar(porRegion.turca, 120),
       popularesLatina: elegirAlAzar(porRegion.latina, 120)
