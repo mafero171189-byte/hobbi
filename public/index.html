@@ -2248,20 +2248,24 @@
       document.getElementById('searchInput').value = '';
     }
 
-    // Los 3 tabs principales (Inicio/Favoritos/Calendario) NO se apilan entre
-    // sí en el historial: reemplazamos la entrada actual en vez de agregar
-    // una nueva. Si se apilaran (como antes), ir Inicio → Favoritos →
-    // Calendario → Inicio → Favoritos dejaba 5 entradas en la pila, y Atrás
-    // había que tocarlo 5 veces (recorriendo cada tab visitado) antes de que
-    // recién ahí saliera de la app. Con replaceState, estando en cualquier
-    // tab, Atrás va directo a Inicio (si no estabas ahí) o sale de la app (si
-    // ya estabas en Inicio) — la entrada de "inicio" de más abajo sigue
-    // siendo el piso que hace de límite (ver history.replaceState de más abajo).
+    // Los tabs se comportan como en Ajustes: desde Inicio, entrar a Favoritos
+    // o Calendario apila UNA entrada (así Atrás vuelve a Inicio primero, y
+    // recién el siguiente Atrás sale de la app). Pero moverse DIRECTO entre
+    // Favoritos y Calendario (sin pasar por Inicio) reemplaza esa entrada en
+    // vez de sumar una nueva — si no, Favoritos → Calendario → Atrás volvería
+    // a Favoritos en vez de a Inicio, y recién el Atrás siguiente llegaría a
+    // Inicio. Con esto la pila nunca tiene más de un tab secundario apilado
+    // sobre Inicio, así que Atrás desde cualquier tab va siempre a Inicio en
+    // un solo paso, y desde Inicio, Atrás sale de la app.
     // Detalle de serie y catálogo completo (verDetalles/verCatalogoCompleto)
-    // no pasan por acá: esos sí siguen apilándose, para que Atrás vuelva bien
-    // a la pantalla desde la que entraste.
+    // no pasan por acá: esos siguen apilando aparte, para que Atrás vuelva
+    // bien a la pantalla desde la que entraste.
     if (push && vistaActual !== vista) {
-      history.replaceState({ view: vista }, '', '#' + vista);
+      if (vistaActual === 'inicio') {
+        history.pushState({ view: vista }, '', '#' + vista);
+      } else {
+        history.replaceState({ view: vista }, '', '#' + vista);
+      }
     }
     vistaActual = vista;
   }
