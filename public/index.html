@@ -2212,7 +2212,15 @@
   });
   history.replaceState({ view: 'inicio' }, '', '#inicio'); // punto de partida: un back más allá de esto cierra la app
   actualizarBandaOffline(); // por si la app arranca sin conexión
-  mostrarPlaceholderBusqueda(); // pantalla inicial: "Buscá una serie para empezar"
+  // setTimeout(0) en vez de llamar directo: mostrarPlaceholderBusqueda dispara
+  // cargarDescubrimiento, que usa const/let declaradas más abajo en este mismo
+  // script (ORDEN_SECCIONES_DESCUBRIMIENTO, catalogoDescubrimiento, etc.). Si se
+  // llama de forma síncrona acá, el motor de JS todavía no terminó de parsear
+  // esas declaraciones (están en "temporal dead zone") y explota con
+  // "Cannot access '...' before initialization" — silencioso para el usuario,
+  // deja discoverHolder vacío para siempre en esa carga. Con setTimeout(0) se
+  // pospone al siguiente tick, cuando el script ya terminó de parsearse entero.
+  setTimeout(() => mostrarPlaceholderBusqueda(), 0); // pantalla inicial: "Buscá una serie para empezar"
 
   function debouncedSearch() {
     clearTimeout(timeoutBusqueda);
