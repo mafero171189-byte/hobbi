@@ -648,6 +648,7 @@
       estrenosMes: 'Estrenos este mes', vuelvenMes: 'Vuelven este mes',
       regionHollywood: 'Populares Hollywood', regionCoreana: 'Populares coreanas', regionTurca: 'Populares turcas', regionLatina: 'Populares Latinas/España',
       estrenosHollywoodMes: 'Estrenos Hollywood',
+      proximosEstrenosClave: 'Próximos Estrenos',
       upcoming: 'Upcoming', proximasTemporadas: '🎬 Próximas temporadas', enEmisionHoy: 'En emisión hoy',
       sinVer: 'Episodios sin ver', marcarVisto: 'Marcar como visto',
       errorMarcarVisto: 'No se pudo marcar el episodio. Probá de nuevo.',
@@ -787,6 +788,7 @@
       estrenosMes: 'Premiering this month', vuelvenMes: 'Returning this month',
       regionHollywood: 'Popular Hollywood', regionCoreana: 'Popular Korean', regionTurca: 'Popular Turkish', regionLatina: 'Popular Latin/Spain',
       estrenosHollywoodMes: 'Hollywood Premieres',
+      proximosEstrenosClave: 'Upcoming Premieres',
       upcoming: 'Upcoming', proximasTemporadas: '🎬 Upcoming seasons', enEmisionHoy: 'Airing today',
       sinVer: 'Unwatched episodes', marcarVisto: 'Mark as watched',
       errorMarcarVisto: 'Couldn\'t mark the episode. Try again.',
@@ -2276,11 +2278,19 @@
       fechasPasadas.push(formatearFechaISO(d));
     }
 
-    // Desde hoy hasta el último día del mes actual: con esto separamos series
-    // nuevas ("Estrenos") de temporadas que regresan ("Vuelven este mes").
+    // Desde hoy hasta 180 días adelante (~6 meses): antes solo se pedía hasta
+    // fin del mes actual, que alcanzaba para "Estrenos/Vuelven este mes" pero
+    // dejaba afuera cualquier estreno ya confirmado más allá de este mes. Con
+    // este horizonte más amplio armamos, aparte, una sección "Próximos
+    // Estrenos" con todo lo confirmado a futuro sin límite práctico de fecha.
+    // Se pide en lotes de a 8 días en paralelo (fetchEnLotes) para no saturar
+    // la API con ~180 pedidos a la vez; cada día queda cacheado 3hs aparte, así
+    // que solo se vuelve a pedir a la red lo que esté vencido.
+    const HORIZONTE_DIAS_FUTUROS = 180;
     const finDeMes = new Date(hoy.getFullYear(), hoy.getMonth() + 1, 0);
     const fechasFuturas = [];
-    for (let d = new Date(hoy); d <= finDeMes; d.setDate(d.getDate() + 1)) {
+    for (let i = 0; i <= HORIZONTE_DIAS_FUTUROS; i++) {
+      const d = new Date(hoy); d.setDate(d.getDate() + i);
       fechasFuturas.push(formatearFechaISO(d));
     }
 
@@ -2336,6 +2346,10 @@
     );
 
     const futurosE1 = episodiosFuturos.flat().flatMap(normalizarEntradaWeb).filter((ep) => ep.number === 1);
+    const futurosDentroDeEsteMes = futurosE1.filter((ep) => {
+      const ts = new Date(ep.airstamp || ep.airdate).getTime();
+      return Number.isFinite(ts) && ts <= finDeMes.getTime() + 24 * 60 * 60 * 1000;
+    });
 
     // Estrenos: series totalmente nuevas (T1E1) que salen el resto de este mes.
     // Antes solo se ordenaba por fecha, lo que mezclaba estrenos de canales
@@ -2344,25 +2358,35 @@
     // distinguir relevancia. Ahora se ordena por "weight" (la misma señal de
     // popularidad que usa Populares) para que lo más relevante salga primero.
     const estrenos = sinDuplicados(
-      futurosE1.filter((ep) => ep.season === 1)
+      futurosDentroDeEsteMes.filter((ep) => ep.season === 1)
         .sort((a, b) => (b.show.weight || 0) - (a.show.weight || 0) || new Date(a.airstamp || a.airdate) - new Date(b.airstamp || b.airdate))
     );
 
     // Vuelven este mes: series que ya existían y arrancan una temporada nueva (T2+, E1).
     // Mismo criterio: relevancia primero, fecha como desempate.
     const vuelven = sinDuplicados(
-      futurosE1.filter((ep) => ep.season > 1)
+      futurosDentroDeEsteMes.filter((ep) => ep.season > 1)
         .sort((a, b) => (b.show.weight || 0) - (a.show.weight || 0) || new Date(a.airstamp || a.airdate) - new Date(b.airstamp || b.airdate))
     );
 
-    return { nuevas, estrenos, vuelven };
+    // Próximos Estrenos: series totalmente nuevas (T1E1) confirmadas en todo
+    // el horizonte de 180 días (incluye las de este mes y las siguientes).
+    // Acá el orden es cronológico — lo que importa en esta sección es "qué
+    // sale primero", no tanto la relevancia (que ya se refleja en Estrenos).
+    const proximosEstrenos = sinDuplicados(
+      futurosE1.filter((ep) => ep.season === 1)
+        .sort((a, b) => new Date(a.airstamp || a.airdate) - new Date(b.airstamp || b.airdate))
+    );
+
+    return { nuevas, estrenos, vuelven, proximosEstrenos };
   }
 
   /* Guarda la última tanda completa de cada categoría para que "Ver más" no tenga que volver a pedir nada. */
-  let catalogoDescubrimiento = { estrenos: [], estrenosHollywood: [], vuelven: [], nuevas: [], populares: [], popularesHollywood: [], popularesCoreana: [], popularesTurca: [], popularesLatina: [] };
+  let catalogoDescubrimiento = { estrenos: [], estrenosHollywood: [], proximosEstrenos: [], vuelven: [], nuevas: [], populares: [], popularesHollywood: [], popularesCoreana: [], popularesTurca: [], popularesLatina: [] };
   const CATEGORIAS_DESCUBRIMIENTO = {
     estrenos: { emoji: '🆕', clave: 'estrenosMes' },
     estrenosHollywood: { emoji: '🎬', clave: 'estrenosHollywoodMes' },
+    proximosEstrenos: { emoji: '📅', clave: 'proximosEstrenosClave' },
     vuelven: { emoji: '🔁', clave: 'vuelvenMes' },
     nuevas: { emoji: '✨', clave: 'nuevas' },
     populares: { emoji: '🔥', clave: 'populares' },
@@ -2377,9 +2401,14 @@
     return cat ? `${cat.emoji} ${t(cat.clave)}` : id;
   }
 
-  function renderizarRailDescubrimiento(container, id, shows) {
-    if (!shows.length) return;
-    catalogoDescubrimiento[id] = shows;
+  /* items puede ser un array de shows (como siempre) o, si mostrarFechas=true,
+     un array de entradas {show, airstamp, airdate} (como las que devuelve
+     obtenerNuevasYProximos) — en ese caso se muestra la fecha de estreno
+     debajo del nombre, útil para "Próximos Estrenos" donde lo que más importa
+     es cuándo sale cada una. */
+  function renderizarRailDescubrimiento(container, id, items, mostrarFechas = false) {
+    if (!items.length) return;
+    catalogoDescubrimiento[id] = items;
 
     const section = document.createElement('div');
     section.className = 'discover-section';
@@ -2392,13 +2421,23 @@
 
     const rail = document.createElement('div');
     rail.className = 'discover-rail';
-    shows.slice(0, 12).forEach((show) => {
+    items.slice(0, 12).forEach((entrada) => {
+      const show = mostrarFechas ? entrada.show : entrada;
       if (!show || !show.id) return;
       const item = document.createElement('div');
       item.className = 'discover-item';
       item.onclick = () => verDetalles(show.id);
       const imagen = (show.image && (show.image.medium || show.image.original)) || placeholderPorNombre(show.name);
-      item.innerHTML = `<img src="${imagen}" alt="${show.name}" loading="lazy"><div class="discover-name">${show.name}</div>`;
+      let fechaHTML = '';
+      if (mostrarFechas) {
+        const ts = entrada.airstamp || entrada.airdate;
+        if (ts) {
+          const fecha = new Date(entrada.airstamp || `${entrada.airdate}T00:00:00`);
+          const fechaTexto = fecha.toLocaleDateString(t('localeFecha'), { day: 'numeric', month: 'short' });
+          fechaHTML = `<div class="discover-name" style="color:var(--gold); font-weight:700;">${fechaTexto}</div>`;
+        }
+      }
+      item.innerHTML = `<img src="${imagen}" alt="${show.name}" loading="lazy"><div class="discover-name">${show.name}</div>${fechaHTML}`;
       rail.appendChild(item);
     });
     section.appendChild(rail);
@@ -2407,7 +2446,10 @@
 
   /* Muestra el catálogo completo de una categoría como lista vertical, con vuelta al descubrimiento. */
   function verCatalogoCompleto(id) {
-    const shows = catalogoDescubrimiento[id] || [];
+    const items = catalogoDescubrimiento[id] || [];
+    // "próximosEstrenos" guarda entradas {show, airstamp, ...} (para tener la
+    // fecha disponible); el resto de categorías guarda shows directos.
+    const shows = id === 'proximosEstrenos' ? items.map(entrada => entrada.show) : items;
     const container = document.getElementById('seriesList');
     container.innerHTML = `
       <button class="back-btn" onclick="mostrarPlaceholderBusqueda()" style="margin-bottom:12px;">${t('volver')}</button>
@@ -2543,9 +2585,9 @@
 
   async function cargarDescubrimiento() {
     try {
-      const [popularesPool, { nuevas, estrenos, vuelven }] = await Promise.all([
+      const [popularesPool, { nuevas, estrenos, vuelven, proximosEstrenos }] = await Promise.all([
         obtenerPopulares().catch(() => []),
-        obtenerNuevasYProximos().catch(() => ({ nuevas: [], estrenos: [], vuelven: [] }))
+        obtenerNuevasYProximos().catch(() => ({ nuevas: [], estrenos: [], vuelven: [], proximosEstrenos: [] }))
       ]);
       const populares = elegirAlAzar(popularesPool, 24);
       const porRegion = armarPopularesPorRegion(popularesPool);
@@ -2558,6 +2600,7 @@
       holder.innerHTML = '';
       renderizarRailDescubrimiento(holder, 'estrenos', estrenos.map(ep => ep.show));
       renderizarRailDescubrimiento(holder, 'estrenosHollywood', estrenosHollywood);
+      renderizarRailDescubrimiento(holder, 'proximosEstrenos', proximosEstrenos, true);
       renderizarRailDescubrimiento(holder, 'vuelven', vuelven.map(ep => ep.show));
       renderizarRailDescubrimiento(holder, 'nuevas', nuevas.map(ep => ep.show));
       renderizarRailDescubrimiento(holder, 'populares', populares);
