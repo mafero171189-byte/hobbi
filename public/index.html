@@ -672,6 +672,7 @@
       estadoEnEmisionCard: '● En emisión', estadoEnPausaCard: '⏸ En pausa',
       estadoRenovadaCard: '🎬 Renovada', estadoFinalizadaCard: '✔ Finalizada',
       estadoEsperandoCard: '🔜 Esperando renovación',
+      estadoProximoEstrenoCard: '📅 Próximo estreno',
 
       // Badges de estado en el detalle (con fechas interpoladas)
       estrenoTemporada: (n) => `Estreno de Temporada ${n}`,
@@ -811,6 +812,7 @@
       estadoEnEmisionCard: '● On air', estadoEnPausaCard: '⏸ On hiatus',
       estadoRenovadaCard: '🎬 Renewed', estadoFinalizadaCard: '✔ Ended',
       estadoEsperandoCard: '🔜 Awaiting renewal',
+      estadoProximoEstrenoCard: '📅 Premiering soon',
 
       estrenoTemporada: (n) => `Season ${n} Premiere`,
       badgeEnEmision: (etiqueta, fecha, hora) => `📡 On air — Next: ${etiqueta} — ${fecha}${hora ? ' at ' + hora : ''}`,
@@ -2278,15 +2280,15 @@
       fechasPasadas.push(formatearFechaISO(d));
     }
 
-    // Desde hoy hasta 180 días adelante (~6 meses): antes solo se pedía hasta
+    // Desde hoy hasta 90 días adelante (~3 meses): antes solo se pedía hasta
     // fin del mes actual, que alcanzaba para "Estrenos/Vuelven este mes" pero
     // dejaba afuera cualquier estreno ya confirmado más allá de este mes. Con
     // este horizonte más amplio armamos, aparte, una sección "Próximos
     // Estrenos" con todo lo confirmado a futuro sin límite práctico de fecha.
     // Se pide en lotes de a 8 días en paralelo (fetchEnLotes) para no saturar
-    // la API con ~180 pedidos a la vez; cada día queda cacheado 3hs aparte, así
+    // la API con ~90 pedidos a la vez; cada día queda cacheado 3hs aparte, así
     // que solo se vuelve a pedir a la red lo que esté vencido.
-    const HORIZONTE_DIAS_FUTUROS = 180;
+    const HORIZONTE_DIAS_FUTUROS = 90;
     const finDeMes = new Date(hoy.getFullYear(), hoy.getMonth() + 1, 0);
     const fechasFuturas = [];
     for (let i = 0; i <= HORIZONTE_DIAS_FUTUROS; i++) {
@@ -2370,7 +2372,7 @@
     );
 
     // Próximos Estrenos: series totalmente nuevas (T1E1) confirmadas en todo
-    // el horizonte de 180 días (incluye las de este mes y las siguientes).
+    // el horizonte de 90 días (incluye las de este mes y las siguientes).
     // Acá el orden es cronológico — lo que importa en esta sección es "qué
     // sale primero", no tanto la relevancia (que ya se refleja en Estrenos).
     const proximosEstrenos = sinDuplicados(
@@ -2463,7 +2465,8 @@
         id: show.id,
         name: show.name,
         image: show.image ? (show.image.medium || show.image.original) : '',
-        status: show.status
+        status: show.status,
+        premiered: show.premiered
       }, false, idsFav));
     });
     container.appendChild(lista);
@@ -2523,11 +2526,13 @@
       const region = regionDeShow(show);
       if (porRegion[region]) porRegion[region].push(show);
     });
+    // 120 en vez de 24: el rail muestra solo los primeros 12, pero "Ver más"
+    // abre la lista completa de la categoría — con 24 quedaba muy corta.
     return {
-      popularesHollywood: elegirAlAzar(porRegion.hollywood, 24),
-      popularesCoreana: elegirAlAzar(porRegion.coreana, 24),
-      popularesTurca: elegirAlAzar(porRegion.turca, 24),
-      popularesLatina: elegirAlAzar(porRegion.latina, 24)
+      popularesHollywood: elegirAlAzar(porRegion.hollywood, 120),
+      popularesCoreana: elegirAlAzar(porRegion.coreana, 120),
+      popularesTurca: elegirAlAzar(porRegion.turca, 120),
+      popularesLatina: elegirAlAzar(porRegion.latina, 120)
     };
   }
 
@@ -2589,7 +2594,7 @@
         obtenerPopulares().catch(() => []),
         obtenerNuevasYProximos().catch(() => ({ nuevas: [], estrenos: [], vuelven: [], proximosEstrenos: [] }))
       ]);
-      const populares = elegirAlAzar(popularesPool, 24);
+      const populares = elegirAlAzar(popularesPool, 120);
       const porRegion = armarPopularesPorRegion(popularesPool);
       const estrenosHollywood = armarEstrenosHollywood(estrenos);
 
@@ -2707,7 +2712,8 @@
           id: show.id,
           name: show.name,
           image: show.image ? (show.image.medium || show.image.original) : '',
-          status: show.status
+          status: show.status,
+          premiered: show.premiered
         }, false, idsFav));
       });
       container.appendChild(lista);
@@ -2781,7 +2787,8 @@
           id: show.id,
           name: show.name,
           image: show.image?.medium,
-          status: show.status
+          status: show.status,
+          premiered: show.premiered
         }, false, idsFav);
         container.appendChild(card);
       });
@@ -2824,6 +2831,28 @@
   function calcularEstadoSerie(show) {
     const ahora = Date.now();
     const cacheEps = leerCache(`eps_${show.id}`);
+
+    /* Serie que todavía no estrenó NINGÚN episodio: TVMaze deja "premiered"
+       en null (o con una fecha futura) hasta que sale el primero. Antes estas
+       caían en "En emisión" (si ya había caché con capítulos futuros) o en
+       "Esperando renovación" (sin caché, status null), y ninguna de las dos
+       describe lo que pasa: la serie no está al aire ni le renovaron nada,
+       simplemente todavía no arrancó. Va primero que todo lo demás porque
+       cualquiera de los otros caminos la clasificaría mal. */
+    const tsPremiere = show.premiered ? new Date(`${show.premiered}T23:59:59`).getTime() : NaN;
+    const yaEstreno = Number.isFinite(tsPremiere) && tsPremiere <= ahora;
+    if (!yaEstreno) {
+      // Confirmamos con el caché de episodios si lo hay: si ya existe algún
+      // capítulo emitido, entonces sí arrancó (y "premiered" viene incompleto).
+      const hayEpisodioYaEmitido = cacheEps && cacheEps.data && cacheEps.data.some(ep => {
+        let ts = ep.airstamp ? new Date(ep.airstamp).getTime() : NaN;
+        if (!Number.isFinite(ts) && ep.airdate) ts = new Date(`${ep.airdate}T23:59:59`).getTime();
+        return Number.isFinite(ts) && ts <= ahora;
+      });
+      if (!hayEpisodioYaEmitido && show.status !== 'Ended' && show.status !== 'Canceled') {
+        return { texto: t('estadoProximoEstrenoCard'), clase: 'renewed' };
+      }
+    }
 
     if (!cacheEps || !cacheEps.data || !cacheEps.data.length) {
       // Sin caché todavía (recién agregada o recién encontrada en el buscador,
@@ -3237,7 +3266,7 @@
       }
 
       const esFavActual = favoritos.some(f => f.id === show.id);
-      const serieParaFav = { id: show.id, name: show.name, image: show.image ? show.image.medium : '', status: show.status };
+      const serieParaFav = { id: show.id, name: show.name, image: show.image ? show.image.medium : '', status: show.status, premiered: show.premiered };
 
       const iconoYoutube = `
         <button class="icon-btn" onclick="abrirTrailer(${JSON.stringify(show.name).replace(/"/g, '&quot;')})" title="Ver trailer en YouTube" aria-label="Ver trailer en YouTube">
