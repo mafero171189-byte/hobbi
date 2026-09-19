@@ -2181,6 +2181,8 @@
     const estado = state || { view: 'inicio' };
     if (estado.view === 'detalle' && estado.showId) {
       verDetalles(estado.showId, false);
+    } else if (estado.view === 'catalogo' && estado.catalogoId) {
+      verCatalogoCompleto(estado.catalogoId, false);
     } else {
       cambiarVista(estado.view || 'inicio', false);
     }
@@ -2447,16 +2449,26 @@
   }
 
   /* Muestra el catálogo completo de una categoría como lista vertical, con vuelta al descubrimiento. */
-  function verCatalogoCompleto(id) {
+  function verCatalogoCompleto(id, push = true) {
     const items = catalogoDescubrimiento[id] || [];
     // "próximosEstrenos" guarda entradas {show, airstamp, ...} (para tener la
     // fecha disponible); el resto de categorías guarda shows directos.
     const shows = id === 'proximosEstrenos' ? items.map(entrada => entrada.show) : items;
     const container = document.getElementById('seriesList');
     container.innerHTML = `
-      <button class="back-btn" onclick="mostrarPlaceholderBusqueda()" style="margin-bottom:12px;">${t('volver')}</button>
+      <button class="back-btn" onclick="volverALista()" style="margin-bottom:12px;">${t('volver')}</button>
       <h3 class="marquee" style="color:var(--gold); font-size:22px; margin-bottom:12px;">${tituloConEmoji(id)}</h3>
     `;
+    // Antes esta vista no quedaba registrada en el historial: al entrar a una
+    // serie desde acá y tocar Atrás, el navegador saltaba directo a la última
+    // entrada real (Inicio), saltándose el catálogo. Con esto, Atrás vuelve
+    // acá primero — salvo que estemos reconstruyendo esta misma vista porque
+    // el propio Atrás nos trajo hasta acá (push=false), donde no hay que
+    // volver a apilar una entrada nueva.
+    if (push) {
+      history.pushState({ view: 'catalogo', catalogoId: id }, '', '#catalogo-' + id);
+    }
+    vistaActual = 'catalogo';
     const lista = document.createElement('div');
     lista.className = 'series-list';
     const idsFav = new Set(favoritos.map(f => f.id));
