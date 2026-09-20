@@ -415,7 +415,6 @@
     .swipe-wrapper .card { position: relative; transition: transform 0.2s; touch-action: pan-y; background-color: var(--surface); }
 
     /* Pull-to-refresh del Calendario */
-    .pull-indicator { text-align: center; font-size: 12px; color: var(--ink-muted); font-weight: 700; height: 0; overflow: hidden; transition: height 0.15s; }
 
     /* Skeleton de carga (favoritos actualizándose por pull-to-refresh) */
     .skeleton-block { background: linear-gradient(90deg, var(--surface-2) 25%, var(--border) 50%, var(--surface-2) 75%); background-size: 200% 100%; border-radius: 6px; animation: skeleton-pulse 1.3s ease-in-out infinite; }
@@ -493,8 +492,6 @@
       <input type="text" id="searchInput" placeholder="Buscar serie online..." oninput="debouncedSearch()">
     </div>
 
-    <div id="pullIndicatorFavs" class="pull-indicator" role="status" aria-live="polite"></div>
-
     <div id="favsToolbar" style="display:none; flex-direction: column; gap: 10px; margin-bottom: 12px;">
       <div style="display:flex; gap:8px; align-items:center;">
         <div class="fav-search" style="flex:1;">
@@ -528,7 +525,6 @@
 
   <!-- VISTA DE CALENDARIO -->
   <div id="calendarView" style="display: none;">
-    <div id="pullIndicator" class="pull-indicator" role="status" aria-live="polite">↓ Soltá para actualizar</div>
     <div id="calendarContent"></div>
   </div>
 
@@ -719,9 +715,6 @@
       sinConexionBanner: '📡 Sin conexión a internet — mostrando datos guardados',
       conexionRecuperada: 'Conexión recuperada ✅',
       teQuedasteSinConexion: 'Te quedaste sin conexión',
-      soltarActualizar: '↓ Soltá para actualizar',
-      soltarActualizarListo: '↑ Soltá para actualizar',
-      seguiBajando: '↓ Seguí bajando para actualizar',
       sacasteDeFavoritos: (nombre) => `Sacaste "${nombre}" de favoritos`,
       calendarioActualizado: 'Calendario actualizado ✅',
 
@@ -877,9 +870,6 @@
       sinConexionBanner: '📡 No internet connection — showing saved data',
       conexionRecuperada: 'Connection restored ✅',
       teQuedasteSinConexion: 'You lost your connection',
-      soltarActualizar: '↓ Pull to refresh',
-      soltarActualizarListo: '↑ Release to refresh',
-      seguiBajando: '↓ Keep pulling to refresh',
       sacasteDeFavoritos: (nombre) => `Removed "${nombre}" from favorites`,
       calendarioActualizado: 'Calendar updated ✅',
 
@@ -1055,7 +1045,6 @@
     document.getElementById('detailBackBtn').textContent = t('volver');
     document.getElementById('notifBtn') && actualizarBotonNotif();
     document.getElementById('offlineBanner').textContent = t('sinConexionBanner');
-    document.getElementById('pullIndicator').textContent = t('soltarActualizar');
   }
   aplicarIdioma();
 
@@ -4551,43 +4540,6 @@
      Deslizar hacia abajo estando arriba de todo de la pantalla fuerza un
      refresco salteando la caché (fetchJSON con forzar:true). Se usa tanto
      en Calendario como en Favoritos (ver las dos llamadas debajo). */
-  function inicializarPullToRefresh(contenedorId, indicadorId, estaActiva, onRefrescar) {
-    const vista = document.getElementById(contenedorId);
-    const indicador = document.getElementById(indicadorId);
-    const UMBRAL_REFRESH = 70;
-    let startY = 0, arrastrando = false, listo = false;
-
-    vista.addEventListener('touchstart', (e) => {
-      if (!estaActiva() || window.scrollY > 0) return;
-      startY = e.touches[0].clientY;
-      arrastrando = true;
-      listo = false;
-    }, { passive: true });
-
-    vista.addEventListener('touchmove', (e) => {
-      if (!arrastrando) return;
-      const dy = e.touches[0].clientY - startY;
-      if (dy <= 0) { indicador.style.height = '0px'; return; }
-
-      const alto = Math.min(dy * 0.5, 60);
-      indicador.style.height = alto + 'px';
-      listo = dy * 0.5 > UMBRAL_REFRESH;
-      indicador.textContent = listo ? t('soltarActualizarListo') : t('seguiBajando');
-    }, { passive: true });
-
-    vista.addEventListener('touchend', () => {
-      if (!arrastrando) return;
-      arrastrando = false;
-      indicador.style.height = '0px';
-      if (listo) {
-        indicador.textContent = t('soltarActualizar');
-        onRefrescar();
-      }
-    });
-  }
-
-  inicializarPullToRefresh('calendarView', 'pullIndicator', () => vistaActual === 'calendario', () => cargarCalendario(true));
-  inicializarPullToRefresh('listView', 'pullIndicatorFavs', () => vistaActual === 'favoritos', () => actualizarFavoritos(true));
   inicializarSwipeBottomNav();
 
   function volverALista() {
