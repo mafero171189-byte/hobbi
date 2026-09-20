@@ -68,7 +68,27 @@ async function hashearPassword(password, saltHex) {
 function json(data, init = {}) {
   return new Response(JSON.stringify(data), {
     ...init,
-    headers: { 'Content-Type': 'application/json', ...(init.headers || {}) }
+    headers: {
+      'Content-Type': 'application/json',
+      // Hardening estándar: evita que el navegador intente adivinar un
+      // Content-Type distinto al declarado (nosniff), y evita que este sitio
+      // se pueda embeber dentro de un <iframe> de otro dominio (clickjacking).
+      'X-Content-Type-Options': 'nosniff',
+      'X-Frame-Options': 'DENY',
+      ...(init.headers || {})
+    }
+  });
+}
+
+// Mismo criterio que json() pero para las respuestas de error en texto plano
+// que ya usaba cada endpoint (login inválido, faltan datos, etc.) — antes no
+// llevaban ningún header de seguridad porque se armaban con new Response(...)
+// directo. Reemplaza uno por uno esos new Response(texto, {status}) sin
+// cambiar el mensaje ni el status code que ya devolvía cada uno.
+function errorResponse(mensaje, status) {
+  return new Response(mensaje, {
+    status,
+    headers: { 'X-Content-Type-Options': 'nosniff', 'X-Frame-Options': 'DENY' }
   });
 }
 
@@ -77,14 +97,14 @@ function json(data, init = {}) {
 async function handleAuthPost(request, env) {
   try {
     const { credential } = await request.json();
-    if (!credential) return new Response('Falta credential', { status: 400 });
+    if (!credential) return errorResponse('Falta credential', 400);
 
     const verifRes = await fetch(`https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(credential)}`);
-    if (!verifRes.ok) return new Response('Token inválido', { status: 401 });
+    if (!verifRes.ok) return errorResponse('Token inválido', 401);
     const payload = await verifRes.json();
 
     if (payload.aud !== GOOGLE_CLIENT_ID) {
-      return new Response('Token de otra app', { status: 401 });
+      return errorResponse('Token de otra app', 401);
     }
 
     const usuarioId = payload.sub;
@@ -103,7 +123,7 @@ async function handleAuthPost(request, env) {
       headers: { 'Set-Cookie': cookieDeSesion(sesion) }
     });
   } catch (err) {
-    return new Response('Error de servidor: ' + err.message, { status: 500 });
+    return errorResponse('Error de servidor: ' + err.message, 500);
   }
 }
 
@@ -119,16 +139,16 @@ async function handleRegisterPost(request, env) {
   try {
     const { email, password, nombre } = await request.json();
     if (!email || !password || password.length < 6) {
-      return new Response('Completá un mail válido y una contraseña de al menos 6 caracteres', { status: 400 });
+      return errorResponse('Completá un mail válido y una contraseña de al menos 6 caracteres', 400);
     }
     const emailNorm = String(email).trim().toLowerCase();
 
     const existente = await env.DB.prepare('SELECT id, password_hash FROM usuarios WHERE email = ?').bind(emailNorm).first();
     if (existente) {
       if (!existente.password_hash) {
-        return new Response('Ese mail ya está registrado con Google. Iniciá sesión con Google.', { status: 409 });
+        return errorResponse('Ese mail ya está registrado con Google. Iniciá sesión con Google.', 409);
       }
-      return new Response('Ese mail ya está registrado. Iniciá sesión.', { status: 409 });
+      return errorResponse('Ese mail ya está registrado. Iniciá sesión.', 409);
     }
 
     const usuarioId = crypto.randomUUID();
@@ -143,14 +163,14 @@ async function handleRegisterPost(request, env) {
       headers: { 'Set-Cookie': cookieDeSesion(sesion) }
     });
   } catch (err) {
-    return new Response('Error de servidor: ' + err.message, { status: 500 });
+    return errorResponse('Error de servidor: ' + err.message, 500);
   }
 }
 
 async function handleLoginPost(request, env) {
   try {
     const { email, password } = await request.json();
-    if (!email || !password) return new Response('Faltan datos', { status: 400 });
+    if (!email || !password) return errorResponse('Faltan datos', 400);
     const emailNorm = String(email).trim().toLowerCase();
 
     const usuario = await env.DB.prepare(
@@ -158,12 +178,12 @@ async function handleLoginPost(request, env) {
     ).bind(emailNorm).first();
 
     if (!usuario || !usuario.password_hash) {
-      return new Response('Mail o contraseña incorrectos', { status: 401 });
+      return errorResponse('Mail o contraseña incorrectos', 401);
     }
 
     const { hash } = await hashearPassword(password, usuario.password_salt);
     if (hash !== usuario.password_hash) {
-      return new Response('Mail o contraseña incorrectos', { status: 401 });
+      return errorResponse('Mail o contraseña incorrectos', 401);
     }
 
     const sesion = await crearSesion(usuario.id, env.SESSION_SECRET);
@@ -171,7 +191,7 @@ async function handleLoginPost(request, env) {
       headers: { 'Set-Cookie': cookieDeSesion(sesion) }
     });
   } catch (err) {
-    return new Response('Error de servidor: ' + err.message, { status: 500 });
+    return errorResponse('Error de servidor: ' + err.message, 500);
   }
 }
 
@@ -197,7 +217,7 @@ async function handleMe(request, env) {
 
 async function handleDataGet(request, env) {
   const usuarioId = await usuarioDesdeCookie(request, env.SESSION_SECRET);
-  if (!usuarioId) return new Response('No autenticado', { status: 401 });
+  if (!usuarioId) return errorResponse('No autenticado', 401);
 
   const usuario = await env.DB.prepare(
     'SELECT idioma, favoritos_json, episodios_vistos_json FROM usuarios WHERE id = ?'
@@ -218,9 +238,38 @@ async function handleDataGet(request, env) {
 
 async function handleDataPost(request, env) {
   const usuarioId = await usuarioDesdeCookie(request, env.SESSION_SECRET);
-  if (!usuarioId) return new Response('No autenticado', { status: 401 });
+  if (!usuarioId) return errorResponse('No autenticado', 401);
 
   const { favoritos, episodiosVistos, idioma } = await request.json();
+
+  // Sin este chequeo, una cuenta autenticada (crearla es gratis e instantáneo,
+  // sin ningún freno) podía mandar un array de favoritos con miles de
+  // entradas falsas, o strings gigantes repetidos, e inflar el storage/las
+  // escrituras de D1 sin límite — justo el tipo de abuso que agota la cuota
+  // gratis con pocos usuarios maliciosos, sin que haga falta tráfico real.
+  // Los topes de acá son generosos para cualquier uso real (nadie tiene miles
+  // de series favoritas) pero cortan el abuso.
+  const MAX_FAVORITOS = 500;
+  const MAX_EPISODIOS_VISTOS = 5000;
+  const IDIOMAS_VALIDOS = new Set(['es', 'en']);
+
+  if (idioma && !IDIOMAS_VALIDOS.has(idioma)) {
+    return errorResponse('Idioma inválido', 400);
+  }
+  if (Array.isArray(favoritos)) {
+    if (favoritos.length > MAX_FAVORITOS) {
+      return errorResponse('Demasiados favoritos', 400);
+    }
+    const formaValida = favoritos.every(f =>
+      f && typeof f === 'object' && typeof f.id === 'number' && typeof f.name === 'string' && f.name.length < 300
+    );
+    if (!formaValida) return errorResponse('Formato de favoritos inválido', 400);
+  }
+  if (episodiosVistos && typeof episodiosVistos === 'object') {
+    if (Object.keys(episodiosVistos).length > MAX_EPISODIOS_VISTOS) {
+      return errorResponse('Demasiados episodios marcados', 400);
+    }
+  }
 
   const campos = [];
   const valores = [];
@@ -254,7 +303,7 @@ async function handleDataPost(request, env) {
 
 async function handleAccountDelete(request, env) {
   const usuarioId = await usuarioDesdeCookie(request, env.SESSION_SECRET);
-  if (!usuarioId) return new Response('No autenticado', { status: 401 });
+  if (!usuarioId) return errorResponse('No autenticado', 401);
 
   try {
     // Las tablas favoritos/episodios_vistos ya no se usan para escribir datos
@@ -266,7 +315,7 @@ async function handleAccountDelete(request, env) {
       env.DB.prepare('DELETE FROM usuarios WHERE id = ?').bind(usuarioId)
     ]);
   } catch (err) {
-    return new Response('Error de servidor: ' + err.message, { status: 500 });
+    return errorResponse('Error de servidor: ' + err.message, 500);
   }
 
   // Además de borrar los datos, cerramos la sesión: la cookie ya no sirve
