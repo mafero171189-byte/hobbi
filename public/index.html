@@ -2721,6 +2721,7 @@
 
   /* Muestra el catálogo completo de una categoría como lista vertical, con vuelta al descubrimiento. */
   const CATEGORIAS_CON_FECHA = new Set([
+    'estrenos', 'estrenosHollywood', 'vuelven',
     'proximosEstrenos', 'proximosNetflix', 'proximosPrimeVideo', 'proximosHboMax', 'proximosAppleTv', 'proximosDisney', 'proximosHulu', 'proximosParamount'
   ]);
 
@@ -2876,9 +2877,7 @@
      los que regionDeShow clasifica como Hollywood (plataforma grande de
      EE.UU., o canal con país US aunque no esté en la lista de grandes). */
   function armarEstrenosHollywood(estrenos) {
-    return estrenos
-      .filter(ep => regionDeShow(ep.show) === 'hollywood')
-      .map(ep => ep.show);
+    return estrenos.filter(ep => regionDeShow(ep.show) === 'hollywood');
   }
 
   /* Mapeo de nombre-de-canal-normalizado -> plataforma canónica, para poder
@@ -3062,8 +3061,8 @@
       if (!holderVigente()) return;
       const estrenosHollywood = armarEstrenosHollywood(estrenos);
       const proximosPorPlataforma = armarProximosPorPlataforma(proximosEstrenos);
-      resolverSlotDescubrimiento(holder, 'estrenos', estrenos.map(ep => ep.show));
-      resolverSlotDescubrimiento(holder, 'estrenosHollywood', estrenosHollywood);
+      resolverSlotDescubrimiento(holder, 'estrenos', estrenos, true);
+      resolverSlotDescubrimiento(holder, 'estrenosHollywood', estrenosHollywood, true);
       resolverSlotDescubrimiento(holder, 'proximosEstrenos', proximosEstrenos, true);
       resolverSlotDescubrimiento(holder, 'proximosNetflix', proximosPorPlataforma.netflix, true);
       resolverSlotDescubrimiento(holder, 'proximosPrimeVideo', proximosPorPlataforma.primevideo, true);
@@ -3072,7 +3071,7 @@
       resolverSlotDescubrimiento(holder, 'proximosDisney', proximosPorPlataforma.disney, true);
       resolverSlotDescubrimiento(holder, 'proximosHulu', proximosPorPlataforma.hulu, true);
       resolverSlotDescubrimiento(holder, 'proximosParamount', proximosPorPlataforma.paramount, true);
-      resolverSlotDescubrimiento(holder, 'vuelven', vuelven.map(ep => ep.show));
+      resolverSlotDescubrimiento(holder, 'vuelven', vuelven, true);
       quitarSlotSiQuedoVacio(holder);
     }).catch(() => {
       if (!holderVigente()) return;
