@@ -124,6 +124,22 @@ async function handleAuthPost(request, env) {
     const nombre = payload.name || '';
     const foto = payload.picture || '';
 
+    // Chequeo de colisión: si el email ya existe pero el ID es distinto, significa
+    // que alguien se registró antes con ese email + contraseña (sin ser el dueño
+    // real de la cuenta de Google). Rechazamos con un mensaje claro en vez de
+    // intentar insertar, que rompería el UNIQUE INDEX(email) sin permiso.
+    // Ver hallazgo #2 de la auditoría: "Colisión de email entre login Google y login por contraseña".
+    const existentePorEmail = await env.DB.prepare(
+      'SELECT id FROM usuarios WHERE email = ? AND id != ?'
+    ).bind(email, usuarioId).first();
+
+    if (existentePorEmail) {
+      return errorResponse(
+        'Este email ya está registrado con otro método. Iniciá sesión con el método que usaste antes, o contactá soporte si necesitás ayuda.',
+        409
+      );
+    }
+
     await env.DB.prepare(
       `INSERT INTO usuarios (id, email, nombre, foto) VALUES (?, ?, ?, ?)
        ON CONFLICT(id) DO UPDATE SET email = excluded.email, nombre = excluded.nombre, foto = excluded.foto`
