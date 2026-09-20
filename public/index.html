@@ -277,6 +277,8 @@
       opacity: 0;
     }
     .card-info { flex: 1; cursor: pointer; min-width: 0; }
+    .card-poster-wrap { position: relative; flex-shrink: 0; }
+    .card-poster-wrap .poster-rating-badge { position: absolute; top: 3px; right: 3px; font-size: 9px; padding: 1px 4px; border-radius: 5px; }
     .card-info h3 { font-size: 16px; margin-bottom: 4px; }
     .card-info .status { font-size: 11px; color: var(--teal); font-weight: bold; margin-bottom: 6px; }
     .card-info .status.ended { color: var(--ink-dim); }
@@ -436,7 +438,7 @@
     .discover-item { flex-shrink: 0; width: 102px; cursor: pointer; }
     .discover-item img { width: 102px; height: 146px; object-fit: cover; border-radius: 10px; background: var(--surface); border: 1px solid var(--border); display: block; }
     .discover-item.has-rating { position: relative; }
-    .discover-item .poster-rating-badge { position: absolute; top: 6px; right: 6px; background: rgba(0,0,0,0.75); color: var(--gold); font-size: 11px; font-weight: 700; padding: 2px 6px; border-radius: 6px; line-height: 1.3; }
+    .poster-rating-badge { position: absolute; top: 6px; right: 6px; background: rgba(0,0,0,0.75); color: var(--gold); font-size: 11px; font-weight: 700; padding: 2px 6px; border-radius: 6px; line-height: 1.3; z-index: 2; }
     .discover-name { font-size: 11px; color: var(--ink); margin-top: 6px; line-height: 1.3; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
     .actor-item { width: 84px; text-align: center; }
     .actor-item img { width: 84px; height: 84px; border-radius: 50%; object-fit: cover; background: var(--surface); border: 1px solid var(--border); }
@@ -2695,7 +2697,7 @@
       const show = mostrarFechas ? entrada.show : entrada;
       if (!show || !show.id) return;
       const item = document.createElement('div');
-      item.className = 'discover-item';
+      item.className = 'discover-item has-rating';
       item.onclick = () => verDetalles(show.id);
       const tieneImagen = show.image && (show.image.medium || show.image.original);
       const imagen = tieneImagen || placeholderPorNombre(show.name);
@@ -2703,12 +2705,13 @@
       // Si es rail prioritario (primer rail visible), las primeras 6 cards usan eager; el resto lazy
       // Si no es prioritario, todas usan lazy (están debajo del fold)
       const loadingAttr = (esRailPrioritario && idx < 6) ? 'eager' : 'lazy';
+      const ratingHTML = (show.rating && show.rating.average) ? `<div class="poster-rating-badge">⭐ ${show.rating.average.toFixed(1)}</div>` : '';
       let fechaHTML = '';
       if (mostrarFechas) {
         const fechaTexto = formatearFechaEstrenoTexto(entrada);
         if (fechaTexto) fechaHTML = `<div class="discover-name" style="color:var(--gold); font-weight:700;">${fechaTexto}</div>`;
       }
-      item.innerHTML = `<img src="${imagen}" alt="${show.name}" loading="${loadingAttr}" class="loading-image" onload="this.classList.remove('loading-image')" onerror="this.classList.remove('loading-image')" ${atrsFallback}><div class="discover-name">${show.name}</div>${fechaHTML}`;
+      item.innerHTML = `<img src="${imagen}" alt="${show.name}" loading="${loadingAttr}" class="loading-image" onload="this.classList.remove('loading-image')" onerror="this.classList.remove('loading-image')" ${atrsFallback}>${ratingHTML}<div class="discover-name">${show.name}</div>${fechaHTML}`;
       rail.appendChild(item);
     });
     section.appendChild(rail);
@@ -2780,7 +2783,8 @@
         name: show.name,
         image: show.image ? (show.image.medium || show.image.original) : '',
         status: show.status,
-        premiered: show.premiered
+        premiered: show.premiered,
+        rating: show.rating
       }, false, idsFav, fechasPorId.get(show.id) || ''));
     });
     container.appendChild(lista);
@@ -3170,7 +3174,8 @@
           name: show.name,
           image: show.image ? (show.image.medium || show.image.original) : '',
           status: show.status,
-          premiered: show.premiered
+          premiered: show.premiered,
+          rating: show.rating
         }, false, idsFav));
       });
       container.appendChild(lista);
@@ -3246,7 +3251,8 @@
           name: show.name,
           image: show.image?.medium,
           status: show.status,
-          premiered: show.premiered
+          premiered: show.premiered,
+          rating: show.rating
         }, false, idsFav);
         container.appendChild(card);
       });
@@ -3424,9 +3430,13 @@
     const fechaEstrenoFavoritos = (!fechaEstrenoTexto && esVistaFavoritos && estado.clase === 'renewed' && show.proximoEstreno)
       ? formatearFechaEstrenoTexto({ airdate: show.proximoEstreno })
       : '';
-    const fechaEstrenoHTML = (fechaEstrenoTexto || fechaEstrenoFavoritos)
-      ? `<div class="status" style="color:var(--gold); font-weight:700;">${fechaEstrenoTexto || fechaEstrenoFavoritos}</div>`
-      : '';
+    const fechaParaMostrar = fechaEstrenoTexto || fechaEstrenoFavoritos;
+    // Antes la fecha iba en un <div> aparte debajo de "Próximo estreno", lo que
+    // la mandaba a su propia línea. Ahora se concatena en el mismo div de
+    // estado, separada por "·", para que quede todo junto: "📅 Próximo estreno · 13 nov".
+    const estadoTextoHTML = fechaParaMostrar
+      ? `${estado.texto} · <span style="color:var(--gold);">${fechaParaMostrar}</span>`
+      : estado.texto;
 
     let extraHTML = '';
     if (esVistaFavoritos && estado.clase === '' && show.proximoEstreno) {
@@ -3443,14 +3453,17 @@
     const imgSrc = tieneImagen ? show.image : placeholderPorNombre(show.name);
     const atrsFallback = tieneImagen ? '' : `data-fallback-nombre="${show.name.replace(/"/g, '&quot;')}" data-fallback-buscado="0"`;
     const loadingAttr = loadingPrioritario ? 'eager' : 'lazy';
+    const ratingHTML = (show.rating && show.rating.average) ? `<div class="poster-rating-badge">⭐ ${show.rating.average.toFixed(1)}</div>` : '';
 
     card.innerHTML = `
       <div class="card-top">
-        <img src="${imgSrc}" onclick="verDetalles(${show.id})" loading="${loadingAttr}" decoding="async" alt="${show.name}" class="loading-image" onload="this.classList.remove('loading-image')" onerror="this.classList.remove('loading-image')" ${atrsFallback}>
+        <div class="card-poster-wrap">
+          <img src="${imgSrc}" onclick="verDetalles(${show.id})" loading="${loadingAttr}" decoding="async" alt="${show.name}" class="loading-image" onload="this.classList.remove('loading-image')" onerror="this.classList.remove('loading-image')" ${atrsFallback}>
+          ${ratingHTML}
+        </div>
         <div class="card-info" onclick="verDetalles(${show.id})">
           <h3>${show.name}${badgeNuevo}</h3>
-          <div class="status ${estado.clase}">${estado.texto}</div>
-          ${fechaEstrenoHTML}
+          <div class="status ${estado.clase}">${estadoTextoHTML}</div>
           ${progresoHTML}
         </div>
         ${botonFavHTML}
@@ -3746,6 +3759,7 @@
       if (favIndex > -1) {
         favoritos[favIndex].episodeIds = episodios.map(e => e.id);
         favoritos[favIndex].totalEpisodesCount = episodios.length;
+        favoritos[favIndex].rating = show.rating;
         guardarDatos();
       }
 
@@ -3824,7 +3838,7 @@
       }
 
       const esFavActual = favoritos.some(f => f.id === show.id);
-      const serieParaFav = { id: show.id, name: show.name, image: show.image ? show.image.medium : '', status: show.status, premiered: show.premiered };
+      const serieParaFav = { id: show.id, name: show.name, image: show.image ? show.image.medium : '', status: show.status, premiered: show.premiered, rating: show.rating };
 
       const iconoYoutube = `
         <button class="icon-btn" onclick="abrirTrailer(${JSON.stringify(show.name).replace(/"/g, '&quot;')})" title="Ver trailer en YouTube" aria-label="Ver trailer en YouTube">
