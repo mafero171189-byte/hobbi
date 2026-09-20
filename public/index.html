@@ -294,7 +294,9 @@
 
     /* Detalle de Serie */
     .back-btn { background: var(--surface-2); color: var(--ink); border: none; padding: 8px 14px; border-radius: 8px; cursor: pointer; margin-bottom: 12px; font-weight: bold; }
-    .detail-header { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 10px; background: var(--surface); padding: 20px 16px; border-radius: 14px; margin-bottom: 16px; border: 1px solid var(--border); position: relative; }
+    .detail-header { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 10px; padding: 20px 16px; border-radius: 14px; margin-bottom: 16px; border: 1px solid var(--border); position: relative; background: rgba(0,0,0,0.3); }
+    .detail-header::before { content: ''; position: absolute; top: 0; left: 0; right: 0; bottom: 0; background-image: var(--detail-header-bg); background-size: cover; background-position: center; filter: blur(40px); opacity: 0.4; border-radius: 14px; z-index: 0; pointer-events: none; }
+    .detail-header > * { position: relative; z-index: 1; }
     .detail-header .detail-poster {
       width: 160px; height: 230px; object-fit: cover; border-radius: 12px;
       box-shadow: 0 8px 28px rgba(0,0,0,0.5);
@@ -3808,7 +3810,7 @@
         : '';
 
       let html = `
-        <div class="detail-header">
+        <div class="detail-header" style="--detail-header-bg: url('${show.image && (show.image.original || show.image.medium) ? (show.image.original || show.image.medium).replace(/'/g, "\\'") : ''}');">
           <button class="fav-btn" id="detailFavBtn" onclick="toggleFavorito(event, ${JSON.stringify(serieParaFav).replace(/"/g, '&quot;')})" aria-label="${esFavActual ? t('quitarDeFavoritos') : t('agregarAFavoritos')}">
             ${esFavActual ? '❤️' : '🤍'}
           </button>
