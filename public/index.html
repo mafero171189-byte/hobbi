@@ -29,6 +29,39 @@
   <link rel="apple-touch-icon" id="appleTouchIcon" href="">
   <link rel="manifest" href="/manifest.json">
 
+  <!-- ==================== Anti-flash de login ====================
+       Sin esto, el onboarding (pantalla de login) se ve SIEMPRE por una
+       fracción de segundo al recargar, aunque ya estés logueado — porque
+       tarda un toque en confirmar la sesión contra el servidor (fetch a
+       /api/me) y hasta que esa respuesta llega, el HTML ya se pintó con el
+       onboarding visible de entrada (así está armado el CSS, ver
+       #onboardingScreen más abajo).
+       Este script es intencionalmente síncrono (sin defer/async) y va lo
+       más temprano posible en el <head>: se ejecuta ANTES de que el
+       navegador pinte el <body>, así que puede decidir de entrada si el
+       onboarding arranca oculto o no, sin que se llegue a ver el flash.
+       Usa localStorage (no la cookie de sesión, que es HttpOnly y no se
+       puede leer desde JS) como pista de "la última vez estabas logueado".
+       No es 100% infalible — si la cookie expiró mientras tanto, se nota
+       igual (el onboarding aparece recién cuando revisarSesionExistente()
+       confirma que ya no hay sesión) — pero cubre el caso normal: abrís la
+       app de nuevo con la sesión todavía válida, y no ves ningún flash. -->
+  <script>
+    if (localStorage.getItem('hobbi_ultima_sesion') === 'true') {
+      document.documentElement.classList.add('sesion-previa');
+    }
+  </script>
+  <style>
+    /* Mientras estén ambas clases (arrancó con pista de sesión previa Y
+       todavía no se confirmó/descartó nada), el onboarding queda oculto.
+       revisarSesionExistente() saca la clase 'verificando-sesion' del body
+       apenas tiene la respuesta del servidor — si en definitiva NO había
+       sesión, mostrarOnboarding() ya se encarga de poner display:flex de
+       nuevo (que pisa esta regla, porque es un estilo inline con más
+       especificidad que esta clase). */
+    html.sesion-previa body.verificando-sesion #onboardingScreen { display: none; }
+  </style>
+
   <script src="https://accounts.google.com/gsi/client" async defer></script>
   <style>
     :root {
@@ -415,7 +448,7 @@
     .season-meta { color: var(--ink-muted); font-size: 12px; line-height: 1.5; }
   </style>
 </head>
-<body class="sin-scroll">
+<body class="sin-scroll verificando-sesion">
 
 <div id="toastHolder"></div>
 
@@ -1342,9 +1375,25 @@
         // marcaron offline y todavía no llegaron a subirse), no queremos que
         // el primer fetch del día los pise con lo que el server tenía antes.
         await sincronizarDesdeNube(true);
+      } else {
+        // El servidor dice que NO hay sesión (cookie vencida, por ejemplo)
+        // aunque localStorage tenía la pista de "la última vez sí". Borramos
+        // esa pista vieja para no repetir el intento en vano la próxima vez.
+        localStorage.removeItem('hobbi_ultima_sesion');
       }
     } catch {
       // Sin conexión o API no disponible: seguimos con localStorage nomás.
+      // OJO: si había pista de sesión previa, la dejamos como está (no la
+      // borramos) — es justamente el caso de "abrís la app sin señal", donde
+      // no tiene sentido asumir que ya no estás logueado.
+    } finally {
+      // Pase lo que pase (logueado, no logueado, sin conexión, error), ya
+      // terminamos de "verificar": si tocaba mostrar el onboarding, ya se
+      // mostró (mostrarOnboarding/cerrarOnboarding se encargan solitos con
+      // su display:flex/none inline). Sacamos esta clase para que dejen de
+      // aplicar las reglas anti-flash del <head> — de lo contrario, alguien
+      // sin conexión y sin sesión previa nunca vería nada.
+      document.body.classList.remove('verificando-sesion');
     }
   }
 
@@ -1359,6 +1408,7 @@
       if (!res.ok) throw new Error('login falló');
       const data = await res.json();
       usuarioActual = { email: data.email, nombre: data.nombre, foto: data.foto };
+      localStorage.setItem('hobbi_ultima_sesion', 'true'); // ver anti-flash en el <head>
       actualizarChipUsuario();
       cerrarOnboarding();
       // Primero BAJAMOS lo que ya había en el servidor y lo mergeamos con lo local
@@ -1379,6 +1429,7 @@
     clearTimeout(timeoutSyncNube); // por si había un guardado pendiente programado, lo cancelamos
     try { await fetch('/api/auth', { method: 'DELETE' }); } catch {}
     usuarioActual = null;
+    localStorage.removeItem('hobbi_ultima_sesion'); // ver anti-flash en el <head>
     actualizarChipUsuario();
     mostrarSyncBadge('');
     // Como el registro es obligatorio, no dejamos datos de esta cuenta visibles
@@ -1416,6 +1467,7 @@
       return;
     }
     usuarioActual = null;
+    localStorage.removeItem('hobbi_ultima_sesion'); // ver anti-flash en el <head>
     actualizarChipUsuario();
     mostrarSyncBadge('');
     favoritos = [];
@@ -1532,6 +1584,7 @@
       }
       const data = await res.json();
       usuarioActual = { email: data.email, nombre: data.nombre, foto: data.foto };
+      localStorage.setItem('hobbi_ultima_sesion', 'true'); // ver anti-flash en el <head>
       actualizarChipUsuario();
       cerrarOnboarding();
       await sincronizarDesdeNube(true);
