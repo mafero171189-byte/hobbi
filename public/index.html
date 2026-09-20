@@ -342,7 +342,7 @@
 
     /* Tarjetas del Calendario */
     .calendar-card { background: var(--surface); border-radius: 12px; padding: 12px; border-left: 4px solid var(--gold); margin-bottom: 10px; border-top: 1px solid var(--border); border-right: 1px solid var(--border); border-bottom: 1px solid var(--border); }
-    .calendar-date { font-size: 12px; color: var(--gold); font-weight: bold; margin-bottom: 4px; }
+    .calendar-date { font-size: 12px; color: var(--ink-muted); font-weight: bold; margin-bottom: 4px; }
 
     /* Línea de tiempo de próximos estrenos (píldora dorada, luces de marquesina) */
     .timeline { position: relative; }
@@ -2710,7 +2710,7 @@
       let fechaHTML = '';
       if (mostrarFechas) {
         const fechaTexto = formatearFechaEstrenoTexto(entrada);
-        if (fechaTexto) fechaHTML = `<div class="discover-name" style="color:var(--gold); font-weight:700;">${fechaTexto}</div>`;
+        if (fechaTexto) fechaHTML = `<div class="discover-name" style="color:var(--ink-muted); font-weight:700;">${fechaTexto}</div>`;
       }
       item.innerHTML = `<img src="${imagen}" alt="${show.name}" loading="${loadingAttr}" class="loading-image" onload="this.classList.remove('loading-image')" onerror="this.classList.remove('loading-image')" ${atrsFallback}>${ratingHTML}<div class="discover-name">${show.name}</div>${fechaHTML}`;
       rail.appendChild(item);
@@ -3434,7 +3434,7 @@
     // la mandaba a su propia línea de nuevo — se concatena en el mismo div de
     // estado, separada por "·": "⏸ En pausa · 29 sept".
     const estadoTextoHTML = fechaParaMostrar
-      ? `${estado.texto} · <span style="color:var(--gold);">${fechaParaMostrar}</span>`
+      ? `${estado.texto} · <span style="color:var(--ink-muted);">${fechaParaMostrar}</span>`
       : estado.texto;
     // El rating va en su propia línea debajo del estado (no al lado, ni sobre
     // el póster como estaba antes — ahí tapaba la carátula en pósters chicos).
