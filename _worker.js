@@ -6,6 +6,49 @@
 const GOOGLE_CLIENT_ID = '403618822429-pshtrss0fg4nnojujh6aqqagaboia66h.apps.googleusercontent.com';
 const SESSION_DIAS = 30;
 
+/* ---------- CORS (necesario desde que existe la APK de Capacitor) ----------
+   La PWA se sirve desde este mismo dominio, así que nunca necesitó CORS
+   (mismo origen). La APK corre en un origen distinto (https://localhost en
+   Android/Capacitor), así que el navegador exige que el servidor declare
+   explícitamente que permite ese origen — si no, bloquea el pedido antes de
+   que el JS de la app pueda ver la respuesta ("Failed to fetch").
+   Con cookies (credentials:'include' en el fetch del cliente), el header
+   Access-Control-Allow-Origin NO puede ser '*' — tiene que ser el origen
+   exacto, de ahí la lista blanca en vez de aceptar cualquiera. */
+const ORIGENES_PERMITIDOS = [
+  'https://localhost',          // APK Android (Capacitor, androidScheme: 'https')
+  'capacitor://localhost',      // por si en el futuro se compila también para iOS
+  'https://i.mafero171189.workers.dev' // la propia PWA — no debería necesitarlo (mismo origen), pero no molesta
+];
+
+function headersCors(request) {
+  const origen = request.headers.get('Origin');
+  if (!origen || !ORIGENES_PERMITIDOS.includes(origen)) return {};
+  return {
+    'Access-Control-Allow-Origin': origen,
+    'Access-Control-Allow-Credentials': 'true',
+    'Vary': 'Origin'
+  };
+}
+
+function respuestaPreflight(request) {
+  const origen = request.headers.get('Origin');
+  if (!origen || !ORIGENES_PERMITIDOS.includes(origen)) {
+    return new Response(null, { status: 403 });
+  }
+  return new Response(null, {
+    status: 204,
+    headers: {
+      'Access-Control-Allow-Origin': origen,
+      'Access-Control-Allow-Credentials': 'true',
+      'Access-Control-Allow-Methods': 'GET, POST, DELETE, OPTIONS',
+      'Access-Control-Allow-Headers': 'Content-Type',
+      'Access-Control-Max-Age': '86400',
+      'Vary': 'Origin'
+    }
+  });
+}
+
 /* ---------- Helpers de sesión (cookie firmada con HMAC) ---------- */
 
 async function firmar(valor, secreto) {
@@ -43,7 +86,12 @@ async function usuarioDesdeCookie(request, secreto) {
 }
 
 function cookieDeSesion(sesion) {
-  return `hobbi_sesion=${sesion}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=${SESSION_DIAS * 86400}`;
+  // SameSite=None (en vez de Lax) porque la APK pide desde un origen distinto
+  // (https://localhost) — con Lax, el navegador directamente descarta la
+  // cookie en pedidos cross-origin y la sesión nunca queda guardada, aunque
+  // el login haya funcionado bien del lado del servidor. None exige Secure
+  // (ya lo tenía) para que el navegador la acepte igual.
+  return `hobbi_sesion=${sesion}; Path=/; HttpOnly; Secure; SameSite=None; Max-Age=${SESSION_DIAS * 86400}`;
 }
 
 /* ---------- Helpers de contraseña (PBKDF2, sin librerías externas) ---------- */
@@ -157,7 +205,7 @@ async function handleAuthPost(request, env) {
 
 function handleAuthDelete() {
   return json({ ok: true }, {
-    headers: { 'Set-Cookie': `hobbi_sesion=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0` }
+    headers: { 'Set-Cookie': `hobbi_sesion=; Path=/; HttpOnly; Secure; SameSite=None; Max-Age=0` }
   });
 }
 
@@ -366,7 +414,7 @@ async function handleAccountDelete(request, env) {
   // Además de borrar los datos, cerramos la sesión: la cookie ya no sirve
   // porque el usuario al que apuntaba dejó de existir.
   return json({ ok: true }, {
-    headers: { 'Set-Cookie': `hobbi_sesion=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0` }
+    headers: { 'Set-Cookie': `hobbi_sesion=; Path=/; HttpOnly; Secure; SameSite=None; Max-Age=0` }
   });
 }
 
@@ -375,17 +423,41 @@ async function handleAccountDelete(request, env) {
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
+    const esRutaApi = url.pathname.startsWith('/api/');
 
-    if (url.pathname === '/api/auth' && request.method === 'POST') return handleAuthPost(request, env);
-    if (url.pathname === '/api/auth' && request.method === 'DELETE') return handleAuthDelete();
-    if (url.pathname === '/api/auth/register' && request.method === 'POST') return handleRegisterPost(request, env);
-    if (url.pathname === '/api/auth/login' && request.method === 'POST') return handleLoginPost(request, env);
-    if (url.pathname === '/api/me' && request.method === 'GET') return handleMe(request, env);
-    if (url.pathname === '/api/data' && request.method === 'GET') return handleDataGet(request, env);
-    if (url.pathname === '/api/data' && request.method === 'POST') return handleDataPost(request, env);
-    if (url.pathname === '/api/account' && request.method === 'DELETE') return handleAccountDelete(request, env);
+    // El navegador manda un OPTIONS de "permiso" antes de cualquier POST/DELETE
+    // con credentials:'include' desde un origen distinto (la APK). Si no lo
+    // respondemos con los headers correctos, el pedido real nunca sale.
+    if (esRutaApi && request.method === 'OPTIONS') {
+      return respuestaPreflight(request);
+    }
 
-    // Todo lo que no sea /api/* se sirve como archivo estático (index.html, etc).
-    return env.ASSETS.fetch(request);
+    let respuesta;
+    if (url.pathname === '/api/auth' && request.method === 'POST') respuesta = await handleAuthPost(request, env);
+    else if (url.pathname === '/api/auth' && request.method === 'DELETE') respuesta = handleAuthDelete();
+    else if (url.pathname === '/api/auth/register' && request.method === 'POST') respuesta = await handleRegisterPost(request, env);
+    else if (url.pathname === '/api/auth/login' && request.method === 'POST') respuesta = await handleLoginPost(request, env);
+    else if (url.pathname === '/api/me' && request.method === 'GET') respuesta = await handleMe(request, env);
+    else if (url.pathname === '/api/data' && request.method === 'GET') respuesta = await handleDataGet(request, env);
+    else if (url.pathname === '/api/data' && request.method === 'POST') respuesta = await handleDataPost(request, env);
+    else if (url.pathname === '/api/account' && request.method === 'DELETE') respuesta = await handleAccountDelete(request, env);
+    else {
+      // Todo lo que no sea /api/* se sirve como archivo estático (index.html, etc).
+      return env.ASSETS.fetch(request);
+    }
+
+    // Agregamos los headers CORS a la respuesta real de cualquier endpoint
+    // /api/* — un solo lugar central, así no hay riesgo de que algún handler
+    // se quede afuera si el día de mañana se agrega uno nuevo.
+    const corsHeaders = headersCors(request);
+    if (Object.keys(corsHeaders).length === 0) return respuesta;
+
+    const headersFinales = new Headers(respuesta.headers);
+    for (const [clave, valor] of Object.entries(corsHeaders)) headersFinales.set(clave, valor);
+    return new Response(respuesta.body, {
+      status: respuesta.status,
+      statusText: respuesta.statusText,
+      headers: headersFinales
+    });
   }
 };
