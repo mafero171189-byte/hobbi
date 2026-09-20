@@ -18,7 +18,7 @@ const SESSION_DIAS = 30;
 const ORIGENES_PERMITIDOS = [
   'https://localhost',          // APK Android (Capacitor, androidScheme: 'https')
   'capacitor://localhost',      // por si en el futuro se compila también para iOS
-  'https://i.mafero171189.workers.dev' // la propia PWA — no debería necesitarlo (mismo origen), pero no molesta
+  'https://hobbi.mafero171189.workers.dev' // la propia PWA — no debería necesitarlo (mismo origen), pero no molesta
 ];
 
 function headersCors(request) {
