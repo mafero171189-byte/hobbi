@@ -306,6 +306,7 @@
     .detail-header h2 { font-size: 20px; }
     .detail-header .detail-tags { font-size: 12px; color: var(--ink-muted); }
     .detail-header .fav-btn { position: absolute; top: 12px; right: 12px; }
+    .detail-bg-blur { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-size: cover; background-position: center; filter: blur(40px); opacity: 0.15; z-index: -1; pointer-events: none; }
     .synopsis { color: var(--ink-muted); font-size: 13px; line-height: 1.6; margin-bottom: 16px; }
     .synopsis p { margin-bottom: 8px; }
     .synopsis p:last-child { margin-bottom: 0; }
@@ -2343,6 +2344,8 @@
     if (push && vistaActual === vista) return;
 
     document.getElementById('detailView').style.display = 'none';
+    const blurBg = document.getElementById('detailBlurBg');
+    if (blurBg) blurBg.style.display = 'none';
     document.getElementById('listView').style.display = (vista === 'inicio' || vista === 'favoritos') ? 'block' : 'none';
     document.getElementById('calendarView').style.display = vista === 'calendario' ? 'block' : 'none';
 
@@ -2734,6 +2737,8 @@
     // vista de detalle — parecía que Atrás "no hacía nada" hasta el segundo
     // toque (que sí pasaba por cambiarVista, que sí oculta detailView).
     document.getElementById('detailView').style.display = 'none';
+    const blurBgVolver = document.getElementById('detailBlurBg');
+    if (blurBgVolver) blurBgVolver.style.display = 'none';
     document.getElementById('calendarView').style.display = 'none';
     document.getElementById('listView').style.display = 'block';
     document.getElementById('searchBoxContainer').style.display = 'none';
@@ -3108,6 +3113,8 @@
   async function verSeriesDeActor(personId, nombre) {
     if (vistaActual === 'detalle') {
       document.getElementById('detailView').style.display = 'none';
+      const blurBgActor = document.getElementById('detailBlurBg');
+      if (blurBgActor) blurBgActor.style.display = 'none';
       document.getElementById('listView').style.display = 'block';
       document.getElementById('searchBoxContainer').style.display = 'none';
       document.getElementById('tabSearch').classList.add('active');
@@ -3850,6 +3857,23 @@
       });
 
       container.innerHTML = html;
+      
+      // Agregar fondo difuminado si no existe
+      let blurBg = document.getElementById('detailBlurBg');
+      if (!blurBg) {
+        blurBg = document.createElement('div');
+        blurBg.id = 'detailBlurBg';
+        blurBg.className = 'detail-bg-blur';
+        document.body.insertBefore(blurBg, document.body.firstChild);
+      }
+      // Actualizar con la URL del póster actual
+      if (show.image && (show.image.medium || show.image.original)) {
+        blurBg.style.backgroundImage = `url('${show.image.original || show.image.medium}')`;
+        blurBg.style.display = 'block';
+      } else {
+        blurBg.style.display = 'none';
+      }
+      
       actualizarBotonesTemporada();
       dispararFallbackImagenes(container);
     } catch {
