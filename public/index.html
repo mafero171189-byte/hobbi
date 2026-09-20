@@ -1284,6 +1284,26 @@
     return (palabras[0][0] + palabras[1][0]).toUpperCase();
   }
 
+  /* Se llama desde el onerror="" de cada <img> de póster cuando la URL que
+     dio TVMaze existe pero no carga (rota, 404, servidor caído, etc.) — un
+     caso distinto al de "TVMaze no tiene imagen": acá sí había atributos de
+     imagen, así que placeholderPorNombre/atrsFallback nunca se habían puesto.
+     Reemplaza el src por el placeholder de iniciales al toque (para que no
+     quede el ícono roto del navegador) y, si tenemos el nombre a mano, deja
+     la <img> marcada para que dispararFallbackImagenes la recoja y pruebe
+     OMDb como corresponde. */
+  function manejarErrorImagen(img) {
+    img.classList.remove('loading-image');
+    if (img.dataset.fallbackBuscado === '1') return; // ya se intentó todo para esta <img>, no reintentar en loop
+    const nombre = img.dataset.fallbackNombre || img.alt;
+    img.src = placeholderPorNombre(nombre);
+    if (nombre) {
+      img.dataset.fallbackNombre = nombre;
+      img.dataset.fallbackBuscado = '0';
+      dispararFallbackImagenes(img.parentElement || img);
+    }
+  }
+
   function placeholderPorNombre(nombre) {
     const hue = hashCadena(nombre || '') % 360;
     const bg = `hsl(${hue}, 42%, 24%)`;
@@ -2714,7 +2734,7 @@
         const fechaTexto = formatearFechaEstrenoTexto(entrada);
         if (fechaTexto) fechaHTML = `<div class="discover-name" style="color:var(--ink-muted); font-weight:700;">${fechaTexto}</div>`;
       }
-      item.innerHTML = `<img src="${imagen}" alt="${show.name}" loading="${loadingAttr}" class="loading-image" onload="this.classList.remove('loading-image')" onerror="this.classList.remove('loading-image')" ${atrsFallback}>${ratingHTML}<div class="discover-name">${show.name}</div>${fechaHTML}`;
+      item.innerHTML = `<img src="${imagen}" alt="${show.name}" loading="${loadingAttr}" class="loading-image" onload="this.classList.remove('loading-image')" onerror="manejarErrorImagen(this)" ${atrsFallback}>${ratingHTML}<div class="discover-name">${show.name}</div>${fechaHTML}`;
       rail.appendChild(item);
     });
     section.appendChild(rail);
@@ -3121,7 +3141,7 @@
       div.className = 'discover-item actor-item';
       div.onclick = () => verSeriesDeActor(persona.id, persona.name);
       const imagen = (persona.image && (persona.image.medium || persona.image.original)) || ACTOR_PLACEHOLDER;
-      div.innerHTML = `<img src="${imagen}" alt="${persona.name}" loading="lazy"><div class="discover-name">${persona.name}</div>`;
+      div.innerHTML = `<img src="${imagen}" alt="${persona.name}" loading="lazy" onerror="this.onerror=null; this.src='${ACTOR_PLACEHOLDER}';"><div class="discover-name">${persona.name}</div>`;
       rail.appendChild(div);
     });
     section.appendChild(rail);
@@ -3473,7 +3493,7 @@
     card.innerHTML = `
       <div class="card-top">
         <div class="card-poster-wrap">
-          <img src="${imgSrc}" onclick="verDetalles(${show.id})" loading="${loadingAttr}" decoding="async" alt="${show.name}" class="loading-image" onload="this.classList.remove('loading-image')" onerror="this.classList.remove('loading-image')" ${atrsFallback}>
+          <img src="${imgSrc}" onclick="verDetalles(${show.id})" loading="${loadingAttr}" decoding="async" alt="${show.name}" class="loading-image" onload="this.classList.remove('loading-image')" onerror="manejarErrorImagen(this)" ${atrsFallback}>
         </div>
         <div class="card-info" onclick="verDetalles(${show.id})">
           <h3>${show.name}${badgeNuevo}</h3>
@@ -3784,7 +3804,7 @@
       const imagen = tieneImagen || placeholderPorNombre(s.name);
       const atrsFallback = tieneImagen ? '' : `data-fallback-nombre="${s.name.replace(/"/g, '&quot;')}" data-fallback-buscado="0"`;
       const ratingHTML = (s.rating && s.rating.average) ? `<div class="poster-rating-badge">⭐ ${s.rating.average.toFixed(1)}</div>` : '';
-      item.innerHTML = `<img src="${imagen}" alt="${s.name}" loading="lazy" class="loading-image" onload="this.classList.remove('loading-image')" onerror="this.classList.remove('loading-image')" ${atrsFallback}>${ratingHTML}<div class="discover-name">${s.name}</div>`;
+      item.innerHTML = `<img src="${imagen}" alt="${s.name}" loading="lazy" class="loading-image" onload="this.classList.remove('loading-image')" onerror="manejarErrorImagen(this)" ${atrsFallback}>${ratingHTML}<div class="discover-name">${s.name}</div>`;
       rail.appendChild(item);
     });
     section.appendChild(rail);
@@ -3956,7 +3976,7 @@
               const imagen = (persona.image && (persona.image.medium || persona.image.original)) || ACTOR_PLACEHOLDER;
               return `
                 <div class="discover-item actor-item" onclick="verSeriesDeActor(${persona.id}, ${JSON.stringify(persona.name).replace(/"/g, '&quot;')})">
-                  <img src="${imagen}" alt="${persona.name}" loading="lazy">
+                  <img src="${imagen}" alt="${persona.name}" loading="lazy" onerror="this.onerror=null; this.src='${ACTOR_PLACEHOLDER}';">
                   <div class="discover-name">${persona.name}</div>
                   ${personaje && personaje.name ? `<div class="discover-name" style="color:var(--ink-muted); font-weight:400;">${personaje.name}</div>` : ''}
                 </div>
@@ -3971,7 +3991,7 @@
           <button class="fav-btn" id="detailFavBtn" onclick="toggleFavorito(event, ${JSON.stringify(serieParaFav).replace(/"/g, '&quot;')})" aria-label="${esFavActual ? t('quitarDeFavoritos') : t('agregarAFavoritos')}">
             ${esFavActual ? '❤️' : '🤍'}
           </button>
-          <img class="detail-poster" src="${show.image ? (show.image.medium || show.image.original) : placeholderPorNombre(show.name)}" srcset="${show.image ? `${show.image.medium || show.image.original} 1x${show.image.original ? `, ${show.image.original} 2x` : ''}` : ''}" alt="${show.name}" loading="eager" fetchpriority="high" decoding="async" ${show.image ? '' : `data-fallback-nombre="${show.name.replace(/"/g, '&quot;')}" data-fallback-buscado="0"`}>
+          <img class="detail-poster" src="${show.image ? (show.image.medium || show.image.original) : placeholderPorNombre(show.name)}" srcset="${show.image ? `${show.image.medium || show.image.original} 1x${show.image.original ? `, ${show.image.original} 2x` : ''}` : ''}" alt="${show.name}" loading="eager" fetchpriority="high" decoding="async" onerror="manejarErrorImagen(this)" ${show.image ? '' : `data-fallback-nombre="${show.name.replace(/"/g, '&quot;')}" data-fallback-buscado="0"`}>
           ${ratingHTML}
           <h2>${show.name}</h2>
           <p class="detail-tags">${show.genres.join(', ')}</p>
@@ -4252,7 +4272,7 @@
     card.id = `sinver-${ep.episodioId}`;
     const atrsFallbackSinVer = ep.imagen ? '' : `data-fallback-nombre="${ep.serieNombre.replace(/"/g, '&quot;')}" data-fallback-buscado="0"`;
     card.innerHTML = `
-      <img src="${ep.imagen || placeholderPorNombre(ep.serieNombre)}" loading="lazy" onclick="verDetalles(${ep.serieId})" ${atrsFallbackSinVer}>
+      <img src="${ep.imagen || placeholderPorNombre(ep.serieNombre)}" loading="lazy" onclick="verDetalles(${ep.serieId})" onerror="manejarErrorImagen(this)" ${atrsFallbackSinVer}>
       <div class="sinver-info" onclick="verDetalles(${ep.serieId})">
         <h4>${ep.serieNombre}</h4>
         <div class="sinver-badge">📺 ${etiquetaEpisodio}</div>
@@ -4273,7 +4293,7 @@
     header.className = 'sinver-grupo-header';
     const atrsFallbackGrupo = serie.imagen ? '' : `data-fallback-nombre="${serie.serieNombre.replace(/"/g, '&quot;')}" data-fallback-buscado="0"`;
     header.innerHTML = `
-      <img src="${serie.imagen || placeholderPorNombre(serie.serieNombre)}" loading="lazy" ${atrsFallbackGrupo}>
+      <img src="${serie.imagen || placeholderPorNombre(serie.serieNombre)}" loading="lazy" onerror="manejarErrorImagen(this)" ${atrsFallbackGrupo}>
       <div class="sinver-info">
         <h4>${serie.serieNombre}</h4>
         <div class="sinver-badge">${t('episodiosSinVer')(epsDeLaSerie.length)}</div>
@@ -4357,7 +4377,7 @@
           <div class="timeline-dot"></div>
         </div>
         <div class="timeline-card" onclick="verDetalles(${ep.serieId})">
-          <img src="${ep.imagen || placeholderPorNombre(ep.serieNombre)}" loading="lazy" ${atrsFallbackTimeline}>
+          <img src="${ep.imagen || placeholderPorNombre(ep.serieNombre)}" loading="lazy" onerror="manejarErrorImagen(this)" ${atrsFallbackTimeline}>
           <div class="timeline-card-info">
             <h4>${ep.serieNombre}</h4>
             <div class="timeline-badge">📺 ${etiquetaEpisodio}</div>
@@ -4450,7 +4470,7 @@
 
       card.innerHTML = `
         <div class="season-upcoming-top" onclick="verDetalles(${temp.serieId})">
-          <img src="${temp.imagen || placeholderPorNombre(temp.serieNombre)}" alt="${temp.serieNombre}" loading="lazy" ${atrsFallbackTemp}>
+          <img src="${temp.imagen || placeholderPorNombre(temp.serieNombre)}" alt="${temp.serieNombre}" loading="lazy" onerror="manejarErrorImagen(this)" ${atrsFallbackTemp}>
           <div class="season-upcoming-info">
             <h4>${temp.serieNombre}</h4>
             <div class="season-label">${t('temporadaLabel')(temp.temporada)}</div>
