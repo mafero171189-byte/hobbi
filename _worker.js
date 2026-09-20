@@ -15,7 +15,7 @@ const SESSION_DIAS = 30;
 // servía bien, pero sin CORS, y el navegador bloqueaba la lectura).
 // Para publicar una actualización de contenido: subís este número y
 // desplegás — nada más.
-const APP_LATEST_VERSION = '2026.09.20.2';
+const APP_LATEST_VERSION = '2026.09.20.3';
 
 /* ---------- CORS (necesario desde que existe la APK de Capacitor) ----------
    La PWA se sirve desde este mismo dominio, así que nunca necesitó CORS
