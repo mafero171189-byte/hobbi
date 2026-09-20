@@ -1294,7 +1294,20 @@
      OMDb como corresponde. */
   function manejarErrorImagen(img) {
     img.classList.remove('loading-image');
-    if (img.dataset.fallbackBuscado === '1') return; // ya se intentó todo para esta <img>, no reintentar en loop
+    // Guarda anti-loop: si ya estábamos mostrando un placeholder (data: URI) y
+    // ESE también dispara error (no debería pasar nunca, pero por las dudas),
+    // no reintentamos de nuevo — cortamos acá para no quedar en un loop de
+    // onerror infinito reasignando src una y otra vez.
+    if (img.src.startsWith('data:')) return;
+    // Si ya se agotó el intento de OMDb (fallbackBuscado==='1') y AUN ASÍ esta
+    // imagen falla, es porque la URL que nos dio OMDb también está rota —
+    // ahí no hay más de dónde sacar una imagen real, así que forzamos el
+    // placeholder de iniciales directo, sin re-disparar dispararFallbackImagenes
+    // (ya se intentó, no tiene sentido pedir la misma URL de nuevo).
+    if (img.dataset.fallbackBuscado === '1') {
+      img.src = placeholderPorNombre(img.dataset.fallbackNombre || img.alt);
+      return;
+    }
     const nombre = img.dataset.fallbackNombre || img.alt;
     img.src = placeholderPorNombre(nombre);
     if (nombre) {
