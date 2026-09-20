@@ -6,6 +6,17 @@
 const GOOGLE_CLIENT_ID = '403618822429-pshtrss0fg4nnojujh6aqqagaboia66h.apps.googleusercontent.com';
 const SESSION_DIAS = 30;
 
+// Versión actual del contenido de la app, para el chequeo de Live Update de
+// la APK (ver index.html: chequearActualizacionApk). Va acá como constante
+// del Worker y NO como archivo estático en public/ — si fuera un archivo
+// físico, Cloudflare lo serviría directo sin pasar por este código, y
+// entonces nunca llevaría los headers CORS que la APK necesita para poder
+// leer la respuesta (por eso fallaba con "Failed to fetch": el archivo se
+// servía bien, pero sin CORS, y el navegador bloqueaba la lectura).
+// Para publicar una actualización de contenido: subís este número y
+// desplegás — nada más.
+const APP_LATEST_VERSION = '2026.09.20.2';
+
 /* ---------- CORS (necesario desde que existe la APK de Capacitor) ----------
    La PWA se sirve desde este mismo dominio, así que nunca necesitó CORS
    (mismo origen). La APK corre en un origen distinto (https://localhost en
@@ -446,7 +457,7 @@ export default {
     else if (url.pathname === '/api/data' && request.method === 'GET') respuesta = await handleDataGet(request, env);
     else if (url.pathname === '/api/data' && request.method === 'POST') respuesta = await handleDataPost(request, env);
     else if (url.pathname === '/api/account' && request.method === 'DELETE') respuesta = await handleAccountDelete(request, env);
-    else if (url.pathname === '/version.json' && request.method === 'GET') respuesta = await env.ASSETS.fetch(request);
+    else if (url.pathname === '/version.json' && request.method === 'GET') respuesta = json({ version: APP_LATEST_VERSION });
     else {
       // Todo lo que no sea /api/* se sirve como archivo estático (index.html, etc).
       return env.ASSETS.fetch(request);
