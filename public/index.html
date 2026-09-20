@@ -646,53 +646,6 @@
 </nav>
 
 <script>
-  /* ==================== DEBUG OVERLAY (temporal) ====================
-     Muestra logs directo en pantalla (botón 🐛 abajo a la derecha) para
-     poder debuggear desde el celular sin DevTools. Sacar cuando ya no
-     haga falta. */
-  let debugOverlayCreado = false;
-  function crearDebugOverlaySiHaceFalta() {
-    if (debugOverlayCreado) return;
-    debugOverlayCreado = true;
-    const overlay = document.createElement('div');
-    overlay.id = 'debugOverlay';
-    overlay.style.cssText = 'position:fixed; bottom:0; left:0; right:0; max-height:40vh; overflow-y:auto; background:rgba(0,0,0,0.92); color:#0f0; font-family:monospace; font-size:11px; padding:8px; z-index:999999; white-space:pre-wrap; word-break:break-all; border-top:2px solid #0f0;';
-    overlay.innerHTML = '<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;"><strong style="color:#fff;">🐛 DEBUG LOG</strong><button id="debugCloseBtn" style="background:#333; color:#fff; border:none; padding:4px 10px; border-radius:4px; font-size:11px;">Cerrar</button></div><div id="debugOverlayContent"></div>';
-    document.body.appendChild(overlay);
-    document.getElementById('debugCloseBtn').onclick = () => overlay.remove();
-
-    const btn = document.createElement('button');
-    btn.id = 'debugToggleBtn';
-    btn.textContent = '🐛';
-    btn.style.cssText = 'position:fixed; bottom:10px; right:10px; z-index:999998; width:44px; height:44px; border-radius:50%; background:#222; color:#0f0; border:2px solid #0f0; font-size:16px;';
-    btn.onclick = () => {
-      const ov = document.getElementById('debugOverlay');
-      if (ov) ov.remove();
-      else document.body.appendChild(overlay);
-    };
-    document.body.appendChild(btn);
-  }
-
-  function debugLog(...args) {
-    const msg = args.map(a => typeof a === 'object' ? JSON.stringify(a) : String(a)).join(' ');
-    console.log(...args);
-    try {
-      crearDebugOverlaySiHaceFalta();
-      const content = document.getElementById('debugOverlayContent');
-      if (content) {
-        const linea = document.createElement('div');
-        linea.style.borderBottom = '1px solid #333';
-        linea.style.padding = '2px 0';
-        const hora = new Date().toLocaleTimeString('es-AR', { hour12: false });
-        linea.textContent = `[${hora}] ${msg}`;
-        content.appendChild(linea);
-        content.parentElement.scrollTop = content.parentElement.scrollHeight;
-      }
-    } catch (e) {
-      console.log('[debugLog error]', e);
-    }
-  }
-
   /* ==================== IDIOMA (ES/EN) ====================
      Cubre la interfaz fija de la app (pestañas, botones, filtros, mensajes
      vacíos/error, toasts) y también el texto dinámico con fechas interpoladas
@@ -1411,35 +1364,32 @@
      (cookie de sesión todavía válida) sin obligar a tocar el botón de nuevo. */
   async function revisarSesionExistente() {
     try {
-      debugLog('[DEBUG] Revisando sesión existente...');
-      debugLog('[DEBUG] localStorage keys:', Object.keys(localStorage));
-      debugLog('[DEBUG] hobbi_ultima_sesion:', localStorage.getItem('hobbi_ultima_sesion'));
-      
       const res = await fetch('/api/me');
-      debugLog('[DEBUG] /api/me respuesta:', res.status, res.ok);
-      
-      if (!res.ok) {
-        debugLog('[DEBUG] /api/me no OK, saliendo');
-        return;
-      }
-      
+      if (!res.ok) return;
       const data = await res.json();
-      debugLog('[DEBUG] /api/me datos:', data);
-      
       if (data.logueado) {
-        debugLog('[DEBUG] ✅ Usuario logueado:', data.email);
         usuarioActual = { email: data.email, nombre: data.nombre, foto: data.foto };
         actualizarChipUsuario();
-        cerrarOnboarding();
+        cerrarOnboarding(); // ya está logueado: no tiene sentido mostrarle la bienvenida
+        // modoMerge=true: si había favoritos guardados solo en local (ej. se
+        // marcaron offline y todavía no llegaron a subirse), no queremos que
+        // el primer fetch del día los pise con lo que el server tenía antes.
         await sincronizarDesdeNube(true);
       } else {
-        debugLog('[DEBUG] ❌ No hay sesión en servidor, borrando localStorage');
+        // El servidor dice que NO hay sesión (cookie vencida, por ejemplo)
+        // aunque localStorage tenía la pista de "la última vez sí". Borramos
+        // esa pista vieja para no repetir el intento en vano la próxima vez.
         localStorage.removeItem('hobbi_ultima_sesion');
       }
-    } catch (err) {
-      debugLog('[DEBUG] Error en revisarSesionExistente:', err.message);
+    } catch {
+      // Sin conexión o API no disponible: seguimos con localStorage nomás.
+      // OJO: si había pista de sesión previa, la dejamos como está (no la
+      // borramos) — es justamente el caso de "abrís la app sin señal", donde
+      // no tiene sentido asumir que ya no estás logueado.
     } finally {
-      debugLog('[DEBUG] Sacando clase verificando-sesion');
+      // Pase lo que pase (logueado, no logueado, sin conexión, error), ya
+      // terminamos de "verificar": sacamos esta clase para que dejen de
+      // aplicar las reglas anti-flash del <head>.
       document.body.classList.remove('verificando-sesion');
     }
   }
@@ -1447,7 +1397,6 @@
   /* Callback que dispara Google Identity Services cuando el usuario elige su cuenta. */
   async function manejarCredencialGoogle(respuesta) {
     try {
-      debugLog('[DEBUG] Login Google iniciado');
       const res = await fetch('/api/auth', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -1455,17 +1404,18 @@
       });
       if (!res.ok) throw new Error('login falló');
       const data = await res.json();
-      debugLog('[DEBUG] ✅ Login exitoso, email:', data.email);
       usuarioActual = { email: data.email, nombre: data.nombre, foto: data.foto };
-      localStorage.setItem('hobbi_ultima_sesion', 'true');
-      debugLog('[DEBUG] Guardado en localStorage: hobbi_ultima_sesion=true');
+      localStorage.setItem('hobbi_ultima_sesion', 'true'); // ver anti-flash en el <head>
       actualizarChipUsuario();
       cerrarOnboarding();
+      // Primero BAJAMOS lo que ya había en el servidor y lo mergeamos con lo local
+      // (unión, sin perder nada de ningún lado), y recién ahí subimos el resultado
+      // combinado. Si lo hiciéramos al revés, un dispositivo nuevo sin favoritos
+      // locales pisaría (borraría) lo que ya había en la nube al hacer el primer push.
       await sincronizarDesdeNube(true);
       await sincronizarHaciaNube(true);
       mostrarSyncBadge(t('sesionIniciada'));
-    } catch (err) {
-      debugLog('[DEBUG] ❌ Error en login Google:', err.message);
+    } catch {
       mostrarToast(t('errorLoginGoogle'), 'error');
     }
   }
@@ -1473,24 +1423,23 @@
   async function cerrarSesionGoogle() {
     const ok = await confirmarEliminar(t('cerrarSesionTitulo'), t('cerrarSesionMsg'), t('cerrarSesionBoton'));
     if (!ok) return;
-    debugLog('[DEBUG] Cerrando sesión...');
-    clearTimeout(timeoutSyncNube);
+    clearTimeout(timeoutSyncNube); // por si había un guardado pendiente programado, lo cancelamos
     try { await fetch('/api/auth', { method: 'DELETE' }); } catch {}
     usuarioActual = null;
-    localStorage.removeItem('hobbi_ultima_sesion');
-    debugLog('[DEBUG] ✅ localStorage limpiado, hobbi_ultima_sesion removido');
-    debugLog('[DEBUG] localStorage keys restantes:', Object.keys(localStorage));
+    localStorage.removeItem('hobbi_ultima_sesion'); // ver anti-flash en el <head>
     actualizarChipUsuario();
     mostrarSyncBadge('');
+    // Como el registro es obligatorio, no dejamos datos de esta cuenta visibles
+    // antes de que alguien loguee de nuevo en este dispositivo (puede ser otra
+    // cuenta): limpiamos lo local y volvemos a mostrar la pantalla de login.
     favoritos = [];
     episodiosVistos = {};
     guardarDatosLocal();
-    debugLog('[DEBUG] Datos locales borrados');
     cerrarAjustes();
+    // Si cerraste sesión estando en Favoritos o Calendario, esa vista quedaba
+    // "de fondo" detrás del onboarding: forzamos la vuelta a Inicio y dejamos
+    // el historial apuntando ahí.
     cambiarVista('inicio', false);
-    mostrarOnboarding();
-    mostrarSyncBadge('');
-  }
     history.replaceState({ view: 'inicio' }, '', '#inicio');
     mostrarOnboarding();
   }
@@ -1663,16 +1612,17 @@
   const cacheListo = hidratarCacheDesdeIDB().then(() => limpiarCacheViejo());
 
   window.addEventListener('load', async () => {
-    debugLog('[DEBUG] 🚀 Hobbi iniciando...');
-    debugLog('[DEBUG] localStorage.length:', localStorage.length);
-    debugLog('[DEBUG] localStorage keys:', Object.keys(localStorage));
-    
     if (window.google && google.accounts && google.accounts.id) {
       google.accounts.id.initialize({ client_id: GOOGLE_CLIENT_ID, callback: manejarCredencialGoogle });
       google.accounts.id.renderButton(document.getElementById('googleBtnOnboarding'), { theme: 'filled_black', size: 'large', shape: 'pill', text: 'signup_with' });
     }
+    // Esperamos a que el caché esté hidratado antes de arrancar cualquier
+    // pedido que pueda aprovecharlo (pósters de onboarding, sesión existente).
     await cacheListo;
-    debugLog('[DEBUG] Cache listo, revisando sesión...');
+    // La pantalla de login ya se ve desde el primer render (CSS), así que no
+    // hace falta "mostrarla" a mano acá. Primero confirmamos si ya había
+    // sesión (revisarSesionExistente la cierra sola si es así) y solo si
+    // sigue sin loguear cargamos los pósters de fondo.
     await revisarSesionExistente();
     if (!usuarioActual) cargarPostersOnboarding();
   });
@@ -2614,7 +2564,7 @@
   }
 
   /* Guarda la última tanda completa de cada categoría para que "Ver más" no tenga que volver a pedir nada. */
-  let catalogoDescubrimiento = { estrenos: [], estrenosHollywood: [], proximosEstrenos: [], vuelven: [], nuevas: [], populares: [], popularesHollywood: [], popularesCoreana: [], populararesTurca: [], popularesLatina: [], proximosNetflix: [], proximosPrimeVideo: [], proximosHboMax: [], proximosAppleTv: [], proximosDisney: [], proximosHulu: [], proximosParamount: [] };
+  let catalogoDescubrimiento = { estrenos: [], estrenosHollywood: [], proximosEstrenos: [], vuelven: [], nuevas: [], populares: [], popularesHollywood: [], popularesCoreana: [], popularesTurca: [], popularesLatina: [], proximosNetflix: [], proximosPrimeVideo: [], proximosHboMax: [], proximosAppleTv: [], proximosDisney: [], proximosHulu: [], proximosParamount: [] };
   let primerRailRenderizado = false;
   const CATEGORIAS_DESCUBRIMIENTO = {
     estrenos: { emoji: '🆕', clave: 'estrenosMes' },
