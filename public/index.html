@@ -435,6 +435,8 @@
     .discover-rail::-webkit-scrollbar { display: none; }
     .discover-item { flex-shrink: 0; width: 102px; cursor: pointer; }
     .discover-item img { width: 102px; height: 146px; object-fit: cover; border-radius: 10px; background: var(--surface); border: 1px solid var(--border); display: block; }
+    .discover-item.has-rating { position: relative; }
+    .discover-item .poster-rating-badge { position: absolute; top: 6px; right: 6px; background: rgba(0,0,0,0.75); color: var(--gold); font-size: 11px; font-weight: 700; padding: 2px 6px; border-radius: 6px; line-height: 1.3; }
     .discover-name { font-size: 11px; color: var(--ink); margin-top: 6px; line-height: 1.3; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
     .actor-item { width: 84px; text-align: center; }
     .actor-item img { width: 84px; height: 84px; border-radius: 50%; object-fit: cover; background: var(--surface); border: 1px solid var(--border); }
@@ -803,6 +805,8 @@
       tagline: 'Control de Series',
       actores: 'Actores', seriesDe: (nombre) => `Series con ${nombre}`,
       actoresPrincipales: 'Actores principales',
+      relacionado: 'Relacionado',
+      recomendado: 'Recomendado',
       sinSeriesActor: 'No encontramos series con este actor en TVMaze.',
       yaEstaDisponible: (etiqueta) => `Ya está disponible: ${etiqueta}`,
       proximoEpisodioLabel: (fecha) => `📅 Próximo episodio: ${fecha}`,
@@ -951,6 +955,8 @@
       tagline: 'Series Tracker',
       actores: 'Actors', seriesDe: (nombre) => `Shows with ${nombre}`,
       actoresPrincipales: 'Main cast',
+      relacionado: 'Related',
+      recomendado: 'Recommended',
       sinSeriesActor: "Couldn't find any shows for this actor on TVMaze.",
       yaEstaDisponible: (etiqueta) => `Now available: ${etiqueta}`,
       proximoEpisodioLabel: (fecha) => `📅 Next episode: ${fecha}`,
@@ -3636,6 +3642,78 @@
     }
   }
 
+  /* "Relacionado" y "Recomendado" para la ficha de una serie: TVMaze no tiene
+     un endpoint de series similares, así que reusamos el mismo pool de ~500
+     series (con géneros, rating y weight) que ya se pide cacheado para el
+     rail de "Populares" del inicio (obtenerPopulares, cache de 3hs, no genera
+     pedidos nuevos casi nunca). "Relacionado" prioriza más géneros en común;
+     "Recomendado" son series del mismo universo de géneros pero con mejor
+     rating, sin repetir las que ya salieron en Relacionado. Se carga aparte
+     y después de pintar el resto de la ficha para no atrasar lo importante
+     (sinopsis, temporadas) detrás de un pedido de red más pesado.  */
+  async function cargarRelacionadoYRecomendado(show) {
+    try {
+      const pool = await obtenerPopulares();
+      if (detalleActualId !== show.id) return; // el usuario ya se movió a otra ficha
+
+      const generosActuales = new Set((show.genres || []).map(g => g.toLowerCase()));
+      if (!generosActuales.size) return;
+
+      const conPuntaje = pool
+        .filter(s => s.id !== show.id && Array.isArray(s.genres) && s.genres.length)
+        .map(s => ({ show: s, overlap: s.genres.filter(g => generosActuales.has(g.toLowerCase())).length }))
+        .filter(x => x.overlap > 0);
+
+      if (!conPuntaje.length) return;
+
+      const relacionados = conPuntaje
+        .slice()
+        .sort((a, b) => b.overlap - a.overlap || (b.show.weight || 0) - (a.show.weight || 0))
+        .slice(0, 12)
+        .map(x => x.show);
+
+      const idsRelacionados = new Set(relacionados.map(s => s.id));
+      const recomendados = conPuntaje
+        .filter(x => !idsRelacionados.has(x.show.id) && x.show.rating && x.show.rating.average)
+        .sort((a, b) => b.show.rating.average - a.show.rating.average)
+        .slice(0, 12)
+        .map(x => x.show);
+
+      if (detalleActualId !== show.id) return;
+      const holder = document.getElementById('relacionadoRecomendadoHolder');
+      if (!holder) return;
+      holder.innerHTML = '';
+      if (relacionados.length) holder.appendChild(crearRailSeriesSimilares(t('relacionado'), relacionados));
+      if (recomendados.length) holder.appendChild(crearRailSeriesSimilares(t('recomendado'), recomendados));
+    } catch (e) {
+      // Si falla (sin conexión, etc.) simplemente no mostramos estas secciones;
+      // el resto de la ficha ya se ve bien sin ellas.
+    }
+  }
+
+  function crearRailSeriesSimilares(titulo, items) {
+    const section = document.createElement('div');
+    section.className = 'discover-section';
+    section.innerHTML = `<h3 class="marquee" style="font-size:20px; color:var(--gold); letter-spacing:0.5px; margin-bottom:10px;">${titulo}</h3>`;
+
+    const rail = document.createElement('div');
+    rail.className = 'discover-rail';
+    items.forEach(s => {
+      const item = document.createElement('div');
+      item.className = 'discover-item has-rating';
+      item.onclick = () => verDetalles(s.id);
+      const tieneImagen = s.image && (s.image.medium || s.image.original);
+      const imagen = tieneImagen || placeholderPorNombre(s.name);
+      const atrsFallback = tieneImagen ? '' : `data-fallback-nombre="${s.name.replace(/"/g, '&quot;')}" data-fallback-buscado="0"`;
+      const ratingHTML = (s.rating && s.rating.average) ? `<div class="poster-rating-badge">⭐ ${s.rating.average.toFixed(1)}</div>` : '';
+      item.innerHTML = `<img src="${imagen}" alt="${s.name}" loading="lazy" class="loading-image" onload="this.classList.remove('loading-image')" onerror="this.classList.remove('loading-image')" ${atrsFallback}>${ratingHTML}<div class="discover-name">${s.name}</div>`;
+      rail.appendChild(item);
+    });
+    section.appendChild(rail);
+    dispararFallbackImagenes(section);
+    return section;
+  }
+
   async function verDetalles(showId, push = true) {
     document.getElementById('listView').style.display = 'none';
     document.getElementById('calendarView').style.display = 'none';
@@ -3858,8 +3936,11 @@
         `;
       });
 
+      html += `<div id="relacionadoRecomendadoHolder" style="margin-top:6px;"></div>`;
+
       container.innerHTML = html;
-      
+      cargarRelacionadoYRecomendado(show);
+
       // Agregar fondo difuminado si no existe
       let blurBg = document.getElementById('detailBlurBg');
       if (!blurBg) {
