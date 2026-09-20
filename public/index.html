@@ -3432,9 +3432,13 @@
     const fechaParaMostrar = fechaEstrenoTexto || fechaEstrenoFavoritos;
     // Antes la fecha iba en un <div> aparte debajo de "Próximo estreno", lo que
     // la mandaba a su propia línea. Ahora se concatena en el mismo div de
-    // estado, separada por "·", para que quede todo junto: "📅 Próximo estreno · 13 nov".
-    const estadoTextoHTML = fechaParaMostrar
-      ? `${estado.texto} · <span style="color:var(--gold);">${fechaParaMostrar}</span>`
+    // estado, separada por "·", junto con el rating si hay: "⏸ En pausa · 29 sept · ⭐ 7.2".
+    // El rating iba antes como insignia flotante sobre el póster, pero tapaba
+    // la carátula en pósters chicos — ahora va en esta misma línea de texto.
+    const ratingTexto = (show.rating && show.rating.average) ? `⭐ ${show.rating.average.toFixed(1)}` : '';
+    const coletillas = [fechaParaMostrar, ratingTexto].filter(Boolean);
+    const estadoTextoHTML = coletillas.length
+      ? `${estado.texto} · <span style="color:var(--gold);">${coletillas.join(' · ')}</span>`
       : estado.texto;
 
     let extraHTML = '';
@@ -3452,13 +3456,11 @@
     const imgSrc = tieneImagen ? show.image : placeholderPorNombre(show.name);
     const atrsFallback = tieneImagen ? '' : `data-fallback-nombre="${show.name.replace(/"/g, '&quot;')}" data-fallback-buscado="0"`;
     const loadingAttr = loadingPrioritario ? 'eager' : 'lazy';
-    const ratingHTML = (show.rating && show.rating.average) ? `<div class="poster-rating-badge">⭐ ${show.rating.average.toFixed(1)}</div>` : '';
 
     card.innerHTML = `
       <div class="card-top">
         <div class="card-poster-wrap">
           <img src="${imgSrc}" onclick="verDetalles(${show.id})" loading="${loadingAttr}" decoding="async" alt="${show.name}" class="loading-image" onload="this.classList.remove('loading-image')" onerror="this.classList.remove('loading-image')" ${atrsFallback}>
-          ${ratingHTML}
         </div>
         <div class="card-info" onclick="verDetalles(${show.id})">
           <h3>${show.name}${badgeNuevo}</h3>
