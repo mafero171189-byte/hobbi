@@ -449,16 +449,6 @@
   </style>
 </head><body class="sin-scroll verificando-sesion">
 
-<!-- Overlay de debug temporal: muestra logs [DEBUG] directo en pantalla, sin necesitar DevTools -->
-<div id="debugOverlay" style="position:fixed; bottom:0; left:0; right:0; max-height:40vh; overflow-y:auto; background:rgba(0,0,0,0.92); color:#0f0; font-family:monospace; font-size:11px; padding:8px; z-index:99999; display:none; white-space:pre-wrap; word-break:break-all; border-top:2px solid #0f0;">
-  <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px; position:sticky; top:0; background:rgba(0,0,0,0.92); padding-bottom:4px;">
-    <strong style="color:#fff;">🐛 DEBUG LOG</strong>
-    <button onclick="document.getElementById('debugOverlay').style.display='none'" style="background:#333; color:#fff; border:none; padding:4px 10px; border-radius:4px; font-size:11px;">Cerrar</button>
-  </div>
-  <div id="debugOverlayContent"></div>
-</div>
-<button id="debugToggleBtn" onclick="document.getElementById('debugOverlay').style.display = document.getElementById('debugOverlay').style.display === 'none' ? 'block' : 'none'" style="position:fixed; bottom:10px; right:10px; z-index:99998; width:44px; height:44px; border-radius:50%; background:#222; color:#0f0; border:2px solid #0f0; font-size:16px;">🐛</button>
-
 
 <div id="toastHolder"></div>
 
@@ -660,20 +650,46 @@
      Muestra logs directo en pantalla (botón 🐛 abajo a la derecha) para
      poder debuggear desde el celular sin DevTools. Sacar cuando ya no
      haga falta. */
+  let debugOverlayCreado = false;
+  function crearDebugOverlaySiHaceFalta() {
+    if (debugOverlayCreado) return;
+    debugOverlayCreado = true;
+    const overlay = document.createElement('div');
+    overlay.id = 'debugOverlay';
+    overlay.style.cssText = 'position:fixed; bottom:0; left:0; right:0; max-height:40vh; overflow-y:auto; background:rgba(0,0,0,0.92); color:#0f0; font-family:monospace; font-size:11px; padding:8px; z-index:999999; white-space:pre-wrap; word-break:break-all; border-top:2px solid #0f0;';
+    overlay.innerHTML = '<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;"><strong style="color:#fff;">🐛 DEBUG LOG</strong><button id="debugCloseBtn" style="background:#333; color:#fff; border:none; padding:4px 10px; border-radius:4px; font-size:11px;">Cerrar</button></div><div id="debugOverlayContent"></div>';
+    document.body.appendChild(overlay);
+    document.getElementById('debugCloseBtn').onclick = () => overlay.remove();
+
+    const btn = document.createElement('button');
+    btn.id = 'debugToggleBtn';
+    btn.textContent = '🐛';
+    btn.style.cssText = 'position:fixed; bottom:10px; right:10px; z-index:999998; width:44px; height:44px; border-radius:50%; background:#222; color:#0f0; border:2px solid #0f0; font-size:16px;';
+    btn.onclick = () => {
+      const ov = document.getElementById('debugOverlay');
+      if (ov) ov.remove();
+      else document.body.appendChild(overlay);
+    };
+    document.body.appendChild(btn);
+  }
+
   function debugLog(...args) {
     const msg = args.map(a => typeof a === 'object' ? JSON.stringify(a) : String(a)).join(' ');
     console.log(...args);
-    const overlay = document.getElementById('debugOverlay');
-    const content = document.getElementById('debugOverlayContent');
-    if (overlay && overlay.style.display === 'none') overlay.style.display = 'block';
-    if (content) {
-      const linea = document.createElement('div');
-      linea.style.borderBottom = '1px solid #333';
-      linea.style.padding = '2px 0';
-      const hora = new Date().toLocaleTimeString('es-AR', { hour12: false });
-      linea.textContent = `[${hora}] ${msg}`;
-      content.appendChild(linea);
-      content.parentElement.scrollTop = content.parentElement.scrollHeight;
+    try {
+      crearDebugOverlaySiHaceFalta();
+      const content = document.getElementById('debugOverlayContent');
+      if (content) {
+        const linea = document.createElement('div');
+        linea.style.borderBottom = '1px solid #333';
+        linea.style.padding = '2px 0';
+        const hora = new Date().toLocaleTimeString('es-AR', { hour12: false });
+        linea.textContent = `[${hora}] ${msg}`;
+        content.appendChild(linea);
+        content.parentElement.scrollTop = content.parentElement.scrollHeight;
+      }
+    } catch (e) {
+      console.log('[debugLog error]', e);
     }
   }
 
