@@ -1,0 +1,8 @@
+[{
+  "relation": ["delegate_permission/common.handle_all_urls"],
+  "target": {
+    "namespace": "android_app",
+    "package_name": "hobbi.twa",
+    "sha256_cert_fingerprints": ["34:9B:55:BE:C8:C3:07:6A:F8:81:30:39:D0:02:82:25:D1:CD:09:8C:92:08:F7:16:DD:AE:A7:E3:F3:31:A3:AA"]
+  }
+}]
