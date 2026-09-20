@@ -2573,7 +2573,8 @@
   }
 
   /* Guarda la última tanda completa de cada categoría para que "Ver más" no tenga que volver a pedir nada. */
-  let catalogoDescubrimiento = { estrenos: [], estrenosHollywood: [], proximosEstrenos: [], vuelven: [], nuevas: [], populares: [], popularesHollywood: [], popularesCoreana: [], popularesTurca: [], popularesLatina: [], proximosNetflix: [], proximosPrimeVideo: [], proximosHboMax: [], proximosAppleTv: [], proximosDisney: [], proximosHulu: [], proximosParamount: [] };
+  let catalogoDescubrimiento = { estrenos: [], estrenosHollywood: [], proximosEstrenos: [], vuelven: [], nuevas: [], populares: [], popularesHollywood: [], popularesCoreana: [], populararesTurca: [], popularesLatina: [], proximosNetflix: [], proximosPrimeVideo: [], proximosHboMax: [], proximosAppleTv: [], proximosDisney: [], proximosHulu: [], proximosParamount: [] };
+  let primerRailRenderizado = false;
   const CATEGORIAS_DESCUBRIMIENTO = {
     estrenos: { emoji: '🆕', clave: 'estrenosMes' },
     estrenosHollywood: { emoji: '🎬', clave: 'estrenosHollywoodMes' },
@@ -2615,7 +2616,7 @@
     return fecha.toLocaleDateString(t('localeFecha'), { day: 'numeric', month: 'short' });
   }
 
-  function renderizarRailDescubrimiento(container, id, items, mostrarFechas = false) {
+  function renderizarRailDescubrimiento(container, id, items, mostrarFechas = false, esRailPrioritario = false) {
     if (!items.length) return;
     catalogoDescubrimiento[id] = items;
 
@@ -2630,7 +2631,7 @@
 
     const rail = document.createElement('div');
     rail.className = 'discover-rail';
-    items.slice(0, 12).forEach((entrada) => {
+    items.slice(0, 12).forEach((entrada, idx) => {
       const show = mostrarFechas ? entrada.show : entrada;
       if (!show || !show.id) return;
       const item = document.createElement('div');
@@ -2639,12 +2640,15 @@
       const tieneImagen = show.image && (show.image.medium || show.image.original);
       const imagen = tieneImagen || placeholderPorNombre(show.name);
       const atrsFallback = tieneImagen ? '' : `data-fallback-nombre="${show.name.replace(/"/g, '&quot;')}" data-fallback-buscado="0"`;
+      // Si es rail prioritario (primer rail visible), las primeras 6 cards usan eager; el resto lazy
+      // Si no es prioritario, todas usan lazy (están debajo del fold)
+      const loadingAttr = (esRailPrioritario && idx < 6) ? 'eager' : 'lazy';
       let fechaHTML = '';
       if (mostrarFechas) {
         const fechaTexto = formatearFechaEstrenoTexto(entrada);
         if (fechaTexto) fechaHTML = `<div class="discover-name" style="color:var(--gold); font-weight:700;">${fechaTexto}</div>`;
       }
-      item.innerHTML = `<img src="${imagen}" alt="${show.name}" loading="lazy" ${atrsFallback}><div class="discover-name">${show.name}</div>${fechaHTML}`;
+      item.innerHTML = `<img src="${imagen}" alt="${show.name}" loading="${loadingAttr}" class="loading-image" onload="this.classList.remove('loading-image')" onerror="this.classList.remove('loading-image')" ${atrsFallback}><div class="discover-name">${show.name}</div>${fechaHTML}`;
       rail.appendChild(item);
     });
     section.appendChild(rail);
@@ -2977,7 +2981,11 @@
     }
     catalogoDescubrimiento[id] = items;
     const seccionTemp = document.createElement('div');
-    renderizarRailDescubrimiento(seccionTemp, id, items, mostrarFechas);
+    // El primer rail renderizado es el prioritario (eager para primeras 6 cards)
+    // Si ya se renderizó uno, este es lazy (igual que el resto)
+    const esRailPrioritario = !primerRailRenderizado;
+    if (esRailPrioritario) primerRailRenderizado = true;
+    renderizarRailDescubrimiento(seccionTemp, id, items, mostrarFechas, esRailPrioritario);
     // renderizarRailDescubrimiento ya vuelve a guardar en catalogoDescubrimiento
     // y arma la sección completa (título + rail) — solo hace falta pisar el slot.
     if (seccionTemp.firstChild) slot.replaceWith(seccionTemp.firstChild);
@@ -2991,6 +2999,7 @@
   async function cargarDescubrimiento() {
     const holder = document.getElementById('discoverHolder');
     if (!holder) return;
+    primerRailRenderizado = false;
     crearSlotsDescubrimiento(holder);
 
     // Cada categoría se pide y se pinta de forma independiente: si el usuario
@@ -3352,7 +3361,7 @@
   // O(1) por card en vez de recorrer favoritos.length en cada una (crearTarjetaSerie
   // se llama en loop al renderizar listas de resultados/descubrir). Se recalcula
   // solo cuando hace falta, no en cada card individual.
-  function crearTarjetaSerie(show, esVistaFavoritos, idsFavoritosSet, fechaEstrenoTexto) {
+  function crearTarjetaSerie(show, esVistaFavoritos, idsFavoritosSet, fechaEstrenoTexto, loadingPrioritario = false) {
     const esFav = idsFavoritosSet ? idsFavoritosSet.has(show.id) : favoritos.some(f => f.id === show.id);
     const card = document.createElement('div');
     card.className = 'card';
@@ -3411,10 +3420,11 @@
     const tieneImagen = !!show.image;
     const imgSrc = tieneImagen ? show.image : placeholderPorNombre(show.name);
     const atrsFallback = tieneImagen ? '' : `data-fallback-nombre="${show.name.replace(/"/g, '&quot;')}" data-fallback-buscado="0"`;
+    const loadingAttr = loadingPrioritario ? 'eager' : 'lazy';
 
     card.innerHTML = `
       <div class="card-top">
-        <img src="${imgSrc}" onclick="verDetalles(${show.id})" loading="lazy" decoding="async" alt="${show.name}" class="loading-image" onload="this.classList.remove('loading-image')" onerror="this.classList.remove('loading-image')" ${atrsFallback}>
+        <img src="${imgSrc}" onclick="verDetalles(${show.id})" loading="${loadingAttr}" decoding="async" alt="${show.name}" class="loading-image" onload="this.classList.remove('loading-image')" onerror="this.classList.remove('loading-image')" ${atrsFallback}>
         <div class="card-info" onclick="verDetalles(${show.id})">
           <h3>${show.name}${badgeNuevo}</h3>
           <div class="status ${estado.clase}">${estado.texto}</div>
