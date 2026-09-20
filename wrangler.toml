@@ -10,3 +10,8 @@ binding = "ASSETS"
 binding = "DB"
 database_name = "hobbi-db"
 database_id = "a3988f25-f866-4111-b57b-8a6465e617ac"
+
+# KV namespace para rate limiting
+[[kv_namespaces]]
+binding = "RATE_LIMIT_KV"
+id = "d517fab63f22499281a290c643001891"
