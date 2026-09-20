@@ -92,6 +92,18 @@ function errorResponse(mensaje, status) {
   });
 }
 
+/* ---------- Rate limiting (prevención de brute-force y enumeración) ---------- */
+
+// Impide intentos ilimitados en login/registro por IP. Cada IP tiene un presupuesto
+// de N intentos por ventana de tiempo (ej. 5 intentos en 5 minutos). Si se agota,
+// se rechaza con 429 (Too Many Requests) hasta que la ventana expira.
+async function chequearRateLimit(env, clave, maxIntentos = 5, ventanaSegundos = 300) {
+  const actual = parseInt(await env.RATE_LIMIT_KV.get(clave) || '0', 10);
+  if (actual >= maxIntentos) return false; // rechazar
+  await env.RATE_LIMIT_KV.put(clave, String(actual + 1), { expirationTtl: ventanaSegundos });
+  return true; // permitir
+}
+
 /* ---------- Endpoints ---------- */
 
 async function handleAuthPost(request, env) {
@@ -143,12 +155,22 @@ async function handleRegisterPost(request, env) {
     }
     const emailNorm = String(email).trim().toLowerCase();
 
+    // Rate limiting: máx 10 intentos por IP en 15 minutos. Previene enumeración de usuarios
+    // y spam de registros. El límite es más generoso que login (10 vs 5) porque el registro
+    // es menos frecuente en uso legítimo, pero igual corta el abuso automatizado.
+    const ip = request.headers.get('CF-Connecting-IP') || 'desconocida';
+    const permitido = await chequearRateLimit(env, `register:${ip}`, 10, 900);
+    if (!permitido) {
+      return errorResponse('Demasiados intentos. Probá de nuevo en unos minutos.', 429);
+    }
+
     const existente = await env.DB.prepare('SELECT id, password_hash FROM usuarios WHERE email = ?').bind(emailNorm).first();
     if (existente) {
-      if (!existente.password_hash) {
-        return errorResponse('Ese mail ya está registrado con Google. Iniciá sesión con Google.', 409);
-      }
-      return errorResponse('Ese mail ya está registrado. Iniciá sesión.', 409);
+      // NO diferenciamos entre "ya registrado con Google" y "ya registrado con password"
+      // para no filtra qué emails existen (prevención de enumeración de usuarios).
+      // El mensaje es genérico: si el usuario no sabe qué método usó, puede intentar
+      // loguearse con ambas opciones, que es UX razonable.
+      return errorResponse('No se pudo completar el registro. Probá iniciando sesión si ya tenés cuenta.', 409);
     }
 
     const usuarioId = crypto.randomUUID();
@@ -172,6 +194,13 @@ async function handleLoginPost(request, env) {
     const { email, password } = await request.json();
     if (!email || !password) return errorResponse('Faltan datos', 400);
     const emailNorm = String(email).trim().toLowerCase();
+
+    // Rate limiting: máx 5 intentos por IP en 5 minutos. Previene brute-force de contraseñas.
+    const ip = request.headers.get('CF-Connecting-IP') || 'desconocida';
+    const permitido = await chequearRateLimit(env, `login:${ip}`, 5, 300);
+    if (!permitido) {
+      return errorResponse('Demasiados intentos. Probá de nuevo en unos minutos.', 429);
+    }
 
     const usuario = await env.DB.prepare(
       'SELECT id, nombre, foto, password_hash, password_salt FROM usuarios WHERE email = ?'
