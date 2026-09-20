@@ -3683,29 +3683,79 @@
 
       if (!conPuntaje.length) return;
 
-      const relacionados = conPuntaje
+      // --- MEJORA 1: Muestra aleatoria de "relacionadas" (top 20 por overlap/weight, luego al azar) ---
+      const topRelacionados = conPuntaje
         .slice()
         .sort((a, b) => b.overlap - a.overlap || (b.show.weight || 0) - (a.show.weight || 0))
-        .slice(0, 12)
+        .slice(0, 20)
         .map(x => x.show);
+      
+      // Baraja los top 20 y toma 8
+      const relacionados = barajar(topRelacionados).slice(0, 8);
 
       const idsRelacionados = new Set(relacionados.map(s => s.id));
-      const recomendados = conPuntaje
+
+      // --- MEJORA 2: Combina criterios para "recomendados" ---
+      // Opción A: por rating promedio (si tiene datos)
+      const porRating = conPuntaje
         .filter(x => !idsRelacionados.has(x.show.id) && x.show.rating && x.show.rating.average)
         .sort((a, b) => b.show.rating.average - a.show.rating.average)
-        .slice(0, 12)
+        .slice(0, 6)
         .map(x => x.show);
+
+      // Opción B: próximos estrenos (status === 'Running', ordenados por weight/popularidad)
+      const proximosEstrenos = conPuntaje
+        .filter(x => !idsRelacionados.has(x.show.id) && !porRating.find(r => r.id === x.show.id) && x.show.status === 'Running')
+        .sort((a, b) => (b.show.weight || 0) - (a.show.weight || 0))
+        .slice(0, 4)
+        .map(x => x.show);
+
+      // Opción C: otros populares (weight alto, sin filtrar por status)
+      const otrosPopulares = conPuntaje
+        .filter(x => !idsRelacionados.has(x.show.id) && !porRating.find(r => r.id === x.show.id) && !proximosEstrenos.find(e => e.id === x.show.id))
+        .sort((a, b) => (b.show.weight || 0) - (a.show.weight || 0))
+        .slice(0, 2)
+        .map(x => x.show);
+
+      // Combina y baraja para cada sesión obtenga un orden distinto
+      let combinados = [...porRating, ...proximosEstrenos, ...otrosPopulares];
+      
+      // --- MEJORA 3: Rotación por sesión (sessionStorage) ---
+      const cacheKey = `hobbi_recomendados_${show.id}`;
+      const cached = sessionStorage.getItem(cacheKey);
+      if (cached) {
+        // Si ya vimos este show esta sesión, usamos el cache
+        combinados = JSON.parse(cached);
+      } else {
+        // Primera vez: baraja y guarda en sessionStorage
+        combinados = barajar(combinados).slice(0, 12);
+        try {
+          sessionStorage.setItem(cacheKey, JSON.stringify(combinados));
+        } catch (e) {
+          // Si llena sessionStorage, ignora el cache (sigue mostrando lo barajado)
+        }
+      }
 
       if (detalleActualId !== show.id) return;
       const holder = document.getElementById('relacionadoRecomendadoHolder');
       if (!holder) return;
       holder.innerHTML = '';
       if (relacionados.length) holder.appendChild(crearRailSeriesSimilares(t('relacionado'), relacionados));
-      if (recomendados.length) holder.appendChild(crearRailSeriesSimilares(t('recomendado'), recomendados));
+      if (combinados.length) holder.appendChild(crearRailSeriesSimilares(t('recomendado'), combinados));
     } catch (e) {
       // Si falla (sin conexión, etc.) simplemente no mostramos estas secciones;
       // el resto de la ficha ya se ve bien sin ellas.
     }
+  }
+
+  // Función auxiliar: baraja un array in-place (Fisher-Yates)
+  function barajar(arr) {
+    const copia = arr.slice();
+    for (let i = copia.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [copia[i], copia[j]] = [copia[j], copia[i]];
+    }
+    return copia;
   }
 
   function crearRailSeriesSimilares(titulo, items) {
