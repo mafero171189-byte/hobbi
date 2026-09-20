@@ -2617,7 +2617,7 @@
      los meses siguientes. Se pide aparte porque es la parte lenta (91
      pedidos en lotes de 8 → ~12 rondas secuenciales) y no debe bloquear a
      Estrenos/Vuelven, que son las secciones que el usuario ve primero. */
-  async function obtenerProximosEstrenos() {
+  async function obtenerCatalogoProximosEstrenos() {
     const hoy = new Date();
     const HORIZONTE_DIAS_FUTUROS = 90;
     const fechasFuturas = [];
@@ -3073,7 +3073,7 @@
       quitarSlotSiQuedoVacio(holder);
     });
 
-    obtenerProximosEstrenos().then(({ proximosEstrenos }) => {
+    obtenerCatalogoProximosEstrenos().then(({ proximosEstrenos }) => {
       if (!holderVigente()) return;
       const proximosPorPlataforma = armarProximosPorPlataforma(proximosEstrenos);
       resolverSlotDescubrimiento(holder, 'proximosEstrenos', proximosEstrenos, true);
