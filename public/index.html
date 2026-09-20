@@ -4589,7 +4589,18 @@
     if ('serviceWorker' in navigator) {
       // Se registra al cargar la página, sin bloquear nada del render.
       window.addEventListener('load', () => {
-        navigator.serviceWorker.register('/sw.js').catch(() => {
+        navigator.serviceWorker.register('/sw.js').then((registration) => {
+          // Escuchamos mensajes del Service Worker (ej: "hay actualización disponible").
+          navigator.serviceWorker.addEventListener('message', (event) => {
+            if (event.data && event.data.type === 'UPDATE_AVAILABLE') {
+              // El Service Worker detectó una versión nueva.
+              // Recargamos la página automático para traer la versión nueva.
+              // Si preferís mostrar un banner "Hay actualización" en vez de recargar,
+              // acá es donde lo harías — por ahora es automático y silencioso.
+              window.location.reload();
+            }
+          });
+        }).catch(() => {
           // Si falla (ej. navegador viejo, o serviceWorker bloqueado en
           // este contexto), la app sigue funcionando igual, solo sin
           // soporte offline ni actualización automática del APK.
