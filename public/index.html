@@ -62,7 +62,8 @@
     html.sesion-previa body.verificando-sesion #onboardingScreen { display: none; }
   </style>
 
-  <script src="https://accounts.google.com/gsi/client" async defer></script>
+  <!-- <script src="https://accounts.google.com/gsi/client" async defer></script> -->
+  <!-- Google Sign-In deshabilitado temporalmente para APK (Fase 1) — se arregla en Fase 2 con OAuth configurado -->
   <style>
     :root {
       /* Fondo: negro azulado, como una sala de cine */
@@ -395,6 +396,9 @@
     /* Banda de "sin conexión" */
     #offlineBanner { display: none; background: var(--danger-dim); color: var(--danger); border: 1px solid var(--danger); font-size: 12px; font-weight: 700; text-align: center; padding: 8px; border-radius: 10px; }
     #offlineBanner.show { display: block; }
+    #updateBanner { display: none; align-items: center; justify-content: center; gap: 10px; background: rgba(45, 212, 191, 0.12); color: var(--accent, #2dd4bf); border: 1px solid var(--accent, #2dd4bf); font-size: 12px; font-weight: 700; text-align: center; padding: 8px 10px; border-radius: 10px; margin-top: 8px; flex-wrap: wrap; }
+    #updateBanner.show { display: flex; }
+    #updateBanner button { background: var(--accent, #2dd4bf); color: #0a0a13; border: none; border-radius: 8px; padding: 4px 12px; font-size: 12px; font-weight: 800; cursor: pointer; }
 
     /* Botón de activar notificaciones */
     #notifBtn.on { border-color: var(--gold); color: var(--gold); background: var(--gold-dim); }
@@ -466,7 +470,10 @@
   <div class="onboarding-card">
     <h1>HOBBI</h1>
     <p id="onboardingTagline">Todas tus series, en un solo lugar.</p>
-    <div id="googleBtnOnboarding"></div>
+    <button type="button" id="googleBtnOnboarding" class="onboarding-email-btn" style="background:#fff; color:#1f1f1f; display:flex; align-items:center; justify-content:center; gap:8px;" onclick="iniciarLoginGoogleNativo()">
+      <svg width="18" height="18" viewBox="0 0 18 18"><path fill="#4285F4" d="M17.64 9.2c0-.64-.06-1.25-.16-1.84H9v3.48h4.84c-.21 1.13-.85 2.08-1.8 2.72v2.26h2.92c1.7-1.57 2.68-3.88 2.68-6.62z"/><path fill="#34A853" d="M9 18c2.43 0 4.47-.8 5.96-2.18l-2.92-2.26c-.81.54-1.84.86-3.04.86-2.34 0-4.32-1.58-5.03-3.7H.96v2.33C2.44 15.98 5.48 18 9 18z"/><path fill="#FBBC05" d="M3.97 10.72c-.18-.54-.28-1.12-.28-1.72s.1-1.18.28-1.72V4.95H.96C.35 6.17 0 7.55 0 9s.35 2.83.96 4.05l3.01-2.33z"/><path fill="#EA4335" d="M9 3.58c1.32 0 2.51.45 3.44 1.35l2.59-2.59C13.46.89 11.43 0 9 0 5.48 0 2.44 2.02.96 4.95l3.01 2.33C4.68 5.16 6.66 3.58 9 3.58z"/></svg>
+      Continuar con Google
+    </button>
     <div class="onboarding-divider"><span id="onboardingDividerTexto">o con tu mail</span></div>
     <form id="onboardingEmailForm" onsubmit="return manejarSubmitEmail(event)">
       <input type="email" id="onboardingEmail" placeholder="Email" aria-label="Email" required autocomplete="email">
@@ -480,6 +487,10 @@
 
 <div class="app-container">
   <div id="offlineBanner" role="status" aria-live="polite">📡 Sin conexión a internet — mostrando datos guardados</div>
+  <div id="updateBanner" role="status" aria-live="polite">
+    <span>🎉 Hay una versión nueva de HOBBI disponible</span>
+    <button type="button" id="updateBannerBtn" onclick="aplicarActualizacionApk()">Actualizar</button>
+  </div>
   <header>
     <h1>HOBBI</h1>
     <p id="appTagline" style="text-align:center; color:var(--ink-muted); font-size:12px; letter-spacing:0.5px; margin-top:-10px; margin-bottom:12px;">Control de Series</p>
@@ -713,6 +724,8 @@
       buscarSerieEmpezar: 'Escribí el nombre arriba y tocá el ❤️ de las que quieras seguir.',
       agregaFavoritos: 'Agregá series en emisión a favoritos para ver su calendario.',
       sinConexionBanner: '📡 Sin conexión a internet — mostrando datos guardados',
+      actualizacionDisponible: '🎉 Hay una versión nueva de HOBBI disponible',
+      actualizarBoton: 'Actualizar',
       conexionRecuperada: 'Conexión recuperada ✅',
       teQuedasteSinConexion: 'Te quedaste sin conexión',
       sacasteDeFavoritos: (nombre) => `Sacaste "${nombre}" de favoritos`,
@@ -868,6 +881,8 @@
       buscarSerieEmpezar: 'Type a name above and tap ❤️ on the ones you want to follow.',
       agregaFavoritos: 'Add running shows to your favorites to see their calendar here.',
       sinConexionBanner: '📡 No internet connection — showing saved data',
+      actualizacionDisponible: '🎉 A new version of HOBBI is available',
+      actualizarBoton: 'Update',
       conexionRecuperada: 'Connection restored ✅',
       teQuedasteSinConexion: 'You lost your connection',
       sacasteDeFavoritos: (nombre) => `Removed "${nombre}" from favorites`,
@@ -1045,6 +1060,8 @@
     document.getElementById('detailBackBtn').textContent = t('volver');
     document.getElementById('notifBtn') && actualizarBotonNotif();
     document.getElementById('offlineBanner').textContent = t('sinConexionBanner');
+    document.getElementById('updateBanner').firstElementChild.textContent = t('actualizacionDisponible');
+    document.getElementById('updateBannerBtn').textContent = t('actualizarBoton');
   }
   aplicarIdioma();
 
@@ -1421,6 +1438,94 @@
      empuja los cambios al servidor (con debounce, para no golpear la API
      por cada tilde de checkbox). */
   const GOOGLE_CLIENT_ID = '403618822429-pshtrss0fg4nnojujh6aqqagaboia66h.apps.googleusercontent.com';
+
+  /* En la PWA, el index.html se sirve desde el mismo dominio que el backend
+     (hobbi.mafero171189.workers.dev), así que fetch('/api/...') apunta solo por
+     sí solo al lugar correcto. Pero dentro de la APK (Capacitor), el HTML
+     vive empaquetado localmente — no hay ningún servidor en ese origen — así
+     que esas mismas rutas relativas no llegan a ningún lado. Acá armamos el
+     prefijo correcto según dónde estemos corriendo, y todo fetch('/api/...')
+     de acá en más pasa por api(ruta) en lugar de escribir la ruta a mano. */
+  const API_BASE = (window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform())
+    ? 'https://hobbi.mafero171189.workers.dev'
+    : '';
+  function api(ruta) {
+    return API_BASE + ruta;
+  }
+  /* Todo fetch a nuestro backend pasa por acá en lugar de fetch(api(ruta))
+     directo: agrega credentials:'include' siempre, que en la PWA (mismo
+     origen) no cambia nada, pero en la APK (origen cruzado: https://localhost
+     -> hobbi.mafero171189.workers.dev) es indispensable para que la cookie de
+     sesión viaje de ida (se mande) y de vuelta (el navegador la guarde) —
+     sin esto, aunque el pedido llegue bien, el login "funciona" pero la
+     sesión no queda guardada, o directo el navegador descarta la respuesta
+     por política CORS con credenciales. */
+  function fetchApi(ruta, opciones = {}) {
+    return fetch(api(ruta), { ...opciones, credentials: 'include' });
+  }
+
+  /* ==================== LIVE UPDATE (solo APK) ====================
+     La PWA ya se actualiza sola: se sirve siempre fresca desde la red, y
+     el Service Worker (sw.js) chequea cada 2 minutos si hay versión nueva.
+     Pero la APK tiene el HTML empaquetado DENTRO del archivo — no se entera
+     de nada nuevo por más que actualicemos el servidor, hasta que alguien
+     instala un .apk nuevo.
+     Esto SÍ resuelve eso sin recompilar nunca: la "versión que ya vio este
+     teléfono" se guarda en localStorage (vive en el dispositivo, sobrevive
+     recompilaciones e instalaciones porque no es parte del .apk en sí) y se
+     compara contra la que hay en el servidor (/version.json, una sola
+     constante en _worker.js). Si son distintas, mostramos el banner — y si
+     el usuario toca "Actualizar", navegamos el WebView directo al sitio
+     real (el mismo que ve cualquiera en el navegador), que trae todo lo
+     nuevo al toque. Los plugins nativos (Google Sign-In, botón atrás) siguen
+     funcionando igual después de ese salto — viven en el puente nativo de
+     Capacitor, no en el HTML.
+     Para publicar una actualización de acá en más: SOLO hay que cambiar
+     APP_LATEST_VERSION en _worker.js y desplegar. Nunca más tocar
+     build.gradle ni recompilar el .apk por esto. */
+  const CLAVE_ULTIMA_VERSION_VISTA = 'hobbi_ultima_version_vista';
+
+  async function chequearActualizacionApk() {
+    if (!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform())) return;
+    try {
+      const res = await fetch(api('/version.json'));
+      if (!res.ok) return;
+      const data = await res.json();
+      if (!data || !data.version) return;
+
+      const ultimaVista = localStorage.getItem(CLAVE_ULTIMA_VERSION_VISTA);
+      if (ultimaVista === null) {
+        // Primera vez que este teléfono chequea: no hay nada previo contra
+        // qué comparar, así que asumimos que la versión actual del servidor
+        // es la que ya conoce, y no molestamos con un banner en el primer uso.
+        localStorage.setItem(CLAVE_ULTIMA_VERSION_VISTA, data.version);
+        return;
+      }
+      if (data.version !== ultimaVista) {
+        document.getElementById('updateBanner').classList.add('show');
+      }
+    } catch {
+      // Sin conexión o el servidor no respondió — no pasa nada, seguimos
+      // con la versión que ya tenía vista, sin molestar al usuario.
+    }
+  }
+
+  async function aplicarActualizacionApk() {
+    try {
+      const res = await fetch(api('/version.json'));
+      if (res.ok) {
+        const data = await res.json();
+        if (data && data.version) localStorage.setItem(CLAVE_ULTIMA_VERSION_VISTA, data.version);
+      }
+    } catch {
+      // Si esto falla, no pasa nada grave: el próximo chequeo la vuelve a
+      // detectar como pendiente y el banner vuelve a aparecer, como mucho.
+    }
+    // Navegamos el WebView directo a la versión real hosteada — trae todo lo
+    // nuevo (HTML, CSS, JS) sin pasar por una recompilación del .apk. El
+    // cache-buster evita que nos sirva una copia vieja cacheada localmente.
+    window.location.href = api('/') + '?actualizado=' + Date.now();
+  }
   let usuarioActual = null; // { email, nombre, foto } o null si no logueó
   let timeoutSyncNube = null;
   // true desde que hay un cambio local sin confirmar en el servidor todavía
@@ -1456,7 +1561,7 @@
      (cookie de sesión todavía válida) sin obligar a tocar el botón de nuevo. */
   async function revisarSesionExistente() {
     try {
-      const res = await fetch('/api/me');
+      const res = await fetchApi('/api/me');
       if (!res.ok) return;
       const data = await res.json();
       if (data.logueado) {
@@ -1486,10 +1591,36 @@
     }
   }
 
+  /* Dispara el login nativo de Google (solo existe dentro de la APK de Capacitor).
+     El plugin nativo devuelve un idToken equivalente al "credential" que el
+     script web nos daba antes — así que lo reusamos tal cual en manejarCredencialGoogle,
+     sin tocar nada del backend /api/auth. */
+  async function iniciarLoginGoogleNativo() {
+    if (!window.Capacitor || !window.Capacitor.Plugins || !window.Capacitor.Plugins.GoogleAuth) {
+      mostrarToast(t('errorLoginGoogle'), 'error');
+      return;
+    }
+    try {
+      const usuario = await window.Capacitor.Plugins.GoogleAuth.signIn();
+      const idToken = usuario && usuario.authentication && usuario.authentication.idToken;
+      if (!idToken) throw new Error('sin idToken');
+      await manejarCredencialGoogle({ credential: idToken });
+    } catch (err) {
+      // El usuario canceló el picker de cuentas: no es un error real, no mostramos toast.
+      if (err && (err.code === '12501' || err.message === 'popup_closed_by_user')) return;
+      console.error('Error en login nativo de Google:', err);
+      // DIAGNÓSTICO TEMPORAL: mostramos el mensaje real del error en vez del
+      // genérico, para ver en el teléfono mismo qué está fallando exactamente
+      // (CORS, red, etc.) sin depender de chrome://inspect. Sacar esta línea
+      // y volver a mostrarToast(t('errorLoginGoogle'), 'error') una vez resuelto.
+      mostrarToast('DEBUG: ' + (err && err.message ? err.message : JSON.stringify(err)), 'error');
+    }
+  }
+
   /* Callback que dispara Google Identity Services cuando el usuario elige su cuenta. */
   async function manejarCredencialGoogle(respuesta) {
     try {
-      const res = await fetch('/api/auth', {
+      const res = await fetchApi('/api/auth', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ credential: respuesta.credential })
@@ -1507,8 +1638,10 @@
       await sincronizarDesdeNube(true);
       await sincronizarHaciaNube(true);
       mostrarSyncBadge(t('sesionIniciada'));
-    } catch {
-      mostrarToast(t('errorLoginGoogle'), 'error');
+    } catch (err) {
+      console.error('Error en manejarCredencialGoogle:', err);
+      // DIAGNÓSTICO TEMPORAL — ver nota arriba en iniciarLoginGoogleNativo.
+      mostrarToast('DEBUG: ' + (err && err.message ? err.message : JSON.stringify(err)), 'error');
     }
   }
 
@@ -1516,7 +1649,7 @@
     const ok = await confirmarEliminar(t('cerrarSesionTitulo'), t('cerrarSesionMsg'), t('cerrarSesionBoton'));
     if (!ok) return;
     clearTimeout(timeoutSyncNube); // por si había un guardado pendiente programado, lo cancelamos
-    try { await fetch('/api/auth', { method: 'DELETE' }); } catch {}
+    try { await fetchApi('/api/auth', { method: 'DELETE' }); } catch {}
     usuarioActual = null;
     localStorage.removeItem('hobbi_ultima_sesion'); // ver anti-flash en el <head>
     actualizarChipUsuario();
@@ -1544,7 +1677,7 @@
     if (!ok) return;
     clearTimeout(timeoutSyncNube); // cancelamos cualquier sync pendiente, ya no tiene sentido subir nada
     try {
-      const res = await fetch('/api/account', { method: 'DELETE' });
+      const res = await fetchApi('/api/account', { method: 'DELETE' });
       if (!res.ok) throw new Error('delete falló');
     } catch {
       mostrarToast(t('errorEliminarCuenta'), 'error');
@@ -1654,10 +1787,10 @@
     const submitBtn = document.getElementById('onboardingSubmitBtn');
     errorEl.textContent = '';
 
-    const endpoint = modoOnboarding === 'login' ? '/api/auth/login' : '/api/auth/register';
+    const ruta = modoOnboarding === 'login' ? '/api/auth/login' : '/api/auth/register';
     submitBtn.disabled = true;
     try {
-      const res = await fetch(endpoint, {
+      const res = await fetchApi(ruta, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password })
@@ -1674,8 +1807,10 @@
       await sincronizarDesdeNube(true);
       await sincronizarHaciaNube(true);
       mostrarSyncBadge(t('sesionIniciada'));
-    } catch {
-      errorEl.textContent = t(modoOnboarding === 'login' ? 'errorLoginEmail' : 'errorRegistroEmail');
+    } catch (err) {
+      console.error('Error en manejarSubmitEmail:', err);
+      // DIAGNÓSTICO TEMPORAL — ver nota arriba en iniciarLoginGoogleNativo.
+      errorEl.textContent = 'DEBUG: ' + (err && err.message ? err.message : JSON.stringify(err));
     } finally {
       submitBtn.disabled = false;
     }
@@ -1704,13 +1839,48 @@
   const cacheListo = hidratarCacheDesdeIDB().then(() => limpiarCacheViejo());
 
   window.addEventListener('load', async () => {
-    if (window.google && google.accounts && google.accounts.id) {
-      google.accounts.id.initialize({ client_id: GOOGLE_CLIENT_ID, callback: manejarCredencialGoogle });
-      google.accounts.id.renderButton(document.getElementById('googleBtnOnboarding'), { theme: 'filled_black', size: 'large', shape: 'pill', text: 'signup_with' });
+    // En la APK (Capacitor), intercept el botón atrás de Android. En la PWA
+    // (navegador), Capacitor.Plugins.App no existe y esto no hace nada.
+    // canGoBack lo manda el propio plugin: es Capacitor preguntándole al
+    // WebView nativo si hay historial hacia atrás. Si lo hay, delegamos en
+    // history.back() — la app YA tenía su propio listener de popstate más
+    // abajo (aplicarEstadoHistorial) que sabe volver a la vista/modal/detalle
+    // correctos, no hace falta duplicar esa lógica acá. Si NO hay historial
+    // (estamos parados en Inicio sin haber navegado a ningún lado todavía),
+    // eso es la raíz de la app — ahí es cuando Atrás tiene que cerrarla.
+    // Sin este chequeo, agregar el listener de backButton anula por completo
+    // el comportamiento nativo de "cerrar la app", que es lo que causaba que
+    // en Inicio el botón atrás ya no hiciera nada.
+    if (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.App) {
+      window.Capacitor.Plugins.App.addListener('backButton', ({ canGoBack }) => {
+        if (canGoBack) {
+          window.history.back();
+        } else {
+          window.Capacitor.Plugins.App.exitApp();
+        }
+      });
+    }
+
+    // En la APK (Capacitor), inicializamos el plugin nativo de Google Auth.
+    // En la PWA (navegador), esto no existe y directamente no hacemos nada acá:
+    // ese caso usa el flujo viejo de accounts.google.com/gsi/client si está presente.
+    if (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.GoogleAuth) {
+      try {
+        await window.Capacitor.Plugins.GoogleAuth.initialize({
+          clientId: GOOGLE_CLIENT_ID,
+          scopes: ['profile', 'email'],
+          grantOfflineAccess: false
+        });
+      } catch (err) {
+        console.error('No se pudo inicializar GoogleAuth nativo:', err);
+      }
     }
     // Esperamos a que el caché esté hidratado antes de arrancar cualquier
     // pedido que pueda aprovecharlo (pósters de onboarding, sesión existente).
     await cacheListo;
+    // No lo esperamos (sin await): es un chequeo secundario, no debe demorar
+    // el arranque real de la app.
+    chequearActualizacionApk();
     // La pantalla de login ya se ve desde el primer render (CSS), así que no
     // hace falta "mostrarla" a mano acá. Primero confirmamos si ya había
     // sesión (revisarSesionExistente la cierra sola si es así) y solo si
@@ -1749,7 +1919,7 @@
     if (!usuarioActual || !hayPushPendiente) return;
     clearTimeout(timeoutSyncNube);
     try {
-      navigator.sendBeacon('/api/data', new Blob(
+      navigator.sendBeacon(api('/api/data'), new Blob(
         [JSON.stringify({ favoritos, episodiosVistos, idioma })],
         { type: 'application/json' }
       ));
@@ -1774,7 +1944,7 @@
     // recarga, etc.) va a traer el estado correcto igual.
     if (hayPushPendiente) return;
     try {
-      const res = await fetch('/api/data');
+      const res = await fetchApi('/api/data');
       if (!res.ok) {
         let detalle = `HTTP ${res.status}`;
         try {
@@ -1815,7 +1985,7 @@
     hayPushPendiente = true;
     const hacerPush = async () => {
       try {
-        const res = await fetch('/api/data', {
+        const res = await fetchApi('/api/data', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ favoritos, episodiosVistos, idioma })
