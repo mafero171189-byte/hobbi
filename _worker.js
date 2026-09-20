@@ -423,7 +423,12 @@ async function handleAccountDelete(request, env) {
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
-    const esRutaApi = url.pathname.startsWith('/api/');
+    // /version.json necesita los mismos headers CORS que /api/* — la APK lo
+    // pide cross-origin (desde https://localhost) para el chequeo de Live
+    // Update. No es información sensible ni usa cookies, pero igual el
+    // navegador exige el header Access-Control-Allow-Origin para dejar que
+    // el JS de la app lea la respuesta.
+    const esRutaApi = url.pathname.startsWith('/api/') || url.pathname === '/version.json';
 
     // El navegador manda un OPTIONS de "permiso" antes de cualquier POST/DELETE
     // con credentials:'include' desde un origen distinto (la APK). Si no lo
@@ -441,6 +446,7 @@ export default {
     else if (url.pathname === '/api/data' && request.method === 'GET') respuesta = await handleDataGet(request, env);
     else if (url.pathname === '/api/data' && request.method === 'POST') respuesta = await handleDataPost(request, env);
     else if (url.pathname === '/api/account' && request.method === 'DELETE') respuesta = await handleAccountDelete(request, env);
+    else if (url.pathname === '/version.json' && request.method === 'GET') respuesta = await env.ASSETS.fetch(request);
     else {
       // Todo lo que no sea /api/* se sirve como archivo estático (index.html, etc).
       return env.ASSETS.fetch(request);
