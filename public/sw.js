@@ -63,3 +63,45 @@ self.addEventListener('fetch', (event) => {
       .catch(() => caches.match(event.request))
   );
 });
+
+/* ---------- Chequeo automático de actualizaciones cada 2 minutos ----------
+   Mientras la app esté abierta, el Service Worker chequea cada 2 minutos si
+   hay versión nueva (comparando CACHE_VERSION — que incluye la fecha). Si
+   detecta cambios, le notifica al cliente con un mensaje, para que la app
+   pueda mostrar un banner "Hay actualización disponible" o actualizar
+   silenciosamente. El cliente puede implementar la UX que quiera en respuesta. */
+
+self.addEventListener('message', (event) => {
+  if (event.data && event.data.type === 'SKIP_WAITING') {
+    self.skipWaiting();
+  }
+});
+
+// Chequea el Service Worker nuevo cada 2 minutos (120 segundos).
+// Esto solo funciona mientras la app esté abierta — al cerrarla, esto para.
+setInterval(() => {
+  fetch(self.location.href)
+    .then((respuesta) => respuesta.text())
+    .then((html) => {
+      // Buscamos en el HTML nuevo cuál es el CACHE_VERSION que tiene ahora.
+      // Si es distinto al actual, significa que hay versión nueva.
+      const versionMatch = html.match(/const CACHE_VERSION = 'hobbi-\d{4}-\d{2}-\d{2}'/);
+      if (versionMatch) {
+        const nuevaVersion = versionMatch[0].split("'")[1];
+        if (nuevaVersion !== CACHE_VERSION) {
+          // Hay versión nueva — notificamos a todos los clientes (las pestañas/app abierta)
+          self.clients.matchAll().then((clients) => {
+            clients.forEach((cliente) => {
+              cliente.postMessage({
+                type: 'UPDATE_AVAILABLE',
+                version: nuevaVersion
+              });
+            });
+          });
+        }
+      }
+    })
+    .catch(() => {
+      // Si falla el chequeo (sin internet), simplemente lo reintentamos en 2 minutos más.
+    });
+}, 120000); // 120000 ms = 2 minutos
