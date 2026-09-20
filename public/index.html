@@ -2497,11 +2497,11 @@
 
   /* Antes esta única función pedía pasados y futuros juntos y devolvía todo
      recién cuando ambos terminaban. Se separó en obtenerNuevas (rápida, 5
-     pedidos) y obtenerEstrenosYProximos (lenta, ~91 pedidos) para que
-     cargarDescubrimiento pueda pintar cada rail apenas está listo, sin que
-     la parte rápida quede esperando a la lenta. Ambas comparten
-     normalizarEntradaWeb, sinDuplicados y traerDia (definidas una sola vez
-     acá abajo). */
+     pedidos), obtenerEstrenosYVuelven (rápida, solo hasta fin de mes) y
+     obtenerProximosEstrenos (lenta, ~91 pedidos) para que cargarDescubrimiento
+     pueda pintar cada rail apenas está listo, sin que las partes rápidas
+     queden esperando a la lenta. Todas comparten normalizarEntradaWeb,
+     sinDuplicados y traerDia (definidas una sola vez acá abajo). */
 
   // /schedule/web no siempre trae el show en "ep.show" directo como /schedule:
   // a veces viene anidado en "ep._embedded.show", y algunas entradas agrupan
@@ -2576,10 +2576,50 @@
      a 8 días en paralelo (fetchEnLotes) para no saturar la API con ~90
      pedidos a la vez; cada día queda cacheado 3hs aparte, así que solo se
      vuelve a pedir a la red lo que esté vencido. */
-  async function obtenerEstrenosYProximos() {
+  /* Estrenos/Vuelven salen de "lo que queda de este mes" — se pide primero y
+     aparte porque suele ser bastante menos de 90 días (a veces 5, a veces 25),
+     así que resuelve rápido y estas dos secciones (las primeras que se ven en
+     el Inicio) pintan casi al toque, sin esperar el resto del horizonte.
+     Próximos Estrenos (por plataforma) necesita el horizonte completo de 90
+     días, así que se arma aparte en obtenerProximosEstrenos: esa sigue el
+     resto del trabajo en segundo plano mientras el usuario ya está viendo
+     Vuelven/Estrenos. */
+  async function obtenerEstrenosYVuelven() {
+    const hoy = new Date();
+    const finDeMes = new Date(hoy.getFullYear(), hoy.getMonth() + 1, 0);
+    const diasHastaFinDeMes = Math.round((finDeMes - hoy) / (24 * 60 * 60 * 1000));
+    const fechas = [];
+    for (let i = 0; i <= diasHastaFinDeMes; i++) {
+      const d = new Date(hoy); d.setDate(d.getDate() + i);
+      fechas.push(formatearFechaISO(d));
+    }
+
+    const episodios = await fetchEnLotes(fechas, traerDiaSchedule, 8);
+    const entradasE1 = episodios.flat().flatMap(normalizarEntradaWeb).filter((ep) => ep.number === 1);
+
+    const estrenos = sinDuplicadosDeShow(
+      entradasE1.filter((ep) => ep.season === 1)
+        .sort((a, b) => (b.show.weight || 0) - (a.show.weight || 0) || new Date(a.airstamp || a.airdate) - new Date(b.airstamp || b.airdate))
+    );
+
+    const vuelven = sinDuplicadosDeShow(
+      entradasE1.filter((ep) => ep.season > 1)
+        .sort((a, b) => (b.show.weight || 0) - (a.show.weight || 0) || new Date(a.airstamp || a.airdate) - new Date(b.airstamp || b.airdate))
+    );
+
+    return { estrenos, vuelven };
+  }
+
+  /* Próximos Estrenos: series totalmente nuevas (T1E1) confirmadas en los 90
+     días desde hoy — incluye las de este mes (ya cubiertas por
+     obtenerEstrenosYVuelven, así que hay algo de trabajo repetido en los
+     primeros días, pero cachurado 3hs por día así que es barato) y las de
+     los meses siguientes. Se pide aparte porque es la parte lenta (91
+     pedidos en lotes de 8 → ~12 rondas secuenciales) y no debe bloquear a
+     Estrenos/Vuelven, que son las secciones que el usuario ve primero. */
+  async function obtenerProximosEstrenos() {
     const hoy = new Date();
     const HORIZONTE_DIAS_FUTUROS = 90;
-    const finDeMes = new Date(hoy.getFullYear(), hoy.getMonth() + 1, 0);
     const fechasFuturas = [];
     for (let i = 0; i <= HORIZONTE_DIAS_FUTUROS; i++) {
       const d = new Date(hoy); d.setDate(d.getDate() + i);
@@ -2587,41 +2627,14 @@
     }
 
     const episodiosFuturos = await fetchEnLotes(fechasFuturas, traerDiaSchedule, 8);
-
     const futurosE1 = episodiosFuturos.flat().flatMap(normalizarEntradaWeb).filter((ep) => ep.number === 1);
-    const futurosDentroDeEsteMes = futurosE1.filter((ep) => {
-      const ts = new Date(ep.airstamp || ep.airdate).getTime();
-      return Number.isFinite(ts) && ts <= finDeMes.getTime() + 24 * 60 * 60 * 1000;
-    });
 
-    // Estrenos: series totalmente nuevas (T1E1) que salen el resto de este mes.
-    // Antes solo se ordenaba por fecha, lo que mezclaba estrenos de canales
-    // masivos (Netflix, HBO) con contenido nicho de canales locales de
-    // cualquier país — TVMaze programa igual todo lo que sale en el mundo, sin
-    // distinguir relevancia. Ahora se ordena por "weight" (la misma señal de
-    // popularidad que usa Populares) para que lo más relevante salga primero.
-    const estrenos = sinDuplicadosDeShow(
-      futurosDentroDeEsteMes.filter((ep) => ep.season === 1)
-        .sort((a, b) => (b.show.weight || 0) - (a.show.weight || 0) || new Date(a.airstamp || a.airdate) - new Date(b.airstamp || b.airdate))
-    );
-
-    // Vuelven este mes: series que ya existían y arrancan una temporada nueva (T2+, E1).
-    // Mismo criterio: relevancia primero, fecha como desempate.
-    const vuelven = sinDuplicadosDeShow(
-      futurosDentroDeEsteMes.filter((ep) => ep.season > 1)
-        .sort((a, b) => (b.show.weight || 0) - (a.show.weight || 0) || new Date(a.airstamp || a.airdate) - new Date(b.airstamp || b.airdate))
-    );
-
-    // Próximos Estrenos: series totalmente nuevas (T1E1) confirmadas en todo
-    // el horizonte de 90 días (incluye las de este mes y las siguientes).
-    // Acá el orden es cronológico — lo que importa en esta sección es "qué
-    // sale primero", no tanto la relevancia (que ya se refleja en Estrenos).
     const proximosEstrenos = sinDuplicadosDeShow(
       futurosE1.filter((ep) => ep.season === 1)
         .sort((a, b) => new Date(a.airstamp || a.airdate) - new Date(b.airstamp || b.airdate))
     );
 
-    return { estrenos, vuelven, proximosEstrenos };
+    return { proximosEstrenos };
   }
 
   /* Guarda la última tanda completa de cada categoría para que "Ver más" no tenga que volver a pedir nada. */
@@ -3046,12 +3059,23 @@
       quitarSlotSiQuedoVacio(holder);
     });
 
-    obtenerEstrenosYProximos().then(({ estrenos, vuelven, proximosEstrenos }) => {
+    obtenerEstrenosYVuelven().then(({ estrenos, vuelven }) => {
       if (!holderVigente()) return;
       const estrenosHollywood = armarEstrenosHollywood(estrenos);
-      const proximosPorPlataforma = armarProximosPorPlataforma(proximosEstrenos);
+      resolverSlotDescubrimiento(holder, 'vuelven', vuelven, true);
       resolverSlotDescubrimiento(holder, 'estrenos', estrenos, true);
       resolverSlotDescubrimiento(holder, 'estrenosHollywood', estrenosHollywood, true);
+      quitarSlotSiQuedoVacio(holder);
+    }).catch(() => {
+      if (!holderVigente()) return;
+      ['vuelven', 'estrenos', 'estrenosHollywood']
+        .forEach((id) => resolverSlotDescubrimiento(holder, id, []));
+      quitarSlotSiQuedoVacio(holder);
+    });
+
+    obtenerProximosEstrenos().then(({ proximosEstrenos }) => {
+      if (!holderVigente()) return;
+      const proximosPorPlataforma = armarProximosPorPlataforma(proximosEstrenos);
       resolverSlotDescubrimiento(holder, 'proximosEstrenos', proximosEstrenos, true);
       resolverSlotDescubrimiento(holder, 'proximosNetflix', proximosPorPlataforma.netflix, true);
       resolverSlotDescubrimiento(holder, 'proximosPrimeVideo', proximosPorPlataforma.primevideo, true);
@@ -3060,11 +3084,10 @@
       resolverSlotDescubrimiento(holder, 'proximosDisney', proximosPorPlataforma.disney, true);
       resolverSlotDescubrimiento(holder, 'proximosHulu', proximosPorPlataforma.hulu, true);
       resolverSlotDescubrimiento(holder, 'proximosParamount', proximosPorPlataforma.paramount, true);
-      resolverSlotDescubrimiento(holder, 'vuelven', vuelven, true);
       quitarSlotSiQuedoVacio(holder);
     }).catch(() => {
       if (!holderVigente()) return;
-      ['estrenos', 'estrenosHollywood', 'proximosEstrenos', 'proximosNetflix', 'proximosPrimeVideo', 'proximosHboMax', 'proximosAppleTv', 'proximosDisney', 'proximosHulu', 'proximosParamount', 'vuelven']
+      ['proximosEstrenos', 'proximosNetflix', 'proximosPrimeVideo', 'proximosHboMax', 'proximosAppleTv', 'proximosDisney', 'proximosHulu', 'proximosParamount']
         .forEach((id) => resolverSlotDescubrimiento(holder, id, []));
       quitarSlotSiQuedoVacio(holder);
     });
