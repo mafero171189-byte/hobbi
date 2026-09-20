@@ -15,3 +15,4 @@ database_id = "a3988f25-f866-4111-b57b-8a6465e617ac"
 [[kv_namespaces]]
 binding = "RATE_LIMIT_KV"
 id = "d517fab63f22499281a290c643001891"
+
