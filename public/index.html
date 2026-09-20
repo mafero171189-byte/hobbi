@@ -3414,7 +3414,7 @@
 
     card.innerHTML = `
       <div class="card-top">
-        <img src="${imgSrc}" onclick="verDetalles(${show.id})" loading="eager" decoding="async" alt="${show.name}" ${atrsFallback}>
+        <img src="${imgSrc}" onclick="verDetalles(${show.id})" loading="lazy" decoding="async" alt="${show.name}" class="loading-image" onload="this.classList.remove('loading-image')" onerror="this.classList.remove('loading-image')" ${atrsFallback}>
         <div class="card-info" onclick="verDetalles(${show.id})">
           <h3>${show.name}${badgeNuevo}</h3>
           <div class="status ${estado.clase}">${estado.texto}</div>
