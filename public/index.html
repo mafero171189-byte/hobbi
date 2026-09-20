@@ -14,17 +14,20 @@
   <link rel="dns-prefetch" href="https://lh3.googleusercontent.com">
 
   <!-- ==================== PWA: instalable en el celular ====================
-       El manifest se genera en runtime como Blob (ver abajo, al final del
-       script) para que el archivo siga siendo un único .html autocontenido,
-       sin depender de un manifest.json externo que se pueda perder al mover
-       el archivo. iOS no lee manifest.json para el ícono/tema de forma
-       confiable, así que además de eso van las meta tags "apple-*" clásicas. -->
+       El manifest ahora es un archivo real (public/manifest.json) en vez de
+       un Blob generado en runtime — un Blob URL es temporal y único por
+       sesión de navegador, así que herramientas externas como PWABuilder
+       (que arman el APK) no pueden leerlo. El apple-touch-icon se arma en
+       runtime más abajo (inicializarPWA) porque iOS no lee manifest.json
+       para el ícono/tema de forma confiable — necesita las meta tags
+       "apple-*" clásicas con el ícono puesto directo. -->
   <meta name="theme-color" content="#0a0a13">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="Hobbi">
   <link rel="apple-touch-icon" id="appleTouchIcon" href="">
+  <link rel="manifest" href="/manifest.json">
 
   <script src="https://accounts.google.com/gsi/client" async defer></script>
   <style>
@@ -1386,6 +1389,15 @@
     guardarDatosLocal();
     cerrarAjustes(); // si no, el modal queda "abierto" (con la cuenta vieja) tapado por el onboarding,
                       // y reaparece solo apenas alguien loguea de nuevo (con otra cuenta o la misma)
+    // Si cerraste sesión estando en Favoritos o Calendario, esa vista quedaba
+    // "de fondo" detrás del onboarding: al loguear de nuevo (misma cuenta u
+    // otra), cerrarOnboarding() simplemente destapaba lo que ya estaba ahí, en
+    // vez de arrancar siempre en Inicio. Forzamos la vuelta a Inicio acá (con
+    // push=false: no hace falta apilar nada, solo corregir lo que se ve) y
+    // dejamos también el historial apuntando a "inicio", para que ni un Atrás
+    // después de loguear pueda traer de vuelta la vista de la sesión anterior.
+    cambiarVista('inicio', false);
+    history.replaceState({ view: 'inicio' }, '', '#inicio');
     mostrarOnboarding();
   }
 
@@ -1411,6 +1423,10 @@
     guardarDatosLocal();
     cerrarAjustes();
     mostrarToast(t('eliminarCuentaOk'), 'ok');
+    // Mismo motivo que en cerrarSesionGoogle: si estabas en Favoritos o
+    // Calendario, esa vista quedaba de fondo detrás del onboarding.
+    cambiarVista('inicio', false);
+    history.replaceState({ view: 'inicio' }, '', '#inicio');
     mostrarOnboarding();
   }
 
@@ -4553,11 +4569,12 @@
     return vistosCount >= f.totalEpisodesCount;
   }
 
-  /* ==================== PWA: manifest generado en runtime ====================
-     El ícono va como SVG inline para no depender de ningún archivo externo.
-     Se arma el manifest como Blob y se linkea dinámicamente — a diferencia
-     de un Service Worker, un manifest SÍ puede servirse desde un blob URL
-     sin restricción del navegador, así que este patrón funciona bien acá. */
+  /* ==================== PWA: ícono de iOS + Service Worker ====================
+     El manifest ya no se genera acá (ver <link rel="manifest"> real en el
+     <head>) — este bloque solo pone el ícono de apple-touch-icon (iOS no lee
+     manifest.json de forma confiable para esto) y registra el Service
+     Worker, que es lo que permite que la app funcione offline y que las
+     actualizaciones lleguen solas al APK sin pasar por ninguna tienda. */
   (function inicializarPWA() {
     const iconoSVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
       <rect width="512" height="512" rx="96" fill="#0a0a13"/>
@@ -4569,28 +4586,15 @@
     const appleIcon = document.getElementById('appleTouchIcon');
     if (appleIcon) appleIcon.href = iconoDataUri;
 
-    const manifest = {
-      name: 'Hobbi: Control de Series',
-      short_name: 'Hobbi',
-      description: 'Seguí tus series favoritas: episodios vistos, próximos estrenos y calendario.',
-      start_url: '.',
-      display: 'standalone',
-      background_color: '#0a0a13',
-      theme_color: '#0a0a13',
-      orientation: 'portrait',
-      icons: [
-        { src: iconoDataUri, sizes: '512x512', type: 'image/svg+xml', purpose: 'any maskable' }
-      ]
-    };
-
-    try {
-      const blob = new Blob([JSON.stringify(manifest)], { type: 'application/manifest+json' });
-      const link = document.createElement('link');
-      link.rel = 'manifest';
-      link.href = URL.createObjectURL(blob);
-      document.head.appendChild(link);
-    } catch {
-      // Si el navegador no soporta esto, la app sigue funcionando igual.
+    if ('serviceWorker' in navigator) {
+      // Se registra al cargar la página, sin bloquear nada del render.
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('/sw.js').catch(() => {
+          // Si falla (ej. navegador viejo, o serviceWorker bloqueado en
+          // este contexto), la app sigue funcionando igual, solo sin
+          // soporte offline ni actualización automática del APK.
+        });
+      });
     }
   })();
 
