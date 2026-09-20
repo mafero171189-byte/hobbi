@@ -284,6 +284,7 @@
     .card-info .status.ended { color: var(--ink-dim); }
     .card-info .status.paused { color: var(--ink-muted); }
     .card-info .status.renewed { color: var(--gold); }
+    .rating-linea { font-size: 12px; color: var(--gold); font-weight: 700; margin-top: 2px; margin-bottom: 4px; }
     .fav-btn { background: none; border: none; font-size: 22px; cursor: pointer; padding: 4px; flex-shrink: 0; }
     .icon-btn { display: flex; align-items: center; justify-content: center; width: 30px; height: 30px; background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px; text-decoration: none; flex-shrink: 0; cursor: pointer; }
 
@@ -3431,15 +3432,16 @@
       : '';
     const fechaParaMostrar = fechaEstrenoTexto || fechaEstrenoFavoritos;
     // Antes la fecha iba en un <div> aparte debajo de "Próximo estreno", lo que
-    // la mandaba a su propia línea. Ahora se concatena en el mismo div de
-    // estado, separada por "·", junto con el rating si hay: "⏸ En pausa · 29 sept · ⭐ 7.2".
-    // El rating iba antes como insignia flotante sobre el póster, pero tapaba
-    // la carátula en pósters chicos — ahora va en esta misma línea de texto.
-    const ratingTexto = (show.rating && show.rating.average) ? `⭐ ${show.rating.average.toFixed(1)}` : '';
-    const coletillas = [fechaParaMostrar, ratingTexto].filter(Boolean);
-    const estadoTextoHTML = coletillas.length
-      ? `${estado.texto} · <span style="color:var(--gold);">${coletillas.join(' · ')}</span>`
+    // la mandaba a su propia línea de nuevo — se concatena en el mismo div de
+    // estado, separada por "·": "⏸ En pausa · 29 sept".
+    const estadoTextoHTML = fechaParaMostrar
+      ? `${estado.texto} · <span style="color:var(--gold);">${fechaParaMostrar}</span>`
       : estado.texto;
+    // El rating va en su propia línea debajo del estado (no al lado, ni sobre
+    // el póster como estaba antes — ahí tapaba la carátula en pósters chicos).
+    const ratingLineaHTML = (show.rating && show.rating.average)
+      ? `<div class="rating-linea">⭐ ${show.rating.average.toFixed(1)}</div>`
+      : '';
 
     let extraHTML = '';
     if (esVistaFavoritos && estado.clase === '' && show.proximoEstreno) {
@@ -3465,6 +3467,7 @@
         <div class="card-info" onclick="verDetalles(${show.id})">
           <h3>${show.name}${badgeNuevo}</h3>
           <div class="status ${estado.clase}">${estadoTextoHTML}</div>
+          ${ratingLineaHTML}
           ${progresoHTML}
         </div>
         ${botonFavHTML}
