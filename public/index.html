@@ -596,8 +596,8 @@
       </div>
 
       <div class="ajustes-seccion">
-        <button class="ajustes-btn" onclick="mostrarDebugEstrenos()" id="ajustesDebugBtn">
-          <span>🐛 Debug: ver canales de Estrenos</span>
+        <button class="ajustes-btn" onclick="abrirTerminos()" id="ajustesTerminosBtn">
+          <span id="ajustesTerminosTexto">📄 Términos y condiciones</span>
           <span>→</span>
         </button>
       </div>
@@ -624,6 +624,21 @@
       <button class="modal-close" onclick="cerrarFAQ()" aria-label="Cerrar">✕</button>
       <h3 id="faqTitle">Preguntas y respuestas</h3>
       <div id="faqLista"></div>
+    </div>
+  </div>
+
+  <div id="terminosModal" class="modal-overlay" onclick="if(event.target.id === 'terminosModal') cerrarTerminos()">
+    <div class="modal-content" style="position:relative;">
+      <button class="modal-close" onclick="cerrarTerminos()" aria-label="Cerrar">✕</button>
+      <h3 id="terminosTitle">Términos y condiciones</h3>
+      <p id="terminosIntro"></p>
+      <p id="terminosDatos"></p>
+      <p id="terminosCuenta"></p>
+      <p id="terminosUso"></p>
+      <p id="terminosTerceros"></p>
+      <p id="terminosCambios"></p>
+      <p id="terminosResponsabilidad"></p>
+      <p id="terminosContacto"></p>
     </div>
   </div>
 </div>
@@ -790,16 +805,31 @@
       yaEstaDisponible: (etiqueta) => `Ya está disponible: ${etiqueta}`,
       proximoEpisodioLabel: (fecha) => `📅 Próximo episodio: ${fecha}`,
       creditosTitle: 'Acerca de',
-      creditosApp: 'Hobbi: Control de Series te ayuda a seguir tus series favoritas. Importante: Hobbi no reproduce ni transmite episodios — es solo para organizar qué viste, qué te falta y cuándo estrenan.',
+      creditosApp: 'Hobbi: Control de Series te ayuda a seguir tus series favoritas. Es gratuita, y no reproduce ni transmite episodios — es solo para organizar qué viste, qué te falta y cuándo estrenan.',
       creditosData: 'Datos: Esta app utiliza la API pública de TVmaze, bajo licencia CC BY-SA.',
       creditosAttribution: 'Atribución: Todos los datos de series, episodios y pósters provienen de TVmaze. Gracias a TVmaze y su comunidad por mantener esta base de datos.',
-      creditosNote: 'Nota: Hobbi es una app no oficial hecha por un fan. TVmaze es propiedad de su comunidad y desarrolladores.',
+      creditosNote: 'Nota: Hobbi es una app no oficial hecha por un fan, en constante mejora. TVmaze es propiedad de su comunidad y desarrolladores. Para el detalle de qué datos guardamos, mirá Términos y condiciones en Ajustes.',
       ajustesFAQTexto: '❓ Preguntas y respuestas', faqTitle: 'Preguntas y respuestas',
       faqLista: [
+        { p: '¿Hobbi es gratis?', r: 'Sí, por ahora Hobbi es completamente gratis. Si en algún momento se agrega algo pago, se va a avisar claramente antes de cobrar nada.' },
         { p: '¿Hobbi me deja ver series o episodios?', r: 'No. Hobbi no reproduce ni transmite nada — es una libreta para organizar qué series seguís, qué episodios ya viste y cuándo estrenan los próximos. Para ver el contenido necesitás tu plataforma de streaming habitual.' },
         { p: '¿Necesito internet para usar la app?', r: 'Para buscar series nuevas y actualizar datos sí. Pero una vez que agregaste tus favoritos, podés marcar episodios vistos y consultarlos sin conexión — se guardan en tu dispositivo.' },
-        { p: '¿De dónde salen los datos de las series?', r: 'De TVmaze, una base de datos pública y colaborativa. Si un dato está mal o falta un póster, es porque así está cargado ahí — no es algo que Hobbi pueda corregir directamente.' }
-      ]
+        { p: '¿Qué datos míos guarda Hobbi?', r: 'Solo tu cuenta de acceso (Google o email), tu lista de favoritos y qué episodios marcaste como vistos. No guardamos ningún otro dato, y no se comparte ni se vende a nadie.' },
+        { p: '¿Puedo usar Hobbi sin crear una cuenta?', r: 'Sí. Sin loguearte, tus favoritos y episodios vistos quedan guardados en tu dispositivo. Si querés tenerlos sincronizados entre varios dispositivos, necesitás iniciar sesión.' },
+        { p: '¿Cómo borro mi cuenta?', r: 'Desde Ajustes → Eliminar cuenta. Se borran tu cuenta y tus datos (favoritos, episodios vistos) de forma permanente — no se puede deshacer.' },
+        { p: '¿De dónde salen los datos de las series?', r: 'De TVmaze, una base de datos pública y colaborativa. Si un dato está mal o falta un póster, es porque así está cargado ahí — no es algo que Hobbi pueda corregir directamente.' },
+        { p: '¿Hay alguna restricción de edad para usar Hobbi?', r: 'No, Hobbi no tiene restricción de edad, es apta para todo público.' }
+      ],
+      ajustesTerminosTexto: '📄 Términos y condiciones',
+      terminosTitle: 'Términos y condiciones',
+      terminosIntro: 'Al usar Hobbi: Control de Series aceptás estos términos. Hobbi es una app gratuita, hecha de forma independiente por un desarrollador, sin fines de lucro por el momento.',
+      terminosDatos: 'Datos que guardamos: si creás una cuenta (con Google o email), guardamos tu usuario de acceso, tu lista de series favoritas y los episodios que marcaste como vistos. No guardamos ningún otro dato personal, y no vendemos ni compartimos esta información con terceros.',
+      terminosCuenta: 'Cuenta: sos responsable de mantener segura tu contraseña. Podés eliminar tu cuenta en cualquier momento desde Ajustes → Eliminar cuenta; esto borra tu cuenta y tus datos de forma permanente e irreversible.',
+      terminosUso: 'Uso de la app: Hobbi es apta para todo público, sin restricción de edad. No está permitido usarla para fines ilegales ni para intentar dañar o sobrecargar el servicio.',
+      terminosTerceros: 'Servicios de terceros: los datos de series, episodios y pósters provienen de TVmaze bajo licencia CC BY-SA. Hobbi no reproduce ni transmite contenido audiovisual — para ver las series necesitás tu plataforma de streaming habitual.',
+      terminosCambios: 'Cambios: estos términos y la app pueden actualizarse con el tiempo. Si hay cambios importantes, se va a avisar dentro de la app.',
+      terminosResponsabilidad: 'Sin garantía: Hobbi se ofrece "tal cual", sin garantía de disponibilidad continua ni de ausencia de errores. No nos hacemos responsables por pérdida de datos, aunque hacemos lo posible por evitarla. Estos términos se rigen por las leyes de la República Argentina.',
+      terminosContacto: 'Contacto: para consultas, reclamos o dudas sobre estos términos, escribinos a mafero171189@gmail.com.'
     },
     en: {
       buscar: 'Search', inicio: 'Home', favoritos: 'Favorites', calendario: 'Calendar',
@@ -926,16 +956,31 @@
       yaEstaDisponible: (etiqueta) => `Now available: ${etiqueta}`,
       proximoEpisodioLabel: (fecha) => `📅 Next episode: ${fecha}`,
       creditosTitle: 'About',
-      creditosApp: 'Hobbi: Series Tracker helps you keep track of your favorite shows. Important: Hobbi does not stream or play episodes — it only helps you organize what you\'ve watched, what\'s left, and when new episodes air.',
+      creditosApp: 'Hobbi: Series Tracker helps you keep track of your favorite shows. It\'s free, and it does not stream or play episodes — it only helps you organize what you\'ve watched, what\'s left, and when new episodes air.',
       creditosData: 'Data: This app uses the public TVmaze API, under CC BY-SA license.',
       creditosAttribution: 'Attribution: All show, episode, and poster data comes from TVmaze. Thanks to TVmaze and its community for maintaining this database.',
-      creditosNote: 'Note: Hobbi is an unofficial fan-made app. TVmaze is owned by its community and developers.',
+      creditosNote: 'Note: Hobbi is an unofficial fan-made app, always improving. TVmaze is owned by its community and developers. For details on what data we store, check Terms & Conditions in Settings.',
       ajustesFAQTexto: '❓ FAQ', faqTitle: 'Frequently asked questions',
       faqLista: [
+        { p: 'Is Hobbi free?', r: 'Yes, for now Hobbi is completely free. If a paid feature is ever added, it will be clearly announced before anything is charged.' },
         { p: 'Can I watch shows or episodes in Hobbi?', r: 'No. Hobbi doesn\'t stream or play anything — it\'s a notebook to track which shows you follow, which episodes you\'ve watched, and when new ones air. To actually watch, you\'ll need your usual streaming service.' },
         { p: 'Do I need internet to use the app?', r: 'Yes, to search for new shows and refresh data. But once you\'ve added your favorites, you can mark episodes as watched and check them offline — they\'re saved on your device.' },
-        { p: 'Where does the show data come from?', r: 'From TVmaze, a public, community-run database. If something\'s wrong or a poster is missing, that\'s how it\'s listed there — it\'s not something Hobbi can fix directly.' }
-      ]
+        { p: 'What data of mine does Hobbi store?', r: 'Only your login (Google or email), your list of favorite shows, and which episodes you marked as watched. We don\'t store anything else, and it\'s never shared or sold to anyone.' },
+        { p: 'Can I use Hobbi without creating an account?', r: 'Yes. Without signing in, your favorites and watched episodes are saved on your device. If you want them synced across several devices, you need to sign in.' },
+        { p: 'How do I delete my account?', r: 'From Settings → Delete account. Your account and your data (favorites, watched episodes) are permanently deleted — this can\'t be undone.' },
+        { p: 'Where does the show data come from?', r: 'From TVmaze, a public, community-run database. If something\'s wrong or a poster is missing, that\'s how it\'s listed there — it\'s not something Hobbi can fix directly.' },
+        { p: 'Is there an age restriction to use Hobbi?', r: 'No, Hobbi has no age restriction — it\'s suitable for everyone.' }
+      ],
+      ajustesTerminosTexto: '📄 Terms & Conditions',
+      terminosTitle: 'Terms & Conditions',
+      terminosIntro: 'By using Hobbi: Series Tracker you agree to these terms. Hobbi is a free app, built independently by a single developer, with no commercial purpose for now.',
+      terminosDatos: 'Data we store: if you create an account (with Google or email), we store your login, your list of favorite shows, and the episodes you\'ve marked as watched. We don\'t store any other personal data, and we never sell or share this information with third parties.',
+      terminosCuenta: 'Account: you\'re responsible for keeping your password secure. You can delete your account at any time from Settings → Delete account; this permanently and irreversibly erases your account and your data.',
+      terminosUso: 'Using the app: Hobbi is suitable for everyone, with no age restriction. You may not use it for illegal purposes or to attempt to damage or overload the service.',
+      terminosTerceros: 'Third-party services: show, episode, and poster data comes from TVmaze under a CC BY-SA license. Hobbi does not stream or play any audiovisual content — to actually watch shows you\'ll need your usual streaming service.',
+      terminosCambios: 'Changes: these terms and the app may be updated over time. If there are significant changes, you\'ll be notified within the app.',
+      terminosResponsabilidad: 'No warranty: Hobbi is provided "as is", with no guarantee of continuous availability or error-free operation. We are not liable for data loss, although we do our best to prevent it. These terms are governed by the laws of Argentina.',
+      terminosContacto: 'Contact: for questions, complaints, or anything about these terms, write to mafero171189@gmail.com.'
     }
   };
 
@@ -1194,6 +1239,27 @@
     if (!item) return;
     const abierto = item.classList.toggle('abierto');
     item.querySelector('.faq-pregunta').setAttribute('aria-expanded', abierto ? 'true' : 'false');
+  }
+
+  function abrirTerminos() {
+    const modal = document.getElementById('terminosModal');
+    modal.classList.add('show');
+    document.getElementById('terminosTitle').textContent = t('terminosTitle');
+    document.getElementById('terminosIntro').textContent = t('terminosIntro');
+    document.getElementById('terminosDatos').textContent = t('terminosDatos');
+    document.getElementById('terminosCuenta').textContent = t('terminosCuenta');
+    document.getElementById('terminosUso').textContent = t('terminosUso');
+    document.getElementById('terminosTerceros').innerHTML = t('terminosTerceros').replace('TVmaze', '<a href="https://www.tvmaze.com" target="_blank">TVmaze</a>');
+    document.getElementById('terminosCambios').textContent = t('terminosCambios');
+    document.getElementById('terminosResponsabilidad').textContent = t('terminosResponsabilidad');
+    document.getElementById('terminosContacto').innerHTML = t('terminosContacto').replace('mafero171189@gmail.com', '<a href="mailto:mafero171189@gmail.com">mafero171189@gmail.com</a>');
+    enfocarModal(modal, cerrarTerminos);
+  }
+
+  function cerrarTerminos() {
+    const modal = document.getElementById('terminosModal');
+    modal.classList.remove('show');
+    devolverFocoTrasModal();
   }
 
   /* Placeholder para pósters/fotos que TVMaze no tiene cargados: un SVG generado
@@ -2872,48 +2938,6 @@
     });
 
     return porPlataforma;
-  }
-
-  /* ==================== DEBUG TEMPORAL — sacar cuando esté resuelto ====================
-     Muestra en pantalla (sin necesitar DevTools) el listado de "Estrenos" con
-     su canal/plataforma y país tal como los devuelve TVMaze, para diagnosticar
-     por qué "Estrenos Hollywood" viene vacío: puede ser que el nombre del canal
-     no matchee con PLATAFORMAS_GRANDES, o que TVMaze no informe el país. */
-  function mostrarDebugEstrenos() {
-    const lista = catalogoDescubrimiento.estrenos || [];
-    let texto;
-    if (!lista.length) {
-      texto = 'catalogoDescubrimiento.estrenos está vacío — entrá a la pestaña Inicio primero para que se cargue, y después volvé a Ajustes y tocá este botón de nuevo.';
-    } else {
-      texto = lista.map(show => {
-        const canal = (show.network && show.network.name) || (show.webChannel && show.webChannel.name) || '(sin canal)';
-        const pais = (show.network && show.network.country && show.network.country.code) || (show.webChannel && show.webChannel.country && show.webChannel.country.code) || '(sin país)';
-        const esGrande = esPlataformaGrande(show) ? 'SÍ' : 'no';
-        const region = regionDeShow(show);
-        return `${show.name}\n  canal: "${canal}" | país: ${pais} | región: ${region} | plataforma grande: ${esGrande}`;
-      }).join('\n\n');
-    }
-
-    const overlay = document.createElement('div');
-    overlay.className = 'confirm-overlay';
-    overlay.innerHTML = `
-      <div class="confirm-box" style="max-width:100%; width:100%; max-height:80vh; display:flex; flex-direction:column;">
-        <div class="confirm-title">Debug: canales de Estrenos</div>
-        <textarea readonly style="flex:1; min-height:300px; background:var(--surface-2); color:var(--ink); border:1px solid var(--border); border-radius:8px; padding:10px; font-size:11px; font-family:monospace; white-space:pre; overflow:auto; margin-bottom:12px;">${texto}</textarea>
-        <div class="confirm-actions">
-          <button class="confirm-btn cancel" id="debugCerrarBtn">Cerrar</button>
-          <button class="confirm-btn delete" id="debugCopiarBtn" style="background:var(--teal);">Copiar</button>
-        </div>
-      </div>
-    `;
-    document.body.appendChild(overlay);
-    overlay.querySelector('#debugCerrarBtn').onclick = () => overlay.remove();
-    overlay.querySelector('#debugCopiarBtn').onclick = () => {
-      const ta = overlay.querySelector('textarea');
-      ta.select();
-      navigator.clipboard?.writeText(texto).then(() => mostrarToast('Copiado', 'ok')).catch(() => {});
-    };
-    overlay.onclick = (e) => { if (e.target === overlay) overlay.remove(); };
   }
 
   /* Un slot por categoría, en el orden fijo en que siempre se mostraron.
