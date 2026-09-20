@@ -1,13 +1,12 @@
 // sw.js — Service Worker de Hobbi.
 // Ubicación: raíz de "public/" (se registra desde index.html con scope '/').
 //
-// CACHE_VERSION es la pieza clave para que las actualizaciones lleguen solas:
-// cada vez que cambies algo en index.html (o cualquier archivo cacheado) y
-// subas el cambio a GitHub, subí también este número en 1. Eso hace que el
-// navegador detecte un Service Worker "nuevo", descargue los archivos de
-// vuelta, y los reemplace la próxima vez que se abra la app — sin que el
-// usuario tenga que desinstalar ni reinstalar nada, ni ir a ninguna tienda.
-const CACHE_VERSION = 'hobbi-v1';
+// CACHE_VERSION usa un timestamp automático (fecha del día) — no tenés que
+// acordarte de cambiar nada. Cada día (o cada vez que se carga en un nuevo día
+// calendario), el Service Worker detecta que CACHE_VERSION cambió, descarga los
+// archivos nuevos, y los cachea. Así las actualizaciones llegan solas sin que
+// hagas nada extra.
+const CACHE_VERSION = 'hobbi-' + new Date().toISOString().slice(0, 10);
 
 // Archivos esenciales para que la app abra incluso sin conexión. No hace
 // falta listar TODO — el resto (imágenes de pósters, pedidos a la API de
