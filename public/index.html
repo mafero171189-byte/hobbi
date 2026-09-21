@@ -262,6 +262,37 @@
     .faq-item.abierto .faq-respuesta { max-height: 300px; }
     .faq-respuesta p { padding: 0 14px 14px; margin: 0; font-size: 13px; color: var(--ink-muted); line-height: 1.5; }
 
+    /* ---- Ayuda ("Cómo usar Hobbi") ---- */
+    .ayuda-item { border: 1px solid var(--border); border-radius: 10px; margin-bottom: 10px; padding: 14px; }
+    .ayuda-item-titulo { font-weight: 700; font-size: 14px; margin-bottom: 4px; }
+    .ayuda-item-texto { font-size: 13px; color: var(--ink-muted); line-height: 1.5; margin: 0; }
+
+    /* ---- Tour guiado ---- */
+    .tour-overlay { position: fixed; inset: 0; z-index: 3000; display: none; }
+    .tour-overlay.show { display: block; }
+    .tour-spotlight {
+      position: fixed; border-radius: 14px; border: 2px solid var(--gold);
+      box-shadow: 0 0 0 9999px rgba(5,5,10,0.8); pointer-events: none;
+      transition: top 0.25s ease, left 0.25s ease, width 0.25s ease, height 0.25s ease;
+    }
+    .tour-tooltip {
+      position: fixed; width: min(300px, calc(100vw - 32px));
+      background: var(--surface); border: 1px solid var(--border); border-radius: 14px;
+      padding: 16px; z-index: 3001; box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+      transition: top 0.25s ease, left 0.25s ease;
+    }
+    .tour-tooltip h4 { margin: 0 0 6px; color: var(--gold); font-size: 15px; }
+    .tour-tooltip p { margin: 0 0 14px; color: var(--ink); font-size: 13px; line-height: 1.45; }
+    .tour-tooltip-botones { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+    .tour-btn-skip { background: none; border: none; color: var(--ink-muted); font-size: 12px; cursor: pointer; padding: 6px 4px; }
+    .tour-btn-next { background: var(--gold); color: var(--gold-ink); border: none; border-radius: 8px; padding: 8px 16px; font-weight: 700; font-size: 13px; cursor: pointer; white-space: nowrap; }
+    .tour-dots { display: flex; gap: 5px; }
+    .tour-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--border); }
+    .tour-dot.activo { background: var(--gold); }
+    @media (prefers-reduced-motion: reduce) {
+      .tour-spotlight, .tour-tooltip { transition: none; }
+    }
+
     /* Cards de Series */
     .series-list { display: flex; flex-direction: column; gap: 12px; }
     .card { background-color: var(--surface); border-radius: 14px; padding: 12px; display: flex; flex-direction: column; gap: 8px; border: 1px solid var(--border); border-left: 4px solid var(--border); position: relative; overflow: hidden; }
@@ -597,6 +628,13 @@
       </div>
 
       <div class="ajustes-seccion">
+        <button class="ajustes-btn" onclick="abrirAyuda()" id="ajustesAyudaBtn">
+          <span id="ajustesAyudaTexto">🧭 Cómo usar Hobbi</span>
+          <span>→</span>
+        </button>
+      </div>
+
+      <div class="ajustes-seccion">
         <button class="ajustes-btn" onclick="abrirFAQ()" id="ajustesFAQBtn">
           <span id="ajustesFAQTexto">❓ Preguntas y respuestas</span>
           <span>→</span>
@@ -634,6 +672,16 @@
     </div>
   </div>
 
+  <div id="ayudaModal" class="modal-overlay" onclick="if(event.target.id === 'ayudaModal') cerrarAyuda()">
+    <div class="modal-content" style="position:relative;">
+      <button class="modal-close" onclick="cerrarAyuda()" aria-label="Cerrar">✕</button>
+      <h3 id="ayudaTitleEl"></h3>
+      <p id="ayudaIntroEl" style="color:var(--ink-muted); margin-top:-8px;"></p>
+      <div id="ayudaLista"></div>
+      <button type="button" class="ajustes-btn" style="justify-content:center; margin-top:6px;" id="ayudaVerTourBtnEl" onclick="cerrarAyuda(); iniciarTour(true);"></button>
+    </div>
+  </div>
+
   <div id="faqModal" class="modal-overlay" onclick="if(event.target.id === 'faqModal') cerrarFAQ()">
     <div class="modal-content" style="position:relative;">
       <button class="modal-close" onclick="cerrarFAQ()" aria-label="Cerrar">✕</button>
@@ -656,6 +704,19 @@
     </div>
   </div>
 </div>
+
+  <div id="tourOverlay" class="tour-overlay">
+    <div class="tour-spotlight" id="tourSpotlight"></div>
+    <div class="tour-tooltip" id="tourTooltip">
+      <h4 id="tourTooltipTitulo"></h4>
+      <p id="tourTooltipTexto"></p>
+      <div class="tour-tooltip-botones">
+        <button type="button" class="tour-btn-skip" id="tourBtnSaltar" onclick="saltarTour()"></button>
+        <div class="tour-dots" id="tourDots"></div>
+        <button type="button" class="tour-btn-next" id="tourBtnSiguiente" onclick="siguientePasoTour()"></button>
+      </div>
+    </div>
+  </div>
 
 <nav class="bottom-nav" role="tablist" aria-label="Navegación principal">
   <div class="bottom-nav-inner">
@@ -833,6 +894,27 @@
         { p: '¿Cómo borro mi cuenta?', r: 'Desde Ajustes → Eliminar cuenta. Se borran tu cuenta y tus datos (favoritos, episodios vistos) de forma permanente — no se puede deshacer.' },
         { p: '¿De dónde salen los datos de las series?', r: 'De TVmaze, una base de datos pública y colaborativa. Si un dato está mal o falta un póster, es porque así está cargado ahí — no es algo que Hobbi pueda corregir directamente.' }
       ],
+      ajustesAyudaTexto: '🧭 Cómo usar Hobbi',
+      ayudaTitle: 'Cómo usar Hobbi',
+      ayudaIntro: 'Una guía rápida de cada parte de la app.',
+      ayudaVerTourBtn: '▶ Ver recorrido guiado',
+      ayudaSecciones: [
+        { titulo: '🏠 Inicio', texto: 'La pantalla principal. Buscá una serie arriba, y debajo vas a encontrar rieles con recomendaciones: estrenos del mes, series que vuelven, lo más popular. Tocá el ❤️ de cualquiera para empezar a seguirla.' },
+        { titulo: '❤️ Favoritos', texto: 'Tu lista de series. Entrá a cada una para ver sus temporadas y marcar qué episodios ya viste — así sabés siempre por dónde ibas.' },
+        { titulo: '📅 Calendario', texto: 'Las fechas de estreno de los próximos episodios de tus series favoritas, ordenadas por día.' },
+        { titulo: '⚙️ Ajustes', texto: 'Tu cuenta, cambio de idioma, notificaciones, y accesos a esta ayuda, las preguntas frecuentes y los términos.' },
+        { titulo: '☁️ Sincronización', texto: 'Todo lo que marcás se guarda en tu cuenta automáticamente. Si iniciás sesión con la misma cuenta en otro dispositivo, vas a ver los mismos favoritos y episodios vistos.' }
+      ],
+      tourSaltar: 'Saltar',
+      tourSiguiente: 'Siguiente →',
+      tourListo: 'Listo',
+      tourPasos: [
+        { selector: '#searchInput', titulo: '🔍 Buscá series', texto: 'Escribí el nombre de una serie acá y tocá el ❤️ de las que quieras empezar a seguir.' },
+        { selector: '#tabSearch', titulo: '🏠 Inicio', texto: 'Acá vas a ver recomendaciones: estrenos, series que vuelven este mes, lo más popular.' },
+        { selector: '#tabFavs', titulo: '❤️ Favoritos', texto: 'Todas las series que seguís, con sus episodios para marcar como vistos.' },
+        { selector: '#tabCalendar', titulo: '📅 Calendario', texto: 'Las fechas de estreno de los próximos episodios de tus favoritas.' },
+        { selector: '#tabAjustes', titulo: '⚙️ Ajustes', texto: 'Tu cuenta, idioma, notificaciones, y esta misma ayuda por si la necesitás de nuevo.' }
+      ],
       ajustesTerminosTexto: '📄 Términos y condiciones',
       terminosTitle: 'Términos y condiciones',
       terminosIntro: 'Al usar Hobbi: Control de Series aceptás estos términos. Hobbi es una app gratuita, hecha de forma independiente por un desarrollador, sin fines de lucro por el momento.',
@@ -981,6 +1063,27 @@
         { p: 'Can I use Hobbi without creating an account?', r: 'No, you need to sign in (with Google or email) to use the app and save your favorites.' },
         { p: 'How do I delete my account?', r: 'From Settings → Delete account. Your account and your data (favorites, watched episodes) are permanently deleted — this can\'t be undone.' },
         { p: 'Where does the show data come from?', r: 'From TVmaze, a public, community-run database. If something\'s wrong or a poster is missing, that\'s how it\'s listed there — it\'s not something Hobbi can fix directly.' }
+      ],
+      ajustesAyudaTexto: '🧭 How to use Hobbi',
+      ayudaTitle: 'How to use Hobbi',
+      ayudaIntro: 'A quick guide to each part of the app.',
+      ayudaVerTourBtn: '▶ Take the guided tour',
+      ayudaSecciones: [
+        { titulo: '🏠 Home', texto: 'The main screen. Search for a show up top, and below you\'ll find rails with recommendations: this month\'s premieres, returning shows, what\'s popular. Tap the ❤️ on any of them to start following it.' },
+        { titulo: '❤️ Favorites', texto: 'Your list of shows. Open any of them to see its seasons and mark which episodes you\'ve already watched — so you always know where you left off.' },
+        { titulo: '📅 Calendar', texto: 'Release dates for upcoming episodes of your favorite shows, sorted by day.' },
+        { titulo: '⚙️ Settings', texto: 'Your account, language switch, notifications, and shortcuts to this help, the FAQ, and the terms.' },
+        { titulo: '☁️ Sync', texto: 'Everything you mark is saved to your account automatically. If you sign in with the same account on another device, you\'ll see the same favorites and watched episodes.' }
+      ],
+      tourSaltar: 'Skip',
+      tourSiguiente: 'Next →',
+      tourListo: 'Done',
+      tourPasos: [
+        { selector: '#searchInput', titulo: '🔍 Search for shows', texto: 'Type a show\'s name here and tap the ❤️ on any you want to follow.' },
+        { selector: '#tabSearch', titulo: '🏠 Home', texto: 'You\'ll find recommendations here: premieres, shows returning this month, what\'s popular.' },
+        { selector: '#tabFavs', titulo: '❤️ Favorites', texto: 'All the shows you follow, with their episodes to mark as watched.' },
+        { selector: '#tabCalendar', titulo: '📅 Calendar', texto: 'Release dates for upcoming episodes of your favorites.' },
+        { selector: '#tabAjustes', titulo: '⚙️ Settings', texto: 'Your account, language, notifications, and this same help if you need it again.' }
       ],
       ajustesTerminosTexto: '📄 Terms & Conditions',
       terminosTitle: 'Terms & Conditions',
@@ -1243,6 +1346,107 @@
     const modal = document.getElementById('faqModal');
     modal.classList.remove('show');
     devolverFocoTrasModal();
+  }
+
+  function abrirAyuda() {
+    const modal = document.getElementById('ayudaModal');
+    modal.classList.add('show');
+    document.getElementById('ayudaTitleEl').textContent = t('ayudaTitle');
+    document.getElementById('ayudaIntroEl').textContent = t('ayudaIntro');
+    document.getElementById('ayudaVerTourBtnEl').textContent = t('ayudaVerTourBtn');
+    const cont = document.getElementById('ayudaLista');
+    cont.innerHTML = t('ayudaSecciones').map(s => `
+      <div class="ayuda-item">
+        <div class="ayuda-item-titulo">${s.titulo}</div>
+        <p class="ayuda-item-texto">${s.texto}</p>
+      </div>
+    `).join('');
+    enfocarModal(modal, cerrarAyuda);
+  }
+
+  function cerrarAyuda() {
+    const modal = document.getElementById('ayudaModal');
+    modal.classList.remove('show');
+    devolverFocoTrasModal();
+  }
+
+  /* ==================== Tour guiado ====================
+     Resalta, uno por uno, los elementos fijos y siempre visibles de la app
+     (buscador + los 4 botones del nav inferior) con un globo explicando qué
+     es cada uno. Se dispara solo una vez, la primera vez que alguien
+     inicia sesión (ver programarTourPrimeraVez, llamada desde
+     actualizarChipUsuario) — de ahí en más solo aparece si lo piden desde
+     Ajustes → Cómo usar Hobbi → Ver recorrido guiado. */
+  let tourProgramado = false;
+  let pasoTourActual = 0;
+
+  function programarTourPrimeraVez() {
+    if (tourProgramado) return;
+    if (localStorage.getItem('hobbi_tour_visto') === 'true') return;
+    tourProgramado = true;
+    // Le damos un respiro a la UI (pósters, chip de usuario) antes de
+    // arrancar, para no resaltar algo que todavía se está acomodando.
+    setTimeout(() => iniciarTour(false), 900);
+  }
+
+  function iniciarTour() {
+    pasoTourActual = 0;
+    document.getElementById('tourOverlay').classList.add('show');
+    document.getElementById('tourBtnSaltar').textContent = t('tourSaltar');
+    mostrarPasoTour(0);
+  }
+
+  function mostrarPasoTour(i) {
+    const pasos = t('tourPasos');
+    if (i < 0 || i >= pasos.length) { finalizarTour(); return; }
+    pasoTourActual = i;
+    const paso = pasos[i];
+    const el = document.querySelector(paso.selector);
+    if (!el) { mostrarPasoTour(i + 1); return; } // por si algún elemento no está presente, no trabamos el tour
+
+    const rect = el.getBoundingClientRect();
+    const pad = 8;
+    const spot = document.getElementById('tourSpotlight');
+    spot.style.top = (rect.top - pad) + 'px';
+    spot.style.left = (rect.left - pad) + 'px';
+    spot.style.width = (rect.width + pad * 2) + 'px';
+    spot.style.height = (rect.height + pad * 2) + 'px';
+
+    document.getElementById('tourTooltipTitulo').textContent = paso.titulo;
+    document.getElementById('tourTooltipTexto').textContent = paso.texto;
+    document.getElementById('tourBtnSiguiente').textContent = (i === pasos.length - 1) ? t('tourListo') : t('tourSiguiente');
+    document.getElementById('tourDots').innerHTML = pasos.map((_, idx) =>
+      `<span class="tour-dot${idx === i ? ' activo' : ''}"></span>`
+    ).join('');
+
+    // El tooltip se posiciona recién en el siguiente frame, así ya sabemos
+    // su alto/ancho reales (dependen del texto de cada paso) para no
+    // superponerlo con el elemento resaltado ni sacarlo de la pantalla.
+    requestAnimationFrame(() => {
+      const tooltip = document.getElementById('tourTooltip');
+      const th = tooltip.offsetHeight;
+      const tw = tooltip.offsetWidth;
+      const espacioAbajo = window.innerHeight - rect.bottom;
+      let top = (espacioAbajo > th + 24) ? (rect.bottom + 14) : (rect.top - th - 14);
+      top = Math.max(12, Math.min(top, window.innerHeight - th - 12));
+      let left = rect.left + rect.width / 2 - tw / 2;
+      left = Math.max(12, Math.min(left, window.innerWidth - tw - 12));
+      tooltip.style.top = top + 'px';
+      tooltip.style.left = left + 'px';
+    });
+  }
+
+  function siguientePasoTour() {
+    mostrarPasoTour(pasoTourActual + 1);
+  }
+
+  function saltarTour() {
+    finalizarTour();
+  }
+
+  function finalizarTour() {
+    document.getElementById('tourOverlay').classList.remove('show');
+    localStorage.setItem('hobbi_tour_visto', 'true');
   }
 
   function toggleFAQItem(i) {
@@ -1555,6 +1759,7 @@
     foto.style.display = usuarioActual.foto ? 'block' : 'none';
     nombre.textContent = usuarioActual.nombre || usuarioActual.email || '';
     mail.textContent = usuarioActual.email || '';
+    programarTourPrimeraVez();
   }
 
   /* Se llama una vez al arrancar la app: revisa si ya había una sesión activa
@@ -4197,7 +4402,7 @@
         : '';
 
       let html = `
-        <div class="detail-header" style="--detail-header-bg: url('${show.image && (show.image.original || show.image.medium) ? (show.image.original || show.image.medium).replace(/'/g, "\\'") : ''}');">
+        <div class="detail-header" style="--detail-header-bg: url('${show.image && (show.image.original || show.image.medium) ? (show.image.original || show.image.medium).replace(/'/g, "\'") : ''}');">
           <button class="fav-btn" id="detailFavBtn" onclick="toggleFavorito(event, ${JSON.stringify(serieParaFav).replace(/"/g, '&quot;')})" aria-label="${esFavActual ? t('quitarDeFavoritos') : t('agregarAFavoritos')}">
             ${esFavActual ? '❤️' : '🤍'}
           </button>
