@@ -62,7 +62,7 @@
     html.sesion-previa body.verificando-sesion #onboardingScreen { display: none; }
   </style>
 
-  <!-- <script src="https://accounts.google.com/gsi/client" async defer></script> -->
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
   <!-- Google Sign-In deshabilitado temporalmente para APK (Fase 1) — se arregla en Fase 2 con OAuth configurado -->
   <style>
     :root {
@@ -470,7 +470,7 @@
   <div class="onboarding-card">
     <h1>HOBBI</h1>
     <p id="onboardingTagline">Todas tus series, en un solo lugar.</p>
-    <button type="button" id="googleBtnOnboarding" class="onboarding-email-btn" style="background:#fff; color:#1f1f1f; display:flex; align-items:center; justify-content:center; gap:8px;" onclick="iniciarLoginGoogleNativo()">
+    <button type="button" id="googleBtnOnboarding" class="onboarding-email-btn" style="background:#fff; color:#1f1f1f; display:flex; align-items:center; justify-content:center; gap:8px;" onclick="iniciarLoginGoogle()">
       <svg width="18" height="18" viewBox="0 0 18 18"><path fill="#4285F4" d="M17.64 9.2c0-.64-.06-1.25-.16-1.84H9v3.48h4.84c-.21 1.13-.85 2.08-1.8 2.72v2.26h2.92c1.7-1.57 2.68-3.88 2.68-6.62z"/><path fill="#34A853" d="M9 18c2.43 0 4.47-.8 5.96-2.18l-2.92-2.26c-.81.54-1.84.86-3.04.86-2.34 0-4.32-1.58-5.03-3.7H.96v2.33C2.44 15.98 5.48 18 9 18z"/><path fill="#FBBC05" d="M3.97 10.72c-.18-.54-.28-1.12-.28-1.72s.1-1.18.28-1.72V4.95H.96C.35 6.17 0 7.55 0 9s.35 2.83.96 4.05l3.01-2.33z"/><path fill="#EA4335" d="M9 3.58c1.32 0 2.51.45 3.44 1.35l2.59-2.59C13.46.89 11.43 0 9 0 5.48 0 2.44 2.02.96 4.95l3.01 2.33C4.68 5.16 6.66 3.58 9 3.58z"/></svg>
       Continuar con Google
     </button>
@@ -1595,6 +1595,23 @@
      El plugin nativo devuelve un idToken equivalente al "credential" que el
      script web nos daba antes — así que lo reusamos tal cual en manejarCredencialGoogle,
      sin tocar nada del backend /api/auth. */
+  /* Punto de entrada único del botón de Google: en la APK Capacitor usa el
+     plugin nativo (única forma que funciona ahí — Google bloquea su flujo
+     web dentro de un WebView genérico). En cualquier otro caso (PWA en el
+     navegador, o la TWA generada con PWABuilder — que por dentro usa Chrome
+     real, no un WebView, así que el flujo web funciona bien ahí) usa el
+     Google Identity Services de siempre. */
+  async function iniciarLoginGoogle() {
+    if (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.GoogleAuth) {
+      return iniciarLoginGoogleNativo();
+    }
+    if (!(window.google && window.google.accounts && window.google.accounts.id)) {
+      mostrarToast(t('errorLoginGoogle'), 'error');
+      return;
+    }
+    window.google.accounts.id.prompt();
+  }
+
   async function iniciarLoginGoogleNativo() {
     if (!window.Capacitor || !window.Capacitor.Plugins || !window.Capacitor.Plugins.GoogleAuth) {
       mostrarToast(t('errorLoginGoogle'), 'error');
@@ -1862,8 +1879,9 @@
     }
 
     // En la APK (Capacitor), inicializamos el plugin nativo de Google Auth.
-    // En la PWA (navegador), esto no existe y directamente no hacemos nada acá:
-    // ese caso usa el flujo viejo de accounts.google.com/gsi/client si está presente.
+    // En cualquier otro caso (PWA en navegador, o la TWA de PWABuilder),
+    // inicializamos el flujo web de siempre (Google Identity Services) —
+    // ambos terminan en el mismo lugar: manejarCredencialGoogle().
     if (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.GoogleAuth) {
       try {
         await window.Capacitor.Plugins.GoogleAuth.initialize({
@@ -1873,6 +1891,15 @@
         });
       } catch (err) {
         console.error('No se pudo inicializar GoogleAuth nativo:', err);
+      }
+    } else if (window.google && window.google.accounts && window.google.accounts.id) {
+      try {
+        window.google.accounts.id.initialize({
+          client_id: GOOGLE_CLIENT_ID,
+          callback: manejarCredencialGoogle
+        });
+      } catch (err) {
+        console.error('No se pudo inicializar Google Identity Services:', err);
       }
     }
     // Esperamos a que el caché esté hidratado antes de arrancar cualquier
