@@ -678,7 +678,6 @@
       <h3 id="ayudaTitleEl"></h3>
       <p id="ayudaIntroEl" style="color:var(--ink-muted); margin-top:-8px;"></p>
       <div id="ayudaLista"></div>
-      <button type="button" class="ajustes-btn" style="justify-content:center; margin-top:6px;" id="ayudaVerTourBtnEl" onclick="cerrarAyuda(); iniciarTour(true);"></button>
     </div>
   </div>
 
@@ -897,11 +896,10 @@
       ajustesAyudaTexto: '🧭 Cómo usar Hobbi',
       ayudaTitle: 'Cómo usar Hobbi',
       ayudaIntro: 'Una guía rápida de cada parte de la app.',
-      ayudaVerTourBtn: '▶ Ver recorrido guiado',
       ayudaSecciones: [
         { titulo: '🏠 Inicio', texto: 'La pantalla principal. Buscá una serie arriba, y debajo vas a encontrar rieles con recomendaciones: estrenos del mes, series que vuelven, lo más popular. Tocá el ❤️ de cualquiera para empezar a seguirla.' },
         { titulo: '❤️ Favoritos', texto: 'Tu lista de series. Entrá a cada una para ver sus temporadas y marcar qué episodios ya viste — así sabés siempre por dónde ibas.' },
-        { titulo: '📅 Calendario', texto: 'Las fechas de estreno de los próximos episodios de tus series favoritas, ordenadas por día.' },
+        { titulo: '📅 Calendario', texto: 'Las fechas de estreno de los próximos episodios de tus favoritas, agrupadas por día. También te muestra ahí mismo las próximas temporadas nuevas que se vienen y los episodios que ya salieron pero todavía no marcaste como vistos.' },
         { titulo: '⚙️ Ajustes', texto: 'Tu cuenta, cambio de idioma, notificaciones, y accesos a esta ayuda, las preguntas frecuentes y los términos.' },
         { titulo: '☁️ Sincronización', texto: 'Todo lo que marcás se guarda en tu cuenta automáticamente. Si iniciás sesión con la misma cuenta en otro dispositivo, vas a ver los mismos favoritos y episodios vistos.' }
       ],
@@ -912,7 +910,7 @@
         { selector: '#searchInput', titulo: '🔍 Buscá series', texto: 'Escribí el nombre de una serie acá y tocá el ❤️ de las que quieras empezar a seguir.' },
         { selector: '#tabSearch', titulo: '🏠 Inicio', texto: 'Acá vas a ver recomendaciones: estrenos, series que vuelven este mes, lo más popular.' },
         { selector: '#tabFavs', titulo: '❤️ Favoritos', texto: 'Todas las series que seguís, con sus episodios para marcar como vistos.' },
-        { selector: '#tabCalendar', titulo: '📅 Calendario', texto: 'Las fechas de estreno de los próximos episodios de tus favoritas.' },
+        { selector: '#tabCalendar', titulo: '📅 Calendario', texto: 'Fechas de estreno de tus próximos episodios, más las nuevas temporadas que se vienen y lo que te quedó sin ver.' },
         { selector: '#tabAjustes', titulo: '⚙️ Ajustes', texto: 'Tu cuenta, idioma, notificaciones, y esta misma ayuda por si la necesitás de nuevo.' }
       ],
       ajustesTerminosTexto: '📄 Términos y condiciones',
@@ -1067,11 +1065,10 @@
       ajustesAyudaTexto: '🧭 How to use Hobbi',
       ayudaTitle: 'How to use Hobbi',
       ayudaIntro: 'A quick guide to each part of the app.',
-      ayudaVerTourBtn: '▶ Take the guided tour',
       ayudaSecciones: [
         { titulo: '🏠 Home', texto: 'The main screen. Search for a show up top, and below you\'ll find rails with recommendations: this month\'s premieres, returning shows, what\'s popular. Tap the ❤️ on any of them to start following it.' },
         { titulo: '❤️ Favorites', texto: 'Your list of shows. Open any of them to see its seasons and mark which episodes you\'ve already watched — so you always know where you left off.' },
-        { titulo: '📅 Calendar', texto: 'Release dates for upcoming episodes of your favorite shows, sorted by day.' },
+        { titulo: '📅 Calendar', texto: 'Release dates for upcoming episodes of your favorites, grouped by day. It also shows brand-new seasons coming up and episodes that already aired but you haven\'t marked as watched yet.' },
         { titulo: '⚙️ Settings', texto: 'Your account, language switch, notifications, and shortcuts to this help, the FAQ, and the terms.' },
         { titulo: '☁️ Sync', texto: 'Everything you mark is saved to your account automatically. If you sign in with the same account on another device, you\'ll see the same favorites and watched episodes.' }
       ],
@@ -1082,7 +1079,7 @@
         { selector: '#searchInput', titulo: '🔍 Search for shows', texto: 'Type a show\'s name here and tap the ❤️ on any you want to follow.' },
         { selector: '#tabSearch', titulo: '🏠 Home', texto: 'You\'ll find recommendations here: premieres, shows returning this month, what\'s popular.' },
         { selector: '#tabFavs', titulo: '❤️ Favorites', texto: 'All the shows you follow, with their episodes to mark as watched.' },
-        { selector: '#tabCalendar', titulo: '📅 Calendar', texto: 'Release dates for upcoming episodes of your favorites.' },
+        { selector: '#tabCalendar', titulo: '📅 Calendar', texto: 'Release dates for upcoming episodes, plus new seasons coming up and anything you missed watching.' },
         { selector: '#tabAjustes', titulo: '⚙️ Settings', texto: 'Your account, language, notifications, and this same help if you need it again.' }
       ],
       ajustesTerminosTexto: '📄 Terms & Conditions',
@@ -1353,7 +1350,6 @@
     modal.classList.add('show');
     document.getElementById('ayudaTitleEl').textContent = t('ayudaTitle');
     document.getElementById('ayudaIntroEl').textContent = t('ayudaIntro');
-    document.getElementById('ayudaVerTourBtnEl').textContent = t('ayudaVerTourBtn');
     const cont = document.getElementById('ayudaLista');
     cont.innerHTML = t('ayudaSecciones').map(s => `
       <div class="ayuda-item">
