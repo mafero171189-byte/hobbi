@@ -1371,14 +1371,21 @@
      (buscador + los 4 botones del nav inferior) con un globo explicando qué
      es cada uno. Se dispara solo una vez, la primera vez que alguien
      inicia sesión (ver programarTourPrimeraVez, llamada desde
-     actualizarChipUsuario) — de ahí en más solo aparece si lo piden desde
-     Ajustes → Cómo usar Hobbi → Ver recorrido guiado. */
+     actualizarChipUsuario) por cada cuenta distinta que inicie sesión en
+     este dispositivo — el "ya la vi" se guarda por mail, no por teléfono,
+     así que si alguien cierra sesión y entra con otra cuenta, le vuelve a
+     aparecer. */
   let tourProgramado = false;
   let pasoTourActual = 0;
 
+  function claveTourVisto() {
+    const id = (usuarioActual && usuarioActual.email || '').trim().toLowerCase();
+    return 'hobbi_tour_visto_' + (id || 'anon');
+  }
+
   function programarTourPrimeraVez() {
     if (tourProgramado) return;
-    if (localStorage.getItem('hobbi_tour_visto') === 'true') return;
+    if (localStorage.getItem(claveTourVisto()) === 'true') return;
     tourProgramado = true;
     // Le damos un respiro a la UI (pósters, chip de usuario) antes de
     // arrancar, para no resaltar algo que todavía se está acomodando.
@@ -1442,7 +1449,7 @@
 
   function finalizarTour() {
     document.getElementById('tourOverlay').classList.remove('show');
-    localStorage.setItem('hobbi_tour_visto', 'true');
+    localStorage.setItem(claveTourVisto(), 'true');
   }
 
   function toggleFAQItem(i) {
@@ -1869,6 +1876,7 @@
     clearTimeout(timeoutSyncNube); // por si había un guardado pendiente programado, lo cancelamos
     try { await fetchApi('/api/auth', { method: 'DELETE' }); } catch {}
     usuarioActual = null;
+    tourProgramado = false; // para que si entra otra cuenta en esta misma sesión, se re-evalúe el tour para ella
     localStorage.removeItem('hobbi_ultima_sesion'); // ver anti-flash en el <head>
     actualizarChipUsuario();
     mostrarSyncBadge('');
@@ -1902,6 +1910,7 @@
       return;
     }
     usuarioActual = null;
+    tourProgramado = false; // idem: permite re-evaluar el tour si entra otra cuenta después
     localStorage.removeItem('hobbi_ultima_sesion'); // ver anti-flash en el <head>
     actualizarChipUsuario();
     mostrarSyncBadge('');
