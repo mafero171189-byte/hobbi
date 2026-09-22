@@ -2999,41 +2999,46 @@
       return res.json();
     }
 
-    try {
-      const resultadosSettled = await Promise.allSettled([
-        pedirCartelera('modo=populares'),
-        pedirCartelera('modo=proximos'),
-        ...PLATAFORMAS_CARTELERA.map(p => pedirCartelera(`modo=plataforma&plataforma=${encodeURIComponent(p.nombre)}`))
-      ]);
+    // El plan gratis de Watchmode solo permite 1 pedido concurrente por key
+    // — pedir los 6 rieles en paralelo (Promise.all) tiraba 429 "Too many
+    // concurrent requests" en varios de ellos. Por eso van de a uno acá.
+    // Como cada riel se cachea 12hs del lado del servidor, esto solo es
+    // lento la primera vez que alguien entra tras vencer el caché — el
+    // resto del día es instantáneo para todos.
+    const categorias = [
+      { id: 'populares', qs: 'modo=populares', titulo: '🍿 ' + t('popularesPeliculas') },
+      { id: 'proximos', qs: 'modo=proximos', titulo: '📅 ' + t('proximosEstrenosPeliculas') },
+      ...PLATAFORMAS_CARTELERA.map(p => ({
+        id: 'plataforma_' + p.nombre,
+        qs: `modo=plataforma&plataforma=${encodeURIComponent(p.nombre)}`,
+        titulo: p.titulo
+      }))
+    ];
 
-      const [rPopulares, rProximos, ...rPorPlataforma] = resultadosSettled;
-      const erroresDebug = resultadosSettled
-        .filter(r => r.status === 'rejected')
-        .map(r => r.reason && r.reason.message ? r.reason.message : String(r.reason));
+    holder.innerHTML = '';
+    const erroresDebug = [];
 
-      holder.innerHTML = '';
-      if (rPopulares.status === 'fulfilled') renderizarRailPeliculas(holder, 'populares', '🍿 ' + t('popularesPeliculas'), rPopulares.value.resultados);
-      if (rProximos.status === 'fulfilled') renderizarRailPeliculas(holder, 'proximos', '📅 ' + t('proximosEstrenosPeliculas'), rProximos.value.resultados);
-      PLATAFORMAS_CARTELERA.forEach((p, i) => {
-        const r = rPorPlataforma[i];
-        if (r && r.status === 'fulfilled' && r.value.resultados) renderizarRailPeliculas(holder, 'plataforma_' + p.nombre, p.titulo, r.value.resultados);
-      });
-
-      if (!holder.children.length) {
-        const debugHTML = erroresDebug.length
-          ? `<br><span style="font-size:11px; opacity:0.8;">DEBUG: ${erroresDebug.join(' | ')}</span>`
-          : '';
-        holder.innerHTML = `<p style="text-align:center; color:var(--danger);">${t('errorCartelera')}${debugHTML}</p>`;
-      } else if (erroresDebug.length) {
-        // Algunos rieles sí cargaron — mostramos igual el detalle de los que
-        // fallaron, chiquito y al final, sin tapar lo que sí funcionó.
-        const debugP = document.createElement('p');
-        debugP.style.cssText = 'text-align:center; font-size:11px; opacity:0.6; margin-top:16px;';
-        debugP.textContent = 'DEBUG: ' + erroresDebug.join(' | ');
-        holder.appendChild(debugP);
+    for (const cat of categorias) {
+      try {
+        const data = await pedirCartelera(cat.qs);
+        if (data && data.resultados) renderizarRailPeliculas(holder, cat.id, cat.titulo, data.resultados);
+      } catch (err) {
+        erroresDebug.push(err && err.message ? err.message : String(err));
       }
-    } catch (err) {
-      holder.innerHTML = `<p style="text-align:center; color:var(--danger);">${t('errorCartelera')}<br><span style="font-size:11px; opacity:0.8;">DEBUG: ${err && err.message ? err.message : JSON.stringify(err)}</span></p>`;
+    }
+
+    if (!holder.children.length) {
+      const debugHTML = erroresDebug.length
+        ? `<br><span style="font-size:11px; opacity:0.8;">DEBUG: ${erroresDebug.join(' | ')}</span>`
+        : '';
+      holder.innerHTML = `<p style="text-align:center; color:var(--danger);">${t('errorCartelera')}${debugHTML}</p>`;
+    } else if (erroresDebug.length) {
+      // Algunos rieles sí cargaron — mostramos igual el detalle de los que
+      // fallaron, chiquito y al final, sin tapar lo que sí funcionó.
+      const debugP = document.createElement('p');
+      debugP.style.cssText = 'text-align:center; font-size:11px; opacity:0.6; margin-top:16px;';
+      debugP.textContent = 'DEBUG: ' + erroresDebug.join(' | ');
+      holder.appendChild(debugP);
     }
   }
 
