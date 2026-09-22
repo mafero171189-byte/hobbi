@@ -3774,7 +3774,10 @@
     try {
       const res = await fetchApi(`/api/movies/search?q=${encodeURIComponent(query)}`);
       if (miToken !== tokenBusquedaActual) return;
-      if (!res.ok) throw new Error('search falló');
+      if (!res.ok) {
+        const textoError = await res.text().catch(() => '');
+        throw new Error(textoError || 'search falló');
+      }
       const data = await res.json();
       if (miToken !== tokenBusquedaActual) return;
 
@@ -3787,13 +3790,14 @@
         container.appendChild(crearTarjetaPelicula(pelicula, false));
       });
       dispararFallbackImagenes(container);
-    } catch {
+    } catch (err) {
       if (miToken !== tokenBusquedaActual) return;
       container.innerHTML = navigator.onLine
-        ? `<p style="text-align:center; color:var(--danger);">${t('errorBuscador')}</p>`
+        ? `<p style="text-align:center; color:var(--danger);">${t('errorBuscador')} ${err && err.message ? '(' + err.message + ')' : ''}</p>`
         : `<p style="text-align:center; color:var(--danger);">${t('sinConexionBuscador')}</p>`;
     }
   }
+
 
   /* Heurística liviana (sin pedir nada a la red): mira la caché de episodios de esa
      serie y ve si hay alguno ya estrenado que todavía no está marcado como visto.
