@@ -764,6 +764,7 @@
       volver: '← Volver',
       searchPlaceholder: 'Buscar serie online...',
       searchPlaceholderPeliculas: 'Buscar película online...',
+      busquedaCorta: 'Escribí al menos 3 letras...',
       modoSeries: 'Series',
       modoPeliculas: 'Películas',
       peliculaVista: 'Vista',
@@ -948,6 +949,7 @@
       volver: '← Back',
       searchPlaceholder: 'Search for a show online...',
       searchPlaceholderPeliculas: 'Search for a movie online...',
+      busquedaCorta: 'Type at least 3 letters...',
       modoSeries: 'Shows',
       modoPeliculas: 'Movies',
       peliculaVista: 'Watched',
@@ -3761,6 +3763,10 @@
     const query = document.getElementById('searchInput').value.trim();
     const container = document.getElementById('seriesList');
     if (!query) return mostrarPlaceholderBusqueda();
+    if (query.length < 3) {
+      container.innerHTML = `<p style="text-align:center; color:var(--ink-muted);">${t('busquedaCorta')}</p>`;
+      return;
+    }
 
     const miToken = ++tokenBusquedaActual;
     container.innerHTML = `<p style="text-align:center; color:var(--ink-muted);">${t('buscando')}</p>`;
