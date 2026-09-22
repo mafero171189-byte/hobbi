@@ -2958,28 +2958,54 @@
     if (!holder) return;
     holder.innerHTML = `<p style="text-align:center; color:var(--ink-muted);">${t('buscando')}</p>`;
 
+    // Diagnóstico: los errores del backend vienen como texto plano (no
+    // JSON), así que hacer .json() directo sobre una respuesta con error
+    // tira una excepción sin decir por qué — quedaba tapado por el catch
+    // genérico de abajo. Este helper primero mira el status.
+    async function pedirCartelera(qs) {
+      const res = await fetchApi(`/api/movies/cartelera?${qs}`);
+      if (!res.ok) {
+        const texto = await res.text().catch(() => '');
+        throw new Error(`[${qs}] ` + (texto || ('HTTP ' + res.status)));
+      }
+      return res.json();
+    }
+
     try {
-      const [populares, proximos, ...porPlataforma] = await Promise.all([
-        fetchApi('/api/movies/cartelera?modo=populares').then(r => r.json()),
-        fetchApi('/api/movies/cartelera?modo=proximos').then(r => r.json()),
-        ...PLATAFORMAS_CARTELERA.map(p =>
-          fetchApi(`/api/movies/cartelera?modo=plataforma&plataforma=${encodeURIComponent(p.nombre)}`).then(r => r.json())
-        )
+      const resultadosSettled = await Promise.allSettled([
+        pedirCartelera('modo=populares'),
+        pedirCartelera('modo=proximos'),
+        ...PLATAFORMAS_CARTELERA.map(p => pedirCartelera(`modo=plataforma&plataforma=${encodeURIComponent(p.nombre)}`))
       ]);
 
+      const [rPopulares, rProximos, ...rPorPlataforma] = resultadosSettled;
+      const erroresDebug = resultadosSettled
+        .filter(r => r.status === 'rejected')
+        .map(r => r.reason && r.reason.message ? r.reason.message : String(r.reason));
+
       holder.innerHTML = '';
-      renderizarRailPeliculas(holder, '🍿 ' + t('popularesPeliculas'), populares.resultados);
-      renderizarRailPeliculas(holder, '📅 ' + t('proximosEstrenosPeliculas'), proximos.resultados);
+      if (rPopulares.status === 'fulfilled') renderizarRailPeliculas(holder, '🍿 ' + t('popularesPeliculas'), rPopulares.value.resultados);
+      if (rProximos.status === 'fulfilled') renderizarRailPeliculas(holder, '📅 ' + t('proximosEstrenosPeliculas'), rProximos.value.resultados);
       PLATAFORMAS_CARTELERA.forEach((p, i) => {
-        const datos = porPlataforma[i];
-        if (datos && datos.resultados) renderizarRailPeliculas(holder, p.titulo, datos.resultados);
+        const r = rPorPlataforma[i];
+        if (r && r.status === 'fulfilled' && r.value.resultados) renderizarRailPeliculas(holder, p.titulo, r.value.resultados);
       });
 
       if (!holder.children.length) {
-        holder.innerHTML = `<p style="text-align:center; color:var(--ink-muted);">${t('errorCartelera')}</p>`;
+        const debugHTML = erroresDebug.length
+          ? `<br><span style="font-size:11px; opacity:0.8;">DEBUG: ${erroresDebug.join(' | ')}</span>`
+          : '';
+        holder.innerHTML = `<p style="text-align:center; color:var(--danger);">${t('errorCartelera')}${debugHTML}</p>`;
+      } else if (erroresDebug.length) {
+        // Algunos rieles sí cargaron — mostramos igual el detalle de los que
+        // fallaron, chiquito y al final, sin tapar lo que sí funcionó.
+        const debugP = document.createElement('p');
+        debugP.style.cssText = 'text-align:center; font-size:11px; opacity:0.6; margin-top:16px;';
+        debugP.textContent = 'DEBUG: ' + erroresDebug.join(' | ');
+        holder.appendChild(debugP);
       }
-    } catch {
-      holder.innerHTML = `<p style="text-align:center; color:var(--danger);">${t('errorCartelera')}</p>`;
+    } catch (err) {
+      holder.innerHTML = `<p style="text-align:center; color:var(--danger);">${t('errorCartelera')}<br><span style="font-size:11px; opacity:0.8;">DEBUG: ${err && err.message ? err.message : JSON.stringify(err)}</span></p>`;
     }
   }
 
