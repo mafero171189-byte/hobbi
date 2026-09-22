@@ -451,9 +451,20 @@ async function handleMoviesSearch(request, env) {
     );
     const data = await res.json();
     
-    // OMDb devuelve { Search: [...], totalResults, Response }
-    // Si Response es "False", la búsqueda no encontró nada — devolvemos array vacío
-    if (data.Response === 'False' || !data.Search) {
+    // OMDb devuelve { Search: [...], totalResults, Response }. Cuando
+    // Response es "False", puede ser "no encontró nada" (data.Error =
+    // "Movie not found!") — eso sí es un resultado vacío normal — o puede
+    // ser un problema real (key inválida/sin activar, límite alcanzado,
+    // etc), que antes tapábamos por accidente devolviendo igual un array
+    // vacío: parecía "no encontró nada" cuando en realidad OMDb ni
+    // siquiera llegó a buscar. Ahora esos casos sí devuelven error real.
+    if (data.Response === 'False') {
+      if (data.Error === 'Movie not found!') {
+        return json({ resultados: [] });
+      }
+      return errorResponse('OMDb: ' + (data.Error || 'error desconocido'), 502);
+    }
+    if (!data.Search) {
       return json({ resultados: [] });
     }
     
