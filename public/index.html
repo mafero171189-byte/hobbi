@@ -684,6 +684,20 @@
     </div>
   </div>
 
+  <div id="peliculaDetalleModal" class="modal-overlay" onclick="if(event.target.id === 'peliculaDetalleModal') cerrarDetallePelicula()">
+    <div class="modal-content" style="position:relative;">
+      <button class="modal-close" onclick="cerrarDetallePelicula()" aria-label="Cerrar">✕</button>
+      <div style="text-align:center;">
+        <img id="peliculaDetalleImg" src="" alt="" style="width:160px; border-radius:12px; margin-bottom:14px;" onerror="manejarErrorImagen(this)">
+        <h3 id="peliculaDetalleNombre" style="margin-bottom:6px;"></h3>
+        <div id="peliculaDetalleMeta" style="color:var(--ink-muted); font-size:13px; margin-bottom:14px;"></div>
+        <p id="peliculaDetalleSinopsis" style="color:var(--ink); font-size:13px; line-height:1.5; text-align:left; margin-bottom:16px;"></p>
+        <button type="button" class="ajustes-btn" style="justify-content:center; margin-bottom:8px;" id="peliculaDetalleFavBtn"></button>
+        <button type="button" class="ajustes-btn" style="justify-content:center; display:none;" id="peliculaDetalleVistaBtn"></button>
+      </div>
+    </div>
+  </div>
+
   <div id="ayudaModal" class="modal-overlay" onclick="if(event.target.id === 'ayudaModal') cerrarAyuda()">
     <div class="modal-content" style="position:relative;">
       <button class="modal-close" onclick="cerrarAyuda()" aria-label="Cerrar">✕</button>
@@ -789,6 +803,7 @@
       activarAvisos: '🔔 Activar avisos de estrenos',
       avisosActivados: '🔔 Avisos de estrenos activados',
       verMas: 'Ver más →',
+      cargarMas: 'Cargar más',
       estrenanPronto: 'Estrenan pronto', nuevas: 'Nuevas', populares: 'Populares',
       estrenosMes: 'Estrenos este mes', vuelvenMes: 'Vuelven este mes',
       regionHollywood: 'Populares Hollywood', regionCoreana: 'Populares coreanas', regionTurca: 'Populares turcas', regionLatina: 'Populares Latinas/España',
@@ -977,6 +992,7 @@
       activarAvisos: '🔔 Turn on premiere alerts',
       avisosActivados: '🔔 Premiere alerts on',
       verMas: 'See more →',
+      cargarMas: 'Load more',
       estrenanPronto: 'Coming soon', nuevas: 'New', populares: 'Popular',
       estrenosMes: 'Premiering this month', vuelvenMes: 'Returning this month',
       regionHollywood: 'Popular Hollywood', regionCoreana: 'Popular Korean', regionTurca: 'Popular Turkish', regionLatina: 'Popular Latin/Spain',
@@ -2953,6 +2969,18 @@
     { nombre: 'Max', titulo: 'HBO Max' }
   ];
 
+  // categoriaId -> { resultados, paginaActual, totalPaginas, qs } — memoria
+  // de cada categoría para el botón "Ver más" (catálogo completo) y para
+  // "Cargar más" (paginación) sin tener que volver a pedir lo que ya vino.
+  let catalogoDescubrimientoPeliculas = {};
+
+  function categoriaPeliculasAQueryString(categoriaId) {
+    if (categoriaId === 'populares') return 'modo=populares';
+    if (categoriaId === 'proximos') return 'modo=proximos';
+    const plataforma = PLATAFORMAS_CARTELERA.find(p => 'plataforma_' + p.nombre === categoriaId);
+    return plataforma ? `modo=plataforma&plataforma=${encodeURIComponent(plataforma.nombre)}` : '';
+  }
+
   async function cargarDescubrimientoPeliculas() {
     const holder = document.getElementById('discoverHolderPeliculas');
     if (!holder) return;
@@ -2984,11 +3012,11 @@
         .map(r => r.reason && r.reason.message ? r.reason.message : String(r.reason));
 
       holder.innerHTML = '';
-      if (rPopulares.status === 'fulfilled') renderizarRailPeliculas(holder, '🍿 ' + t('popularesPeliculas'), rPopulares.value.resultados);
-      if (rProximos.status === 'fulfilled') renderizarRailPeliculas(holder, '📅 ' + t('proximosEstrenosPeliculas'), rProximos.value.resultados);
+      if (rPopulares.status === 'fulfilled') renderizarRailPeliculas(holder, 'populares', '🍿 ' + t('popularesPeliculas'), rPopulares.value.resultados);
+      if (rProximos.status === 'fulfilled') renderizarRailPeliculas(holder, 'proximos', '📅 ' + t('proximosEstrenosPeliculas'), rProximos.value.resultados);
       PLATAFORMAS_CARTELERA.forEach((p, i) => {
         const r = rPorPlataforma[i];
-        if (r && r.status === 'fulfilled' && r.value.resultados) renderizarRailPeliculas(holder, p.titulo, r.value.resultados);
+        if (r && r.status === 'fulfilled' && r.value.resultados) renderizarRailPeliculas(holder, 'plataforma_' + p.nombre, p.titulo, r.value.resultados);
       });
 
       if (!holder.children.length) {
@@ -3009,11 +3037,26 @@
     }
   }
 
-  function renderizarRailPeliculas(container, titulo, lista) {
+  function renderizarRailPeliculas(container, categoriaId, titulo, lista) {
     if (!lista || !lista.length) return;
+    // Guardamos lo que ya vino para que "Ver más" arranque con esto mismo
+    // (sin re-pedir) y siga paginando desde acá. Si ya vinieron 50 (el tope
+    // por página), asumimos que probablemente hay una página 2 — el propio
+    // pedido de la página 2 va a confirmar el total real.
+    catalogoDescubrimientoPeliculas[categoriaId] = {
+      resultados: lista, paginaActual: 1, totalPaginas: lista.length >= 50 ? 2 : 1,
+      qs: categoriaPeliculasAQueryString(categoriaId)
+    };
+
     const section = document.createElement('div');
     section.className = 'discover-section';
-    section.innerHTML = `<h3 class="marquee" style="margin-bottom:10px;">${titulo}</h3>`;
+    const tituloEscapado = titulo.replace(/'/g, "\\'");
+    section.innerHTML = `
+      <div style="display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:10px;">
+        <h3 class="marquee" style="margin-bottom:0;">${titulo}</h3>
+        <span class="ver-mas-btn" onclick="verCatalogoCompletoPeliculas('${categoriaId}', '${tituloEscapado}')">${t('verMas')}</span>
+      </div>
+    `;
 
     const rail = document.createElement('div');
     rail.className = 'discover-rail';
@@ -3026,10 +3069,15 @@
       const imagen = pelicula.image || placeholderPorNombre(pelicula.name);
       const atrsFallback = tieneImagen ? '' : `data-fallback-nombre="${pelicula.name.replace(/"/g, '&quot;')}" data-fallback-buscado="0"`;
       const esFav = idsFav.has(pelicula.id);
+      const fechaTexto = pelicula.fechaEstreno
+        ? formatearFechaEstrenoTexto({ airdate: pelicula.fechaEstreno })
+        : (pelicula.year || '');
+      item.onclick = () => abrirDetallePelicula(pelicula);
       item.innerHTML = `
         <img src="${imagen}" alt="${pelicula.name}" loading="lazy" class="loading-image" onload="this.classList.remove('loading-image')" onerror="manejarErrorImagen(this)" ${atrsFallback}>
         <button class="poster-rating-badge" style="cursor:pointer; border:none; font-size:13px;" onclick="event.stopPropagation(); toggleFavoritoPelicula(event, ${JSON.stringify(pelicula).replace(/"/g, '&quot;')})">${esFav ? '❤️' : '🤍'}</button>
         <div class="discover-name">${pelicula.name}</div>
+        ${fechaTexto ? `<div class="discover-name" style="color:var(--ink-muted); font-weight:700;">${fechaTexto}</div>` : ''}
       `;
       rail.appendChild(item);
     });
@@ -3038,6 +3086,155 @@
     container.appendChild(section);
     dispararFallbackImagenes(section);
   }
+
+  /* "Ver más" de una categoría: catálogo completo en lista vertical, con
+     "Cargar más" para ir trayendo páginas siguientes de Watchmode (hasta
+     50 por página). Reutiliza el mismo #seriesList que el resto de Inicio,
+     así que "Volver" simplemente reconstruye la vista de rieles. */
+  async function verCatalogoCompletoPeliculas(categoriaId, tituloCategoria) {
+    document.getElementById('detailView').style.display = 'none';
+    const blurBg = document.getElementById('detailBlurBg');
+    if (blurBg) blurBg.style.display = 'none';
+    document.getElementById('calendarView').style.display = 'none';
+    document.getElementById('listView').style.display = 'block';
+    document.getElementById('searchBoxContainer').style.display = 'none';
+    document.getElementById('favsToolbar').style.display = 'none';
+    reiniciarFadeIn(document.getElementById('listView'));
+
+    const container = document.getElementById('seriesList');
+    container.innerHTML = `
+      <button class="back-btn" onclick="mostrarPlaceholderBusqueda()" style="margin-bottom:12px;">${t('volver')}</button>
+      <h3 class="marquee" style="color:var(--gold); font-size:22px; margin-bottom:12px;">${tituloCategoria}</h3>
+      <div id="catalogoPeliculasLista"></div>
+      <div id="catalogoPeliculasCargarMasWrap" style="text-align:center; margin-top:16px;"></div>
+    `;
+
+    if (!catalogoDescubrimientoPeliculas[categoriaId]) {
+      catalogoDescubrimientoPeliculas[categoriaId] = {
+        resultados: [], paginaActual: 0, totalPaginas: 1, qs: categoriaPeliculasAQueryString(categoriaId)
+      };
+    }
+    const cache = catalogoDescubrimientoPeliculas[categoriaId];
+
+    if (!cache.resultados.length) {
+      document.getElementById('catalogoPeliculasLista').innerHTML = `<p style="text-align:center; color:var(--ink-muted);">${t('buscando')}</p>`;
+      await cargarMasPeliculasCatalogo(categoriaId);
+    } else {
+      renderizarListaCatalogoPeliculas(categoriaId);
+    }
+  }
+
+  async function cargarMasPeliculasCatalogo(categoriaId) {
+    const cache = catalogoDescubrimientoPeliculas[categoriaId];
+    if (!cache || cache.paginaActual >= cache.totalPaginas) return;
+    const siguiente = cache.paginaActual + 1;
+    try {
+      const res = await fetchApi(`/api/movies/cartelera?${cache.qs}&page=${siguiente}`);
+      if (!res.ok) throw new Error(await res.text().catch(() => 'error'));
+      const data = await res.json();
+      const nuevos = data.resultados || [];
+      // Evitamos duplicar si una misma película ya estaba (puede pasar si
+      // Watchmode devuelve algo repetido entre páginas).
+      const idsYaVistos = new Set(cache.resultados.map(p => p.id));
+      nuevos.forEach(p => { if (!idsYaVistos.has(p.id)) cache.resultados.push(p); });
+      cache.paginaActual = siguiente;
+      cache.totalPaginas = data.totalPaginas || siguiente;
+    } catch {
+      mostrarToast(t('errorCartelera'), 'error');
+    }
+    renderizarListaCatalogoPeliculas(categoriaId);
+  }
+
+  function renderizarListaCatalogoPeliculas(categoriaId) {
+    const cache = catalogoDescubrimientoPeliculas[categoriaId];
+    const lista = document.getElementById('catalogoPeliculasLista');
+    const wrap = document.getElementById('catalogoPeliculasCargarMasWrap');
+    if (!lista || !cache) return; // ya se navegó a otro lado mientras esto cargaba
+
+    lista.innerHTML = '';
+    if (!cache.resultados.length) {
+      lista.innerHTML = `<p style="text-align:center; color:var(--ink-muted); margin-top:20px;">${t('noEncontraron')}</p>`;
+    } else {
+      cache.resultados.forEach(pelicula => {
+        lista.appendChild(crearTarjetaPelicula(pelicula, false));
+      });
+      dispararFallbackImagenes(lista);
+    }
+
+    if (wrap) {
+      wrap.innerHTML = (cache.paginaActual < cache.totalPaginas)
+        ? `<button type="button" class="ajustes-btn" style="justify-content:center;" onclick="cargarMasPeliculasCatalogo('${categoriaId}')">${t('cargarMas')}</button>`
+        : '';
+    }
+  }
+
+  /* ==================== Detalle de película (modal) ====================
+     Las series tienen una pantalla de detalle completa (#detailView); para
+     películas usamos un modal más simple — mismo patrón que el resto de
+     los modales de la app (Ayuda, FAQ, etc). Trae sinopsis desde OMDb si
+     la película tiene imdbID (viene de Watchmode); si no, muestra lo que
+     ya tengamos (nombre, año, fecha de estreno, póster). */
+  async function abrirDetallePelicula(pelicula) {
+    const modal = document.getElementById('peliculaDetalleModal');
+    document.getElementById('peliculaDetalleImg').src = pelicula.image || placeholderPorNombre(pelicula.name);
+    document.getElementById('peliculaDetalleImg').alt = pelicula.name;
+    document.getElementById('peliculaDetalleNombre').textContent = pelicula.name;
+    document.getElementById('peliculaDetalleMeta').textContent = textoFechaOAnioPelicula(pelicula);
+    document.getElementById('peliculaDetalleSinopsis').textContent = '';
+    actualizarBotonesDetallePelicula(pelicula);
+    modal.classList.add('show');
+    enfocarModal(modal, cerrarDetallePelicula);
+
+    if (pelicula.imdbID) {
+      try {
+        const res = await fetchApi(`/api/movies/detalle?id=${encodeURIComponent(pelicula.imdbID)}`);
+        if (res.ok) {
+          const detalle = await res.json();
+          document.getElementById('peliculaDetalleSinopsis').textContent = detalle.sinopsis || '';
+          if (detalle.fechaEstreno && !pelicula.fechaEstreno) {
+            pelicula.fechaEstreno = detalle.fechaEstreno;
+            document.getElementById('peliculaDetalleMeta').textContent = textoFechaOAnioPelicula(pelicula);
+          }
+        }
+      } catch { /* si falla, se queda sin sinopsis — no es crítico */ }
+    }
+  }
+
+  function textoFechaOAnioPelicula(pelicula) {
+    if (pelicula.fechaEstreno) {
+      return new Date(pelicula.fechaEstreno + 'T00:00:00').toLocaleDateString(t('localeFecha'), { day: 'numeric', month: 'long', year: 'numeric' });
+    }
+    return pelicula.year || '';
+  }
+
+  function actualizarBotonesDetallePelicula(pelicula) {
+    const esFav = favoritos.some(f => f.id === pelicula.id);
+    const btnFav = document.getElementById('peliculaDetalleFavBtn');
+    btnFav.textContent = esFav ? ('❤️ ' + t('quitarDeFavoritos')) : ('🤍 ' + t('agregarAFavoritos'));
+    btnFav.onclick = async (e) => {
+      await toggleFavoritoPelicula(e, pelicula);
+      actualizarBotonesDetallePelicula(pelicula);
+    };
+
+    const btnVista = document.getElementById('peliculaDetalleVistaBtn');
+    if (esFav) {
+      const favReal = favoritos.find(f => f.id === pelicula.id);
+      btnVista.style.display = 'flex';
+      btnVista.textContent = favReal.vista ? ('✅ ' + t('peliculaVista')) : ('👀 ' + t('peliculaSinVer'));
+      btnVista.onclick = () => {
+        toggleVistaPelicula(pelicula.id);
+        actualizarBotonesDetallePelicula(pelicula);
+      };
+    } else {
+      btnVista.style.display = 'none';
+    }
+  }
+
+  function cerrarDetallePelicula() {
+    document.getElementById('peliculaDetalleModal').classList.remove('show');
+    devolverFocoTrasModal();
+  }
+
 
   /* Trae Populares, Nuevas y Estrenan pronto para la pantalla inicial de Buscar,
      usando solo endpoints públicos de TVMaze. Todo pasa por fetchJSON, así que
@@ -4168,14 +4365,15 @@
     const tieneImagen = !!pelicula.image;
     const imgSrc = tieneImagen ? pelicula.image : placeholderPorNombre(pelicula.name);
     const atrsFallback = tieneImagen ? '' : `data-fallback-nombre="${pelicula.name.replace(/"/g, '&quot;')}" data-fallback-buscado="0"`;
-    const onclickVista = esVistaFavoritos ? `onclick="toggleVistaPelicula('${pelicula.id}')"` : '';
+    const peliculaJSON = JSON.stringify(pelicula).replace(/"/g, '&quot;');
+    const onclickDetalle = `onclick="abrirDetallePelicula(${peliculaJSON})"`;
 
     card.innerHTML = `
       <div class="card-top">
         <div class="card-poster-wrap">
-          <img src="${imgSrc}" ${onclickVista} loading="lazy" decoding="async" alt="${pelicula.name}" class="loading-image" onload="this.classList.remove('loading-image')" onerror="manejarErrorImagen(this)" ${atrsFallback}>
+          <img src="${imgSrc}" ${onclickDetalle} loading="lazy" decoding="async" alt="${pelicula.name}" class="loading-image" onload="this.classList.remove('loading-image')" onerror="manejarErrorImagen(this)" ${atrsFallback}>
         </div>
-        <div class="card-info" ${onclickVista}>
+        <div class="card-info" ${onclickDetalle}>
           <h3>🎬 ${pelicula.name}</h3>
           ${estadoHTML}
           ${fechaHTML}
