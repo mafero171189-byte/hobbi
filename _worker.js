@@ -588,7 +588,9 @@ async function handleMoviesCartelera(request, env) {
 
   const params = { types: 'movie', limit: '20' };
   if (modo === 'proximos') {
-    const hoy = new Date().toISOString().split('T')[0];
+    // Watchmode espera release_date_start en formato YYYYMMDD sin guiones
+    // — con guiones ("2026-09-23") lo trataba como si faltara el parámetro.
+    const hoy = new Date().toISOString().split('T')[0].replace(/-/g, '');
     params.release_date_start = hoy;
     params.sort_by = 'release_date_asc';
   } else if (modo === 'plataforma') {
