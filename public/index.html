@@ -765,6 +765,9 @@
       searchPlaceholder: 'Buscar serie online...',
       searchPlaceholderPeliculas: 'Buscar película online...',
       busquedaCorta: 'Escribí al menos 3 letras...',
+      buscarPeliculaEmpezar: 'Escribí el nombre arriba, o mirá lo que se viene 👇',
+      popularesPeliculas: 'Populares',
+      errorCartelera: 'No se pudo cargar la cartelera. Probá de nuevo más tarde.',
       modoSeries: 'Series',
       modoPeliculas: 'Películas',
       peliculaVista: 'Vista',
@@ -950,6 +953,9 @@
       searchPlaceholder: 'Search for a show online...',
       searchPlaceholderPeliculas: 'Search for a movie online...',
       busquedaCorta: 'Type at least 3 letters...',
+      buscarPeliculaEmpezar: 'Search above, or check out what\'s coming up 👇',
+      popularesPeliculas: 'Popular',
+      errorCartelera: 'Could not load the catalog. Try again later.',
       modoSeries: 'Shows',
       modoPeliculas: 'Movies',
       peliculaVista: 'Watched',
@@ -2915,6 +2921,16 @@
 
   function mostrarPlaceholderBusqueda() {
     document.getElementById('searchBoxContainer').style.display = 'block';
+    if (modoBusqueda === 'peliculas') {
+      document.getElementById('seriesList').innerHTML = `
+        <div style="text-align:center; margin: 20px 0 22px; padding: 0 10px;">
+          <p style="color:var(--ink-muted); font-size:13px; line-height:1.5;">${t('buscarPeliculaEmpezar')}</p>
+        </div>
+        <div id="discoverHolderPeliculas"></div>
+      `;
+      cargarDescubrimientoPeliculas();
+      return;
+    }
     document.getElementById('seriesList').innerHTML = `
       <div style="text-align:center; margin: 20px 0 22px; padding: 0 10px;">
         <p style="color:var(--ink-muted); font-size:13px; line-height:1.5;">${t('buscarSerieEmpezar')}</p>
@@ -2922,6 +2938,79 @@
       <div id="discoverHolder"></div>
     `;
     cargarDescubrimiento();
+  }
+
+  /* ==================== Cartelera de películas (Inicio) ====================
+     Igual que cargarDescubrimiento (series), pero con Watchmode en vez de
+     TVMaze: populares, próximos estrenos, y un riel por plataforma. Cada
+     riel pega a /api/movies/cartelera, que ya viene cacheado 12hs del lado
+     del servidor (compartido entre todos los usuarios), así que esto no
+     pega directo a Watchmode cada vez que alguien abre la pestaña. */
+  const PLATAFORMAS_CARTELERA = [
+    { nombre: 'Netflix', titulo: 'Netflix' },
+    { nombre: 'Disney', titulo: 'Disney+' },
+    { nombre: 'Prime Video', titulo: 'Prime Video' },
+    { nombre: 'Max', titulo: 'HBO Max' }
+  ];
+
+  async function cargarDescubrimientoPeliculas() {
+    const holder = document.getElementById('discoverHolderPeliculas');
+    if (!holder) return;
+    holder.innerHTML = `<p style="text-align:center; color:var(--ink-muted);">${t('buscando')}</p>`;
+
+    try {
+      const [populares, proximos, ...porPlataforma] = await Promise.all([
+        fetchApi('/api/movies/cartelera?modo=populares').then(r => r.json()),
+        fetchApi('/api/movies/cartelera?modo=proximos').then(r => r.json()),
+        ...PLATAFORMAS_CARTELERA.map(p =>
+          fetchApi(`/api/movies/cartelera?modo=plataforma&plataforma=${encodeURIComponent(p.nombre)}`).then(r => r.json())
+        )
+      ]);
+
+      holder.innerHTML = '';
+      renderizarRailPeliculas(holder, '🍿 ' + t('popularesPeliculas'), populares.resultados);
+      renderizarRailPeliculas(holder, '📅 ' + t('proximosEstrenosPeliculas'), proximos.resultados);
+      PLATAFORMAS_CARTELERA.forEach((p, i) => {
+        const datos = porPlataforma[i];
+        if (datos && datos.resultados) renderizarRailPeliculas(holder, p.titulo, datos.resultados);
+      });
+
+      if (!holder.children.length) {
+        holder.innerHTML = `<p style="text-align:center; color:var(--ink-muted);">${t('errorCartelera')}</p>`;
+      }
+    } catch {
+      holder.innerHTML = `<p style="text-align:center; color:var(--danger);">${t('errorCartelera')}</p>`;
+    }
+  }
+
+  function renderizarRailPeliculas(container, titulo, lista) {
+    if (!lista || !lista.length) return;
+    const section = document.createElement('div');
+    section.className = 'discover-section';
+    section.innerHTML = `<h3 class="marquee" style="margin-bottom:10px;">${titulo}</h3>`;
+
+    const rail = document.createElement('div');
+    rail.className = 'discover-rail';
+    const idsFav = new Set(favoritos.map(f => f.id));
+
+    lista.slice(0, 12).forEach(pelicula => {
+      const item = document.createElement('div');
+      item.className = 'discover-item';
+      const tieneImagen = !!pelicula.image;
+      const imagen = pelicula.image || placeholderPorNombre(pelicula.name);
+      const atrsFallback = tieneImagen ? '' : `data-fallback-nombre="${pelicula.name.replace(/"/g, '&quot;')}" data-fallback-buscado="0"`;
+      const esFav = idsFav.has(pelicula.id);
+      item.innerHTML = `
+        <img src="${imagen}" alt="${pelicula.name}" loading="lazy" class="loading-image" onload="this.classList.remove('loading-image')" onerror="manejarErrorImagen(this)" ${atrsFallback}>
+        <button class="poster-rating-badge" style="cursor:pointer; border:none; font-size:13px;" onclick="event.stopPropagation(); toggleFavoritoPelicula(event, ${JSON.stringify(pelicula).replace(/"/g, '&quot;')})">${esFav ? '❤️' : '🤍'}</button>
+        <div class="discover-name">${pelicula.name}</div>
+      `;
+      rail.appendChild(item);
+    });
+
+    section.appendChild(rail);
+    container.appendChild(section);
+    dispararFallbackImagenes(section);
   }
 
   /* Trae Populares, Nuevas y Estrenan pronto para la pantalla inicial de Buscar,
