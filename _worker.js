@@ -532,9 +532,14 @@ async function handleMoviesDetalle(request, env) {
 async function watchmodeGet(path, params) {
   const qs = new URLSearchParams({ apiKey: WATCHMODE_API_KEY, ...params });
   const res = await fetch(`https://api.watchmode.com/v1${path}?${qs.toString()}`);
+  const textoCrudo = await res.text();
   let data;
-  try { data = await res.json(); } catch { data = null; }
-  return { ok: res.ok, data };
+  try { data = JSON.parse(textoCrudo); } catch { data = null; }
+  // DIAGNÓSTICO TEMPORAL: si Watchmode no devuelve JSON válido (por ejemplo,
+  // un error de auth en texto plano, o una página HTML), antes se perdía el
+  // motivo real y todo quedaba como "error desconocido". Ahora se propaga
+  // el status HTTP y las primeras letras del cuerpo tal cual llegó.
+  return { ok: res.ok, status: res.status, data, textoCrudo: textoCrudo.slice(0, 200) };
 }
 
 // La lista de plataformas (id numérico de cada una en Watchmode) se resuelve
@@ -612,9 +617,11 @@ async function handleMoviesCartelera(request, env) {
   }
 
   try {
-    const { ok, data } = await watchmodeGet('/list-titles/', params);
+    const { ok, status, data, textoCrudo } = await watchmodeGet('/list-titles/', params);
     if (!ok || !data) {
-      return errorResponse('Watchmode: ' + (data && (data.statusMessage || data.Error) || 'error desconocido'), 502);
+      const motivo = (data && (data.statusMessage || data.Error))
+        || `HTTP ${status}: ${textoCrudo || '(vacío)'}`;
+      return errorResponse('Watchmode: ' + motivo, 502);
     }
     // types=movie ya se lo pedimos a Watchmode, pero por las dudas filtramos
     // de nuevo acá: si algún título viene con un campo "type" que NO sea
