@@ -365,8 +365,13 @@ async function handleDataPost(request, env) {
     if (favoritos.length > MAX_FAVORITOS) {
       return errorResponse('Demasiados favoritos', 400);
     }
+    // El id puede ser numérico (series, TVMaze) o string (películas, IMDb —
+    // ej. "tt1234567"). Antes solo se aceptaba number, así que cualquier
+    // favorito de película hacía fallar la validación entera del array.
     const formaValida = favoritos.every(f =>
-      f && typeof f === 'object' && typeof f.id === 'number' && typeof f.name === 'string' && f.name.length < 300
+      f && typeof f === 'object'
+      && (typeof f.id === 'number' || (typeof f.id === 'string' && f.id.length < 50))
+      && typeof f.name === 'string' && f.name.length < 300
     );
     if (!formaValida) return errorResponse('Formato de favoritos inválido', 400);
   }
@@ -468,6 +473,42 @@ async function handleMoviesSearch(request, env) {
   }
 }
 
+// OMDb devuelve "Released" como "15 Mar 2024" (o "N/A" si no se sabe).
+// Lo convertimos a YYYY-MM-DD para que el frontend lo trate igual que
+// cualquier otra fecha de la app (comparaciones, ordenamiento, etc).
+function parsearFechaOMDb(released) {
+  if (!released || released === 'N/A') return null;
+  const meses = { Jan:'01', Feb:'02', Mar:'03', Apr:'04', May:'05', Jun:'06', Jul:'07', Aug:'08', Sep:'09', Oct:'10', Nov:'11', Dec:'12' };
+  const partes = released.split(' '); // ["15", "Mar", "2024"]
+  if (partes.length !== 3 || !meses[partes[1]]) return null;
+  return `${partes[2]}-${meses[partes[1]]}-${partes[0].padStart(2, '0')}`;
+}
+
+async function handleMoviesDetalle(request, env) {
+  const url = new URL(request.url);
+  const id = url.searchParams.get('id') || '';
+  if (!id) return errorResponse('Parámetro id requerido', 400);
+
+  try {
+    const res = await fetch(`https://www.omdbapi.com/?apikey=${OMDB_API_KEY}&i=${encodeURIComponent(id)}&plot=short`);
+    const data = await res.json();
+    if (data.Response === 'False') return errorResponse(data.Error || 'No encontrada', 404);
+
+    return json({
+      id: data.imdbID,
+      name: data.Title,
+      tipo: 'pelicula',
+      image: data.Poster !== 'N/A' ? data.Poster : null,
+      year: data.Year,
+      fechaEstreno: parsearFechaOMDb(data.Released),
+      rating: data.imdbRating !== 'N/A' ? Number(data.imdbRating) : null,
+      sinopsis: data.Plot !== 'N/A' ? data.Plot : ''
+    });
+  } catch (err) {
+    return errorResponse('Error buscando en OMDb: ' + err.message, 500);
+  }
+}
+
 /* ---------- Router ---------- */
 
 export default {
@@ -497,6 +538,7 @@ export default {
     else if (url.pathname === '/api/data' && request.method === 'POST') respuesta = await handleDataPost(request, env);
     else if (url.pathname === '/api/account' && request.method === 'DELETE') respuesta = await handleAccountDelete(request, env);
     else if (url.pathname === '/api/movies/search' && request.method === 'GET') respuesta = await handleMoviesSearch(request, env);
+    else if (url.pathname === '/api/movies/detalle' && request.method === 'GET') respuesta = await handleMoviesDetalle(request, env);
     else if (url.pathname === '/version.json' && request.method === 'GET') respuesta = json({ version: APP_LATEST_VERSION });
     else {
       // Todo lo que no sea /api/* se sirve como archivo estático (index.html, etc).
