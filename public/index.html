@@ -756,6 +756,7 @@
      Action, etc.), porque TVMaze los entrega siempre en inglés. */
   let idioma = localStorage.getItem('hobi_idioma') || 'es';
   let modoOnboarding = 'login'; // 'login' | 'registro' — declarado acá arriba porque aplicarIdioma() (línea ~633) ya lo necesita al cargar la página
+  let modoBusqueda = 'series'; // 'series' | 'peliculas' — mismo motivo: aplicarIdioma() la usa al cargar la página
 
   const I18N = {
     es: {
@@ -1170,7 +1171,7 @@
     document.getElementById('ajustesFAQTexto') && (document.getElementById('ajustesFAQTexto').textContent = t('ajustesFAQTexto'));
     document.getElementById('tFavs').textContent = t('favoritos');
     document.getElementById('tCalendar').textContent = t('calendario');
-    document.getElementById('searchInput').placeholder = (typeof modoBusqueda !== 'undefined' && modoBusqueda === 'peliculas') ? t('searchPlaceholderPeliculas') : t('searchPlaceholder');
+    document.getElementById('searchInput').placeholder = (modoBusqueda === 'peliculas') ? t('searchPlaceholderPeliculas') : t('searchPlaceholder');
     document.getElementById('txtModoSeries').textContent = t('modoSeries');
     document.getElementById('txtModoPeliculas').textContent = t('modoPeliculas');
     document.getElementById('filtroFavoritos').placeholder = t('filtroFavPlaceholder');
@@ -3669,7 +3670,6 @@
   // significa que el usuario siguió escribiendo y llegó una búsqueda más nueva
   // — descartamos el resultado viejo en vez de pintarlo encima del actual.
   let tokenBusquedaActual = 0;
-  let modoBusqueda = 'series'; // 'series' | 'peliculas' — qué busca el buscador de Inicio
 
   function cambiarModoBusqueda(modo) {
     if (modoBusqueda === modo) return;
