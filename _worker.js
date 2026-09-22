@@ -562,15 +562,19 @@ async function resolverSourceId(env, nombrePlataforma) {
 // Watchmode no siempre trae poster en list-titles (depende del campo que
 // use según el plan) — probamos los nombres de campo más probables, y si no
 // aparece ninguno el frontend ya sabe caer solo al placeholder con inicial
-// (mismo mecanismo que usan las series sin imagen).
+// (mismo mecanismo que usan las series sin imagen). Lo mismo con la fecha
+// de estreno: si Watchmode la manda (release_date), la usamos; si no,
+// queda solo el año.
 function mapearTituloWatchmode(t) {
   const poster = t.poster || t.poster_url || t.image_url || null;
+  const fecha = t.release_date || t.us_release_date || null; // suele venir YYYY-MM-DD
   return {
     id: 'wm_' + t.id,
     tipo: 'pelicula',
     name: t.title,
     image: poster,
     year: t.year ? String(t.year) : '',
+    fechaEstreno: fecha,
     imdbID: t.imdb_id || null
   };
 }
@@ -579,14 +583,18 @@ async function handleMoviesCartelera(request, env) {
   const url = new URL(request.url);
   const modo = url.searchParams.get('modo') || 'populares';
   const plataforma = url.searchParams.get('plataforma') || '';
+  const page = Math.max(1, parseInt(url.searchParams.get('page') || '1', 10) || 1);
 
-  const cacheKey = `watchmode_cartelera_v1_${modo}_${plataforma.toLowerCase()}`;
+  const cacheKey = `watchmode_cartelera_v2_${modo}_${plataforma.toLowerCase()}_p${page}`;
   const cacheado = await env.RATE_LIMIT_KV.get(cacheKey);
   if (cacheado) {
     try { return json(JSON.parse(cacheado)); } catch { /* cache corrupto, seguimos y lo regeneramos */ }
   }
 
-  const params = { types: 'movie', limit: '20' };
+  // limit_per_page es el tope máximo que deja Watchmode por página (250);
+  // pedimos harto para tener un catálogo amplio en "Ver más", y en los
+  // rieles chicos el frontend igual solo muestra los primeros.
+  const params = { types: 'movie', limit: '50', limit_per_page: '50', page: String(page) };
   if (modo === 'proximos') {
     // Watchmode espera release_date_start en formato YYYYMMDD sin guiones
     // — con guiones ("2026-09-23") lo trataba como si faltara el parámetro.
@@ -608,8 +616,14 @@ async function handleMoviesCartelera(request, env) {
     if (!ok || !data) {
       return errorResponse('Watchmode: ' + (data && (data.statusMessage || data.Error) || 'error desconocido'), 502);
     }
-    const titulos = Array.isArray(data.titles) ? data.titles.map(mapearTituloWatchmode) : [];
-    const payload = { resultados: titulos };
+    // types=movie ya se lo pedimos a Watchmode, pero por las dudas filtramos
+    // de nuevo acá: si algún título viene con un campo "type" que NO sea
+    // "movie" (a veces se cuela una serie o un especial), lo sacamos.
+    const soloMovies = Array.isArray(data.titles)
+      ? data.titles.filter(t => !t.type || t.type === 'movie')
+      : [];
+    const titulos = soloMovies.map(mapearTituloWatchmode);
+    const payload = { resultados: titulos, totalPaginas: data.total_pages || 1 };
     await env.RATE_LIMIT_KV.put(cacheKey, JSON.stringify(payload), { expirationTtl: 43200 }); // 12hs, compartido entre todos
     return json(payload);
   } catch (err) {
