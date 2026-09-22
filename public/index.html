@@ -262,14 +262,6 @@
     .faq-item.abierto .faq-respuesta { max-height: 300px; }
     .faq-respuesta p { padding: 0 14px 14px; margin: 0; font-size: 13px; color: var(--ink-muted); line-height: 1.5; }
 
-    /* ---- Toggle Series / Películas (buscador) ---- */
-    .search-tipo-toggle { display: flex; gap: 8px; margin-top: 8px; }
-    .search-tipo-btn {
-      flex: 1; padding: 8px; border-radius: 10px; border: 1px solid var(--border);
-      background: var(--surface); color: var(--ink-muted); font-size: 13px; font-weight: 600; cursor: pointer;
-    }
-    .search-tipo-btn.active { background: var(--gold-dim); border-color: var(--gold); color: var(--gold); }
-
     /* ---- Ayuda ("Cómo usar Hobbi") ---- */
     .ayuda-item { border: 1px solid var(--border); border-radius: 10px; margin-bottom: 10px; padding: 14px; }
     .ayuda-item-titulo { font-weight: 700; font-size: 14px; margin-bottom: 4px; }
@@ -540,10 +532,6 @@
   <div id="listView">
     <div class="search-box" id="searchBoxContainer">
       <input type="text" id="searchInput" placeholder="Buscar serie online..." oninput="debouncedSearch()">
-      <div class="search-tipo-toggle" id="searchTipoToggle">
-        <button type="button" class="search-tipo-btn active" id="btnModoSeries" onclick="cambiarModoBusqueda('series')">📺 <span id="txtModoSeries">Series</span></button>
-        <button type="button" class="search-tipo-btn" id="btnModoPeliculas" onclick="cambiarModoBusqueda('peliculas')">🎬 <span id="txtModoPeliculas">Películas</span></button>
-      </div>
     </div>
 
     <div id="favsToolbar" style="display:none; flex-direction: column; gap: 10px; margin-bottom: 12px;">
@@ -684,20 +672,6 @@
     </div>
   </div>
 
-  <div id="peliculaDetalleModal" class="modal-overlay" onclick="if(event.target.id === 'peliculaDetalleModal') cerrarDetallePelicula()">
-    <div class="modal-content" style="position:relative;">
-      <button class="modal-close" onclick="cerrarDetallePelicula()" aria-label="Cerrar">✕</button>
-      <div style="text-align:center;">
-        <img id="peliculaDetalleImg" src="" alt="" style="width:160px; border-radius:12px; margin-bottom:14px;" onerror="manejarErrorImagen(this)">
-        <h3 id="peliculaDetalleNombre" style="margin-bottom:6px;"></h3>
-        <div id="peliculaDetalleMeta" style="color:var(--ink-muted); font-size:13px; margin-bottom:14px;"></div>
-        <p id="peliculaDetalleSinopsis" style="color:var(--ink); font-size:13px; line-height:1.5; text-align:left; margin-bottom:16px;"></p>
-        <button type="button" class="ajustes-btn" style="justify-content:center; margin-bottom:8px;" id="peliculaDetalleFavBtn"></button>
-        <button type="button" class="ajustes-btn" style="justify-content:center; display:none;" id="peliculaDetalleVistaBtn"></button>
-      </div>
-    </div>
-  </div>
-
   <div id="ayudaModal" class="modal-overlay" onclick="if(event.target.id === 'ayudaModal') cerrarAyuda()">
     <div class="modal-content" style="position:relative;">
       <button class="modal-close" onclick="cerrarAyuda()" aria-label="Cerrar">✕</button>
@@ -770,24 +744,12 @@
      Action, etc.), porque TVMaze los entrega siempre en inglés. */
   let idioma = localStorage.getItem('hobi_idioma') || 'es';
   let modoOnboarding = 'login'; // 'login' | 'registro' — declarado acá arriba porque aplicarIdioma() (línea ~633) ya lo necesita al cargar la página
-  let modoBusqueda = 'series'; // 'series' | 'peliculas' — mismo motivo: aplicarIdioma() la usa al cargar la página
 
   const I18N = {
     es: {
       buscar: 'Buscar', inicio: 'Inicio', favoritos: 'Favoritos', calendario: 'Calendario',
       volver: '← Volver',
       searchPlaceholder: 'Buscar serie online...',
-      searchPlaceholderPeliculas: 'Buscar película online...',
-      busquedaCorta: 'Escribí al menos 3 letras...',
-      buscarPeliculaEmpezar: 'Escribí el nombre arriba, o mirá lo que se viene 👇',
-      popularesPeliculas: 'Populares',
-      errorCartelera: 'No se pudo cargar la cartelera. Probá de nuevo más tarde.',
-      modoSeries: 'Series',
-      modoPeliculas: 'Películas',
-      peliculaVista: 'Vista',
-      peliculaSinVer: 'Sin ver',
-      estrenaEl: (fecha) => `📅 Estrena el ${fecha}`,
-      proximosEstrenosPeliculas: '🎬 Próximos estrenos',
       filtroFavPlaceholder: '🔍 Filtrar tus favoritos...',
       ordenRecientes: 'Recién agregadas', ordenAlfabetico: 'Alfabético',
       estadoTodas: 'Todas', estadoEnEmisionOpt: 'En emisión', estadoFinalizadas: 'Finalizadas',
@@ -803,7 +765,6 @@
       activarAvisos: '🔔 Activar avisos de estrenos',
       avisosActivados: '🔔 Avisos de estrenos activados',
       verMas: 'Ver más →',
-      cargarMas: 'Cargar más',
       estrenanPronto: 'Estrenan pronto', nuevas: 'Nuevas', populares: 'Populares',
       estrenosMes: 'Estrenos este mes', vuelvenMes: 'Vuelven este mes',
       regionHollywood: 'Populares Hollywood', regionCoreana: 'Populares coreanas', regionTurca: 'Populares turcas', regionLatina: 'Populares Latinas/España',
@@ -966,17 +927,6 @@
       buscar: 'Search', inicio: 'Home', favoritos: 'Favorites', calendario: 'Calendar',
       volver: '← Back',
       searchPlaceholder: 'Search for a show online...',
-      searchPlaceholderPeliculas: 'Search for a movie online...',
-      busquedaCorta: 'Type at least 3 letters...',
-      buscarPeliculaEmpezar: 'Search above, or check out what\'s coming up 👇',
-      popularesPeliculas: 'Popular',
-      errorCartelera: 'Could not load the catalog. Try again later.',
-      modoSeries: 'Shows',
-      modoPeliculas: 'Movies',
-      peliculaVista: 'Watched',
-      peliculaSinVer: 'Not watched',
-      estrenaEl: (fecha) => `📅 Releases on ${fecha}`,
-      proximosEstrenosPeliculas: '🎬 Coming up',
       filtroFavPlaceholder: '🔍 Filter your favorites...',
       ordenRecientes: 'Recently added', ordenAlfabetico: 'Alphabetical',
       estadoTodas: 'All', estadoEnEmisionOpt: 'On air', estadoFinalizadas: 'Ended',
@@ -992,7 +942,6 @@
       activarAvisos: '🔔 Turn on premiere alerts',
       avisosActivados: '🔔 Premiere alerts on',
       verMas: 'See more →',
-      cargarMas: 'Load more',
       estrenanPronto: 'Coming soon', nuevas: 'New', populares: 'Popular',
       estrenosMes: 'Premiering this month', vuelvenMes: 'Returning this month',
       regionHollywood: 'Popular Hollywood', regionCoreana: 'Popular Korean', regionTurca: 'Popular Turkish', regionLatina: 'Popular Latin/Spain',
@@ -1195,9 +1144,7 @@
     document.getElementById('ajustesFAQTexto') && (document.getElementById('ajustesFAQTexto').textContent = t('ajustesFAQTexto'));
     document.getElementById('tFavs').textContent = t('favoritos');
     document.getElementById('tCalendar').textContent = t('calendario');
-    document.getElementById('searchInput').placeholder = (modoBusqueda === 'peliculas') ? t('searchPlaceholderPeliculas') : t('searchPlaceholder');
-    document.getElementById('txtModoSeries').textContent = t('modoSeries');
-    document.getElementById('txtModoPeliculas').textContent = t('modoPeliculas');
+    document.getElementById('searchInput').placeholder = t('searchPlaceholder');
     document.getElementById('filtroFavoritos').placeholder = t('filtroFavPlaceholder');
 
     const ordenSel = document.getElementById('ordenFavoritos');
@@ -2937,16 +2884,6 @@
 
   function mostrarPlaceholderBusqueda() {
     document.getElementById('searchBoxContainer').style.display = 'block';
-    if (modoBusqueda === 'peliculas') {
-      document.getElementById('seriesList').innerHTML = `
-        <div style="text-align:center; margin: 20px 0 22px; padding: 0 10px;">
-          <p style="color:var(--ink-muted); font-size:13px; line-height:1.5;">${t('buscarPeliculaEmpezar')}</p>
-        </div>
-        <div id="discoverHolderPeliculas"></div>
-      `;
-      cargarDescubrimientoPeliculas();
-      return;
-    }
     document.getElementById('seriesList').innerHTML = `
       <div style="text-align:center; margin: 20px 0 22px; padding: 0 10px;">
         <p style="color:var(--ink-muted); font-size:13px; line-height:1.5;">${t('buscarSerieEmpezar')}</p>
@@ -2955,291 +2892,6 @@
     `;
     cargarDescubrimiento();
   }
-
-  /* ==================== Cartelera de películas (Inicio) ====================
-     Igual que cargarDescubrimiento (series), pero con Watchmode en vez de
-     TVMaze: populares, próximos estrenos, y un riel por plataforma. Cada
-     riel pega a /api/movies/cartelera, que ya viene cacheado 12hs del lado
-     del servidor (compartido entre todos los usuarios), así que esto no
-     pega directo a Watchmode cada vez que alguien abre la pestaña. */
-  const PLATAFORMAS_CARTELERA = [
-    { nombre: 'Netflix', titulo: 'Netflix' },
-    { nombre: 'Disney', titulo: 'Disney+' },
-    { nombre: 'Prime Video', titulo: 'Prime Video' },
-    { nombre: 'Max', titulo: 'HBO Max' }
-  ];
-
-  // categoriaId -> { resultados, paginaActual, totalPaginas, qs } — memoria
-  // de cada categoría para el botón "Ver más" (catálogo completo) y para
-  // "Cargar más" (paginación) sin tener que volver a pedir lo que ya vino.
-  let catalogoDescubrimientoPeliculas = {};
-
-  function categoriaPeliculasAQueryString(categoriaId) {
-    if (categoriaId === 'populares') return 'modo=populares';
-    if (categoriaId === 'proximos') return 'modo=proximos';
-    const plataforma = PLATAFORMAS_CARTELERA.find(p => 'plataforma_' + p.nombre === categoriaId);
-    return plataforma ? `modo=plataforma&plataforma=${encodeURIComponent(plataforma.nombre)}` : '';
-  }
-
-  async function cargarDescubrimientoPeliculas() {
-    const holder = document.getElementById('discoverHolderPeliculas');
-    if (!holder) return;
-    holder.innerHTML = `<p style="text-align:center; color:var(--ink-muted);">${t('buscando')}</p>`;
-
-    // Diagnóstico: los errores del backend vienen como texto plano (no
-    // JSON), así que hacer .json() directo sobre una respuesta con error
-    // tira una excepción sin decir por qué — quedaba tapado por el catch
-    // genérico de abajo. Este helper primero mira el status.
-    async function pedirCartelera(qs) {
-      const res = await fetchApi(`/api/movies/cartelera?${qs}`);
-      if (!res.ok) {
-        const texto = await res.text().catch(() => '');
-        throw new Error(`[${qs}] ` + (texto || ('HTTP ' + res.status)));
-      }
-      return res.json();
-    }
-
-    // El plan gratis de Watchmode solo permite 1 pedido concurrente por key
-    // — pedir los 6 rieles en paralelo (Promise.all) tiraba 429 "Too many
-    // concurrent requests" en varios de ellos. Por eso van de a uno acá.
-    // Como cada riel se cachea 12hs del lado del servidor, esto solo es
-    // lento la primera vez que alguien entra tras vencer el caché — el
-    // resto del día es instantáneo para todos.
-    const categorias = [
-      { id: 'populares', qs: 'modo=populares', titulo: '🍿 ' + t('popularesPeliculas') },
-      { id: 'proximos', qs: 'modo=proximos', titulo: '📅 ' + t('proximosEstrenosPeliculas') },
-      ...PLATAFORMAS_CARTELERA.map(p => ({
-        id: 'plataforma_' + p.nombre,
-        qs: `modo=plataforma&plataforma=${encodeURIComponent(p.nombre)}`,
-        titulo: p.titulo
-      }))
-    ];
-
-    holder.innerHTML = '';
-    const erroresDebug = [];
-
-    for (const cat of categorias) {
-      try {
-        const data = await pedirCartelera(cat.qs);
-        if (data && data.resultados) renderizarRailPeliculas(holder, cat.id, cat.titulo, data.resultados);
-      } catch (err) {
-        erroresDebug.push(err && err.message ? err.message : String(err));
-      }
-    }
-
-    if (!holder.children.length) {
-      const debugHTML = erroresDebug.length
-        ? `<br><span style="font-size:11px; opacity:0.8;">DEBUG: ${erroresDebug.join(' | ')}</span>`
-        : '';
-      holder.innerHTML = `<p style="text-align:center; color:var(--danger);">${t('errorCartelera')}${debugHTML}</p>`;
-    } else if (erroresDebug.length) {
-      // Algunos rieles sí cargaron — mostramos igual el detalle de los que
-      // fallaron, chiquito y al final, sin tapar lo que sí funcionó.
-      const debugP = document.createElement('p');
-      debugP.style.cssText = 'text-align:center; font-size:11px; opacity:0.6; margin-top:16px;';
-      debugP.textContent = 'DEBUG: ' + erroresDebug.join(' | ');
-      holder.appendChild(debugP);
-    }
-  }
-
-  function renderizarRailPeliculas(container, categoriaId, titulo, lista) {
-    if (!lista || !lista.length) return;
-    // Guardamos lo que ya vino para que "Ver más" arranque con esto mismo
-    // (sin re-pedir) y siga paginando desde acá. Si ya vinieron 50 (el tope
-    // por página), asumimos que probablemente hay una página 2 — el propio
-    // pedido de la página 2 va a confirmar el total real.
-    catalogoDescubrimientoPeliculas[categoriaId] = {
-      resultados: lista, paginaActual: 1, totalPaginas: lista.length >= 50 ? 2 : 1,
-      qs: categoriaPeliculasAQueryString(categoriaId)
-    };
-
-    const section = document.createElement('div');
-    section.className = 'discover-section';
-    const tituloEscapado = titulo.replace(/'/g, "\\'");
-    section.innerHTML = `
-      <div style="display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:10px;">
-        <h3 class="marquee" style="margin-bottom:0;">${titulo}</h3>
-        <span class="ver-mas-btn" onclick="verCatalogoCompletoPeliculas('${categoriaId}', '${tituloEscapado}')">${t('verMas')}</span>
-      </div>
-    `;
-
-    const rail = document.createElement('div');
-    rail.className = 'discover-rail';
-    const idsFav = new Set(favoritos.map(f => f.id));
-
-    lista.slice(0, 12).forEach(pelicula => {
-      const item = document.createElement('div');
-      item.className = 'discover-item';
-      const tieneImagen = !!pelicula.image;
-      const imagen = pelicula.image || placeholderPorNombre(pelicula.name);
-      const atrsFallback = tieneImagen ? '' : `data-fallback-nombre="${pelicula.name.replace(/"/g, '&quot;')}" data-fallback-buscado="0"`;
-      const esFav = idsFav.has(pelicula.id);
-      const fechaTexto = pelicula.fechaEstreno
-        ? formatearFechaEstrenoTexto({ airdate: pelicula.fechaEstreno })
-        : (pelicula.year || '');
-      item.onclick = () => abrirDetallePelicula(pelicula);
-      item.innerHTML = `
-        <img src="${imagen}" alt="${pelicula.name}" loading="lazy" class="loading-image" onload="this.classList.remove('loading-image')" onerror="manejarErrorImagen(this)" ${atrsFallback}>
-        <button class="poster-rating-badge" style="cursor:pointer; border:none; font-size:13px;" onclick="event.stopPropagation(); toggleFavoritoPelicula(event, ${JSON.stringify(pelicula).replace(/"/g, '&quot;')})">${esFav ? '❤️' : '🤍'}</button>
-        <div class="discover-name">${pelicula.name}</div>
-        ${fechaTexto ? `<div class="discover-name" style="color:var(--ink-muted); font-weight:700;">${fechaTexto}</div>` : ''}
-      `;
-      rail.appendChild(item);
-    });
-
-    section.appendChild(rail);
-    container.appendChild(section);
-    dispararFallbackImagenes(section);
-  }
-
-  /* "Ver más" de una categoría: catálogo completo en lista vertical, con
-     "Cargar más" para ir trayendo páginas siguientes de Watchmode (hasta
-     50 por página). Reutiliza el mismo #seriesList que el resto de Inicio,
-     así que "Volver" simplemente reconstruye la vista de rieles. */
-  async function verCatalogoCompletoPeliculas(categoriaId, tituloCategoria) {
-    document.getElementById('detailView').style.display = 'none';
-    const blurBg = document.getElementById('detailBlurBg');
-    if (blurBg) blurBg.style.display = 'none';
-    document.getElementById('calendarView').style.display = 'none';
-    document.getElementById('listView').style.display = 'block';
-    document.getElementById('searchBoxContainer').style.display = 'none';
-    document.getElementById('favsToolbar').style.display = 'none';
-    reiniciarFadeIn(document.getElementById('listView'));
-
-    const container = document.getElementById('seriesList');
-    container.innerHTML = `
-      <button class="back-btn" onclick="mostrarPlaceholderBusqueda()" style="margin-bottom:12px;">${t('volver')}</button>
-      <h3 class="marquee" style="color:var(--gold); font-size:22px; margin-bottom:12px;">${tituloCategoria}</h3>
-      <div id="catalogoPeliculasLista"></div>
-      <div id="catalogoPeliculasCargarMasWrap" style="text-align:center; margin-top:16px;"></div>
-    `;
-
-    if (!catalogoDescubrimientoPeliculas[categoriaId]) {
-      catalogoDescubrimientoPeliculas[categoriaId] = {
-        resultados: [], paginaActual: 0, totalPaginas: 1, qs: categoriaPeliculasAQueryString(categoriaId)
-      };
-    }
-    const cache = catalogoDescubrimientoPeliculas[categoriaId];
-
-    if (!cache.resultados.length) {
-      document.getElementById('catalogoPeliculasLista').innerHTML = `<p style="text-align:center; color:var(--ink-muted);">${t('buscando')}</p>`;
-      await cargarMasPeliculasCatalogo(categoriaId);
-    } else {
-      renderizarListaCatalogoPeliculas(categoriaId);
-    }
-  }
-
-  async function cargarMasPeliculasCatalogo(categoriaId) {
-    const cache = catalogoDescubrimientoPeliculas[categoriaId];
-    if (!cache || cache.paginaActual >= cache.totalPaginas) return;
-    const siguiente = cache.paginaActual + 1;
-    try {
-      const res = await fetchApi(`/api/movies/cartelera?${cache.qs}&page=${siguiente}`);
-      if (!res.ok) throw new Error(await res.text().catch(() => 'error'));
-      const data = await res.json();
-      const nuevos = data.resultados || [];
-      // Evitamos duplicar si una misma película ya estaba (puede pasar si
-      // Watchmode devuelve algo repetido entre páginas).
-      const idsYaVistos = new Set(cache.resultados.map(p => p.id));
-      nuevos.forEach(p => { if (!idsYaVistos.has(p.id)) cache.resultados.push(p); });
-      cache.paginaActual = siguiente;
-      cache.totalPaginas = data.totalPaginas || siguiente;
-    } catch {
-      mostrarToast(t('errorCartelera'), 'error');
-    }
-    renderizarListaCatalogoPeliculas(categoriaId);
-  }
-
-  function renderizarListaCatalogoPeliculas(categoriaId) {
-    const cache = catalogoDescubrimientoPeliculas[categoriaId];
-    const lista = document.getElementById('catalogoPeliculasLista');
-    const wrap = document.getElementById('catalogoPeliculasCargarMasWrap');
-    if (!lista || !cache) return; // ya se navegó a otro lado mientras esto cargaba
-
-    lista.innerHTML = '';
-    if (!cache.resultados.length) {
-      lista.innerHTML = `<p style="text-align:center; color:var(--ink-muted); margin-top:20px;">${t('noEncontraron')}</p>`;
-    } else {
-      cache.resultados.forEach(pelicula => {
-        lista.appendChild(crearTarjetaPelicula(pelicula, false));
-      });
-      dispararFallbackImagenes(lista);
-    }
-
-    if (wrap) {
-      wrap.innerHTML = (cache.paginaActual < cache.totalPaginas)
-        ? `<button type="button" class="ajustes-btn" style="justify-content:center;" onclick="cargarMasPeliculasCatalogo('${categoriaId}')">${t('cargarMas')}</button>`
-        : '';
-    }
-  }
-
-  /* ==================== Detalle de película (modal) ====================
-     Las series tienen una pantalla de detalle completa (#detailView); para
-     películas usamos un modal más simple — mismo patrón que el resto de
-     los modales de la app (Ayuda, FAQ, etc). Trae sinopsis desde OMDb si
-     la película tiene imdbID (viene de Watchmode); si no, muestra lo que
-     ya tengamos (nombre, año, fecha de estreno, póster). */
-  async function abrirDetallePelicula(pelicula) {
-    const modal = document.getElementById('peliculaDetalleModal');
-    document.getElementById('peliculaDetalleImg').src = pelicula.image || placeholderPorNombre(pelicula.name);
-    document.getElementById('peliculaDetalleImg').alt = pelicula.name;
-    document.getElementById('peliculaDetalleNombre').textContent = pelicula.name;
-    document.getElementById('peliculaDetalleMeta').textContent = textoFechaOAnioPelicula(pelicula);
-    document.getElementById('peliculaDetalleSinopsis').textContent = '';
-    actualizarBotonesDetallePelicula(pelicula);
-    modal.classList.add('show');
-    enfocarModal(modal, cerrarDetallePelicula);
-
-    if (pelicula.imdbID) {
-      try {
-        const res = await fetchApi(`/api/movies/detalle?id=${encodeURIComponent(pelicula.imdbID)}`);
-        if (res.ok) {
-          const detalle = await res.json();
-          document.getElementById('peliculaDetalleSinopsis').textContent = detalle.sinopsis || '';
-          if (detalle.fechaEstreno && !pelicula.fechaEstreno) {
-            pelicula.fechaEstreno = detalle.fechaEstreno;
-            document.getElementById('peliculaDetalleMeta').textContent = textoFechaOAnioPelicula(pelicula);
-          }
-        }
-      } catch { /* si falla, se queda sin sinopsis — no es crítico */ }
-    }
-  }
-
-  function textoFechaOAnioPelicula(pelicula) {
-    if (pelicula.fechaEstreno) {
-      return new Date(pelicula.fechaEstreno + 'T00:00:00').toLocaleDateString(t('localeFecha'), { day: 'numeric', month: 'long', year: 'numeric' });
-    }
-    return pelicula.year || '';
-  }
-
-  function actualizarBotonesDetallePelicula(pelicula) {
-    const esFav = favoritos.some(f => f.id === pelicula.id);
-    const btnFav = document.getElementById('peliculaDetalleFavBtn');
-    btnFav.textContent = esFav ? ('❤️ ' + t('quitarDeFavoritos')) : ('🤍 ' + t('agregarAFavoritos'));
-    btnFav.onclick = async (e) => {
-      await toggleFavoritoPelicula(e, pelicula);
-      actualizarBotonesDetallePelicula(pelicula);
-    };
-
-    const btnVista = document.getElementById('peliculaDetalleVistaBtn');
-    if (esFav) {
-      const favReal = favoritos.find(f => f.id === pelicula.id);
-      btnVista.style.display = 'flex';
-      btnVista.textContent = favReal.vista ? ('✅ ' + t('peliculaVista')) : ('👀 ' + t('peliculaSinVer'));
-      btnVista.onclick = () => {
-        toggleVistaPelicula(pelicula.id);
-        actualizarBotonesDetallePelicula(pelicula);
-      };
-    } else {
-      btnVista.style.display = 'none';
-    }
-  }
-
-  function cerrarDetallePelicula() {
-    document.getElementById('peliculaDetalleModal').classList.remove('show');
-    devolverFocoTrasModal();
-  }
-
 
   /* Trae Populares, Nuevas y Estrenan pronto para la pantalla inicial de Buscar,
      usando solo endpoints públicos de TVMaze. Todo pasa por fetchJSON, así que
@@ -3990,19 +3642,7 @@
   // — descartamos el resultado viejo en vez de pintarlo encima del actual.
   let tokenBusquedaActual = 0;
 
-  function cambiarModoBusqueda(modo) {
-    if (modoBusqueda === modo) return;
-    modoBusqueda = modo;
-    document.getElementById('btnModoSeries').classList.toggle('active', modo === 'series');
-    document.getElementById('btnModoPeliculas').classList.toggle('active', modo === 'peliculas');
-    document.getElementById('searchInput').placeholder = modo === 'peliculas' ? t('searchPlaceholderPeliculas') : t('searchPlaceholder');
-    const query = document.getElementById('searchInput').value.trim();
-    if (query) buscarOnline();
-    else mostrarPlaceholderBusqueda();
-  }
-
   async function buscarOnline() {
-    if (modoBusqueda === 'peliculas') return buscarPeliculasOnline();
     const query = document.getElementById('searchInput').value.trim();
     const container = document.getElementById('seriesList');
     if (!query) return mostrarPlaceholderBusqueda();
@@ -4075,46 +3715,6 @@
         : `<p style="text-align:center; color:var(--danger);">${t('sinConexionBuscador')}</p>`;
     }
   }
-
-  async function buscarPeliculasOnline() {
-    const query = document.getElementById('searchInput').value.trim();
-    const container = document.getElementById('seriesList');
-    if (!query) return mostrarPlaceholderBusqueda();
-    if (query.length < 3) {
-      container.innerHTML = `<p style="text-align:center; color:var(--ink-muted);">${t('busquedaCorta')}</p>`;
-      return;
-    }
-
-    const miToken = ++tokenBusquedaActual;
-    container.innerHTML = `<p style="text-align:center; color:var(--ink-muted);">${t('buscando')}</p>`;
-
-    try {
-      const res = await fetchApi(`/api/movies/search?q=${encodeURIComponent(query)}`);
-      if (miToken !== tokenBusquedaActual) return;
-      if (!res.ok) {
-        const textoError = await res.text().catch(() => '');
-        throw new Error(textoError || 'search falló');
-      }
-      const data = await res.json();
-      if (miToken !== tokenBusquedaActual) return;
-
-      container.innerHTML = '';
-      if (!data.resultados || !data.resultados.length) {
-        container.innerHTML = `<p style="text-align:center; color:var(--ink-muted);">${t('noEncontraron')}</p>`;
-        return;
-      }
-      data.resultados.forEach(pelicula => {
-        container.appendChild(crearTarjetaPelicula(pelicula, false));
-      });
-      dispararFallbackImagenes(container);
-    } catch (err) {
-      if (miToken !== tokenBusquedaActual) return;
-      container.innerHTML = navigator.onLine
-        ? `<p style="text-align:center; color:var(--danger);">${t('errorBuscador')} ${err && err.message ? '(' + err.message + ')' : ''}</p>`
-        : `<p style="text-align:center; color:var(--danger);">${t('sinConexionBuscador')}</p>`;
-    }
-  }
-
 
   /* Heurística liviana (sin pedir nada a la red): mira la caché de episodios de esa
      serie y ve si hay alguno ya estrenado que todavía no está marcado como visto.
@@ -4339,111 +3939,10 @@
     return wrapper;
   }
 
-  /* ==================== Películas ====================
-     Mismo patrón visual que crearTarjetaSerie, pero sin nada de episodios/
-     temporadas (las películas son "vista" o "sin ver", nada más). Los ids
-     de película son el imdbID de OMDb (string, ej. "tt1234567") — nunca
-     chocan con los ids numéricos de TVMaze que usan las series. */
-  function crearTarjetaPelicula(pelicula, esVistaFavoritos) {
-    const esFav = favoritos.some(f => f.id === pelicula.id);
-    const card = document.createElement('div');
-    card.className = 'card';
-
-    let estadoHTML;
-    if (esVistaFavoritos) {
-      estadoHTML = pelicula.vista
-        ? `<div class="status">✅ ${t('peliculaVista')}</div>`
-        : `<div class="status renewed">👀 ${t('peliculaSinVer')}</div>`;
-    } else {
-      estadoHTML = pelicula.year ? `<div class="status">🎬 ${pelicula.year}</div>` : '';
-    }
-    const fechaHTML = pelicula.fechaEstreno
-      ? `<div class="next-air">${t('estrenaEl')(formatearFechaEstrenoTexto({ airdate: pelicula.fechaEstreno }))}</div>`
-      : '';
-
-    const botonFavHTML = esVistaFavoritos
-      ? ''
-      : `<button class="fav-btn" onclick="toggleFavoritoPelicula(event, ${JSON.stringify(pelicula).replace(/"/g, '&quot;')})" aria-label="${esFav ? t('quitarDeFavoritos') : t('agregarAFavoritos')}">
-          ${esFav ? '❤️' : '🤍'}
-        </button>`;
-
-    const tieneImagen = !!pelicula.image;
-    const imgSrc = tieneImagen ? pelicula.image : placeholderPorNombre(pelicula.name);
-    const atrsFallback = tieneImagen ? '' : `data-fallback-nombre="${pelicula.name.replace(/"/g, '&quot;')}" data-fallback-buscado="0"`;
-    const peliculaJSON = JSON.stringify(pelicula).replace(/"/g, '&quot;');
-    const onclickDetalle = `onclick="abrirDetallePelicula(${peliculaJSON})"`;
-
-    card.innerHTML = `
-      <div class="card-top">
-        <div class="card-poster-wrap">
-          <img src="${imgSrc}" ${onclickDetalle} loading="lazy" decoding="async" alt="${pelicula.name}" class="loading-image" onload="this.classList.remove('loading-image')" onerror="manejarErrorImagen(this)" ${atrsFallback}>
-        </div>
-        <div class="card-info" ${onclickDetalle}>
-          <h3>🎬 ${pelicula.name}</h3>
-          ${estadoHTML}
-          ${fechaHTML}
-        </div>
-        ${botonFavHTML}
-      </div>
-    `;
-
-    if (!esVistaFavoritos) return card;
-
-    const wrapper = document.createElement('div');
-    wrapper.className = 'swipe-wrapper';
-    wrapper.innerHTML = '<div class="swipe-delete-bg">🗑️</div><div class="swipe-visto-bg">✓</div>';
-    wrapper.appendChild(card);
-    habilitarSwipeEliminar(wrapper, card, pelicula, ejecutarSwipeMarcarVistaPelicula);
-    return wrapper;
-  }
-
-  async function toggleFavoritoPelicula(e, pelicula) {
-    e.stopPropagation();
-    const idx = favoritos.findIndex(f => f.id === pelicula.id);
-    if (idx > -1) {
-      const favReal = favoritos[idx];
-      const ok = await confirmarEliminar(t('confirmarSacarTitulo')(favReal.name), t('confirmarSacarMsg'));
-      if (!ok) return;
-      favoritos.splice(idx, 1);
-    } else {
-      try {
-        const res = await fetchApi(`/api/movies/detalle?id=${encodeURIComponent(pelicula.id)}`);
-        if (!res.ok) throw new Error('detalle falló');
-        const detalle = await res.json();
-        detalle.vista = false;
-        migrarFavorito(detalle);
-        favoritos.push(detalle);
-      } catch {
-        mostrarToast(t('noSePudoCargarDetalle')(pelicula.name), 'error');
-        return;
-      }
-    }
-    guardarDatos();
-    if (document.getElementById('tabFavs').classList.contains('active')) {
-      renderizarFavoritos();
-    } else {
-      buscarPeliculasOnline();
-    }
-  }
-
-  /* Toca la card (o desliza a la derecha) en Favoritos para marcar/desmarcar
-     una película como vista — no hay episodios de por medio, es un booleano. */
-  function toggleVistaPelicula(id) {
-    const idx = favoritos.findIndex(f => f.id === id);
-    if (idx === -1) return;
-    favoritos[idx].vista = !favoritos[idx].vista;
-    guardarDatos();
-    renderizarFavoritos();
-  }
-
-  async function ejecutarSwipeMarcarVistaPelicula(card, pelicula) {
-    toggleVistaPelicula(pelicula.id);
-  }
-
   /* Desliza una card de Favoritos hacia la izquierda para eliminarla (como en
      cualquier lista nativa), o hacia la derecha para marcar como visto el
      próximo episodio pendiente de esa serie, sin tener que entrar al detalle. */
-  function habilitarSwipeEliminar(wrapper, card, show, funcMarcarVisto = ejecutarSwipeMarcarVisto) {
+  function habilitarSwipeEliminar(wrapper, card, show) {
     let startX = 0, startY = 0, deltaX = 0, arrastrando = false, esHorizontal = null;
     const UMBRAL_ACCION = 90;
     const LIMITE_ARRASTRE_DERECHA = 110; // no dejamos que se vaya de la pantalla, no hay nada que borrar hacia ese lado
@@ -4504,7 +4003,7 @@
       } else if (esHorizontal && deltaX > 0 && deltaX > UMBRAL_ACCION) {
         card.style.transform = 'translateX(0)';
         mostrarFondoSegunDireccion(0);
-        await funcMarcarVisto(card, show);
+        await ejecutarSwipeMarcarVisto(card, show);
       } else {
         card.style.transform = 'translateX(0)';
         mostrarFondoSegunDireccion(0);
@@ -5410,46 +4909,6 @@
   }
 
   /* PESTAÑA CALENDARIO: próximos episodios + próximas temporadas de los favoritos */
-  /* Próximos estrenos de películas favoritas — a diferencia de las series,
-     esto no pide nada a la red: la fecha de estreno ya quedó guardada en el
-     favorito al agregarla (ver toggleFavoritoPelicula), así que es un
-     filtro/orden puramente local sobre lo que ya tenemos. */
-  function obtenerPeliculasProximas() {
-    const hoyISO = formatearFechaISO(new Date());
-    return favoritos
-      .filter(f => f.tipo === 'pelicula' && f.fechaEstreno && f.fechaEstreno >= hoyISO)
-      .sort((a, b) => a.fechaEstreno.localeCompare(b.fechaEstreno));
-  }
-
-  function renderizarPeliculasProximas(container, lista) {
-    if (!lista.length) return;
-
-    const section = document.createElement('section');
-    section.innerHTML = `<h3 class="upcoming-seasons-title">${t('proximosEstrenosPeliculas')}</h3>`;
-
-    lista.forEach(pelicula => {
-      const card = document.createElement('div');
-      card.className = 'season-upcoming-card';
-      const fecha = new Date(pelicula.fechaEstreno + 'T00:00:00').toLocaleDateString(t('localeFecha'), {
-        day: 'numeric', month: 'long', year: 'numeric'
-      });
-      const atrsFallbackPeli = pelicula.image ? '' : `data-fallback-nombre="${pelicula.name.replace(/"/g, '&quot;')}" data-fallback-buscado="0"`;
-
-      card.innerHTML = `
-        <div class="season-upcoming-top">
-          <img src="${pelicula.image || placeholderPorNombre(pelicula.name)}" alt="${pelicula.name}" loading="lazy" onerror="manejarErrorImagen(this)" ${atrsFallbackPeli}>
-          <div class="season-upcoming-info">
-            <h4>🎬 ${pelicula.name}</h4>
-            <div class="season-meta">${t('seEstrena')(fecha)}</div>
-          </div>
-        </div>
-      `;
-      section.appendChild(card);
-    });
-
-    container.appendChild(section);
-  }
-
   async function cargarCalendario(forzar = false) {
     const container = document.getElementById('calendarContent');
     container.innerHTML = `<p style="text-align:center; color:var(--ink-muted);">${forzar ? t('actualizando') : t('buscandoEstrenos')}</p>`;
@@ -5466,7 +4925,6 @@
         obtenerProximasTemporadas(forzar),
         obtenerEpisodiosSinVer(forzar)
       ]);
-      const peliculasProx = obtenerPeliculasProximas(); // local, no pide nada a la red
 
       ultimosProximos = proximos;
       programarTodasLasPendientes();
@@ -5516,17 +4974,10 @@
         container.appendChild(section);
       }
 
-      if (peliculasProx.length > 0) {
-        const section = document.createElement('div');
-        section.style.marginTop = (proximos.length || temporadas.length) ? '24px' : '4px';
-        renderizarPeliculasProximas(section, peliculasProx);
-        container.appendChild(section);
-      }
-
       if (sinVer.length > 0) {
         const tituloSinVer = document.createElement('h3');
         tituloSinVer.className = 'marquee';
-        tituloSinVer.style.margin = (proximos.length || temporadas.length || peliculasProx.length) ? '24px 0 4px' : '4px 0 4px';
+        tituloSinVer.style.margin = (proximos.length || temporadas.length) ? '24px 0 4px' : '4px 0 4px';
         tituloSinVer.style.fontSize = '22px';
         tituloSinVer.style.color = 'var(--teal)';
         tituloSinVer.style.letterSpacing = '0.5px';
@@ -5538,7 +4989,7 @@
         renderizarSinVer(sinVerHolder, sinVer);
       }
 
-      if (!proximos.length && !temporadas.length && !sinVer.length && !peliculasProx.length) {
+      if (!proximos.length && !temporadas.length && !sinVer.length) {
         container.innerHTML = `<p style="text-align:center; color:var(--ink-muted); margin-top:20px;">${t('noHayProximos')}</p>`;
       }
 
@@ -5616,7 +5067,6 @@
     mostrarEsqueletoFavoritos();
     try {
       await Promise.all(favoritos.map(async (fav) => {
-        if (fav.tipo === 'pelicula') return; // las películas no tienen episodios que refrescar
         try {
           const eps = await fetchJSON(`https://api.tvmaze.com/shows/${fav.id}/episodes`, `eps_${fav.id}`, { forzar });
           fav.episodeIds = eps.map(e => e.id);
@@ -5696,17 +5146,7 @@
     const filtroTexto = document.getElementById('filtroFavoritos').value.trim().toLowerCase();
     const soloPendientes = document.getElementById('soloPendientes').checked;
 
-    // Las películas van aparte: no tienen episodios ni estado "en emisión /
-    // finalizada" (esos filtros son de series), así que quedan afuera de
-    // esa lógica y se muestran en su propia sección, arriba de todo.
-    let peliculas = favoritos.filter(f => f.tipo === 'pelicula');
-    if (filtroTexto) peliculas = peliculas.filter(f => f.name.toLowerCase().includes(filtroTexto));
-    if (soloPendientes) peliculas = peliculas.filter(f => !f.vista);
-    peliculas.sort(orden === 'alfabetico'
-      ? (a, b) => a.name.localeCompare(b.name)
-      : (a, b) => (b.agregadaEn || 0) - (a.agregadaEn || 0));
-
-    let lista = favoritos.filter(f => f.tipo !== 'pelicula');
+    let lista = favoritos.slice();
 
     if (filtroTexto) {
       lista = lista.filter(f => f.name.toLowerCase().includes(filtroTexto));
@@ -5732,29 +5172,9 @@
 
     container.innerHTML = '';
     actualizarIndicadorFiltroFavs();
-    if (!lista.length && !peliculas.length) {
+    if (!lista.length) {
       const mensaje = favoritos.length ? t('ningunaCoincide') : t('noFavoritos');
       container.innerHTML = `<p style="text-align:center; color:var(--ink-muted); margin-top:20px;">${mensaje}</p>`;
-      return;
-    }
-
-    if (peliculas.length) {
-      const tituloPelis = document.createElement('h3');
-      tituloPelis.className = 'marquee';
-      tituloPelis.style.margin = '4px 0 16px';
-      tituloPelis.style.fontSize = '20px';
-      tituloPelis.style.color = 'var(--gold)';
-      tituloPelis.style.letterSpacing = '0.5px';
-      tituloPelis.textContent = t('modoPeliculas');
-      container.appendChild(tituloPelis);
-
-      peliculas.forEach(pelicula => {
-        container.appendChild(crearTarjetaPelicula(pelicula, true));
-      });
-    }
-
-    if (!lista.length) {
-      dispararFallbackImagenes(container);
       return;
     }
 
@@ -5773,17 +5193,6 @@
 
     const activas = lista.filter(f => !esFinalizadaYCompleta(f));
     const finalizadasVistas = lista.filter(f => esFinalizadaYCompleta(f));
-
-    if (peliculas.length && activas.length) {
-      const tituloSeries = document.createElement('h3');
-      tituloSeries.className = 'marquee';
-      tituloSeries.style.margin = '24px 0 16px';
-      tituloSeries.style.fontSize = '20px';
-      tituloSeries.style.color = 'var(--gold)';
-      tituloSeries.style.letterSpacing = '0.5px';
-      tituloSeries.textContent = t('modoSeries');
-      container.appendChild(tituloSeries);
-    }
 
     activas.forEach(show => {
       container.appendChild(crearTarjetaSerie(show, true));
