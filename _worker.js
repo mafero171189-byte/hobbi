@@ -5,6 +5,7 @@
 
 const GOOGLE_CLIENT_ID = '403618822429-pshtrss0fg4nnojujh6aqqagaboia66h.apps.googleusercontent.com';
 const SESSION_DIAS = 30;
+const OMDB_API_KEY = 'a58fd568'; // OMDb — búsqueda de películas
 
 // Versión actual del contenido de la app, para el chequeo de Live Update de
 // la APK (ver index.html: chequearActualizacionApk). Va acá como constante
@@ -15,7 +16,7 @@ const SESSION_DIAS = 30;
 // servía bien, pero sin CORS, y el navegador bloqueaba la lectura).
 // Para publicar una actualización de contenido: subís este número y
 // desplegás — nada más.
-const APP_LATEST_VERSION = '2026.09.20.3';
+const APP_LATEST_VERSION = '2026.09.20.2';
 
 /* ---------- CORS (necesario desde que existe la APK de Capacitor) ----------
    La PWA se sirve desde este mismo dominio, así que nunca necesitó CORS
@@ -429,6 +430,44 @@ async function handleAccountDelete(request, env) {
   });
 }
 
+/* ---------- Búsqueda de películas (OMDb) ---------- */
+
+async function handleMoviesSearch(request, env) {
+  const url = new URL(request.url);
+  const q = url.searchParams.get('q') || '';
+  
+  if (!q || q.length < 2) {
+    return errorResponse('Parámetro q requerido (mín. 2 caracteres)', 400);
+  }
+
+  try {
+    const res = await fetch(
+      `https://www.omdbapi.com/?apikey=${OMDB_API_KEY}&s=${encodeURIComponent(q)}&type=movie`
+    );
+    const data = await res.json();
+    
+    // OMDb devuelve { Search: [...], totalResults, Response }
+    // Si Response es "False", la búsqueda no encontró nada — devolvemos array vacío
+    if (data.Response === 'False' || !data.Search) {
+      return json({ resultados: [] });
+    }
+    
+    // Mapeamos al formato que espera el frontend (compatible con TVMaze)
+    const resultados = data.Search.slice(0, 10).map(m => ({
+      id: m.imdbID,
+      name: m.Title,
+      tipo: 'pelicula',
+      image: m.Poster !== 'N/A' ? m.Poster : null,
+      year: m.Year,
+      imdbID: m.imdbID
+    }));
+    
+    return json({ resultados });
+  } catch (err) {
+    return errorResponse('Error buscando en OMDb: ' + err.message, 500);
+  }
+}
+
 /* ---------- Router ---------- */
 
 export default {
@@ -457,6 +496,7 @@ export default {
     else if (url.pathname === '/api/data' && request.method === 'GET') respuesta = await handleDataGet(request, env);
     else if (url.pathname === '/api/data' && request.method === 'POST') respuesta = await handleDataPost(request, env);
     else if (url.pathname === '/api/account' && request.method === 'DELETE') respuesta = await handleAccountDelete(request, env);
+    else if (url.pathname === '/api/movies/search' && request.method === 'GET') respuesta = await handleMoviesSearch(request, env);
     else if (url.pathname === '/version.json' && request.method === 'GET') respuesta = json({ version: APP_LATEST_VERSION });
     else {
       // Todo lo que no sea /api/* se sirve como archivo estático (index.html, etc).
