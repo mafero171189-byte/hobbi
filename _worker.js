@@ -6,6 +6,7 @@
 const GOOGLE_CLIENT_ID = '403618822429-pshtrss0fg4nnojujh6aqqagaboia66h.apps.googleusercontent.com';
 const SESSION_DIAS = 30;
 const OMDB_API_KEY = 'a58fd568'; // OMDb — búsqueda de películas
+const WATCHMODE_API_KEY = 'AqTbQT531bCAi2qT6BB8X8WZAJ0NFIsAjlvVdGUy'; // Watchmode — cartelera (populares, próximos estrenos, por plataforma)
 
 // Versión actual del contenido de la app, para el chequeo de Live Update de
 // la APK (ver index.html: chequearActualizacionApk). Va acá como constante
@@ -520,6 +521,100 @@ async function handleMoviesDetalle(request, env) {
   }
 }
 
+/* ---------- Cartelera de películas (Watchmode) ----------
+   A diferencia de OMDb (solo buscador), Watchmode SÍ tiene "populares",
+   "próximos estrenos" y catálogo filtrado por plataforma de streaming.
+   El plan gratis tiene 1.000 pedidos/mes — como este catálogo es EL MISMO
+   para todos los usuarios (no es nada personal), lo cacheamos acá en KV
+   por 12hs, compartido entre todo el mundo: si 500 personas abren la app
+   en esas 12hs, Watchmode solo se consulta 1 vez, no 500. */
+
+async function watchmodeGet(path, params) {
+  const qs = new URLSearchParams({ apiKey: WATCHMODE_API_KEY, ...params });
+  const res = await fetch(`https://api.watchmode.com/v1${path}?${qs.toString()}`);
+  let data;
+  try { data = await res.json(); } catch { data = null; }
+  return { ok: res.ok, data };
+}
+
+// La lista de plataformas (id numérico de cada una en Watchmode) se resuelve
+// por nombre en vez de hardcodear ids a mano — así no hay riesgo de tener un
+// número viejo/incorrecto; se cachea 24hs porque casi no cambia.
+async function obtenerFuentesWatchmode(env) {
+  const cacheKey = 'watchmode_sources_v1';
+  const cacheado = await env.RATE_LIMIT_KV.get(cacheKey);
+  if (cacheado) {
+    try { return JSON.parse(cacheado); } catch { /* si el cache quedó corrupto, lo repedimos */ }
+  }
+  const { ok, data } = await watchmodeGet('/sources/', {});
+  if (!ok || !Array.isArray(data)) return [];
+  await env.RATE_LIMIT_KV.put(cacheKey, JSON.stringify(data), { expirationTtl: 86400 });
+  return data;
+}
+
+async function resolverSourceId(env, nombrePlataforma) {
+  const fuentes = await obtenerFuentesWatchmode(env);
+  const norm = nombrePlataforma.toLowerCase();
+  const match = fuentes.find(f => f.name && f.name.toLowerCase().includes(norm));
+  return match ? match.id : null;
+}
+
+// Watchmode no siempre trae poster en list-titles (depende del campo que
+// use según el plan) — probamos los nombres de campo más probables, y si no
+// aparece ninguno el frontend ya sabe caer solo al placeholder con inicial
+// (mismo mecanismo que usan las series sin imagen).
+function mapearTituloWatchmode(t) {
+  const poster = t.poster || t.poster_url || t.image_url || null;
+  return {
+    id: 'wm_' + t.id,
+    tipo: 'pelicula',
+    name: t.title,
+    image: poster,
+    year: t.year ? String(t.year) : '',
+    imdbID: t.imdb_id || null
+  };
+}
+
+async function handleMoviesCartelera(request, env) {
+  const url = new URL(request.url);
+  const modo = url.searchParams.get('modo') || 'populares';
+  const plataforma = url.searchParams.get('plataforma') || '';
+
+  const cacheKey = `watchmode_cartelera_v1_${modo}_${plataforma.toLowerCase()}`;
+  const cacheado = await env.RATE_LIMIT_KV.get(cacheKey);
+  if (cacheado) {
+    try { return json(JSON.parse(cacheado)); } catch { /* cache corrupto, seguimos y lo regeneramos */ }
+  }
+
+  const params = { types: 'movie', limit: '20' };
+  if (modo === 'proximos') {
+    const hoy = new Date().toISOString().split('T')[0];
+    params.release_date_start = hoy;
+    params.sort_by = 'release_date_asc';
+  } else if (modo === 'plataforma') {
+    if (!plataforma) return errorResponse('Falta parámetro plataforma', 400);
+    const sourceId = await resolverSourceId(env, plataforma);
+    if (!sourceId) return json({ resultados: [] }); // Watchmode no tiene esa plataforma con ese nombre
+    params.source_ids = String(sourceId);
+    params.sort_by = 'popularity_desc';
+  } else {
+    params.sort_by = 'popularity_desc';
+  }
+
+  try {
+    const { ok, data } = await watchmodeGet('/list-titles/', params);
+    if (!ok || !data) {
+      return errorResponse('Watchmode: ' + (data && (data.statusMessage || data.Error) || 'error desconocido'), 502);
+    }
+    const titulos = Array.isArray(data.titles) ? data.titles.map(mapearTituloWatchmode) : [];
+    const payload = { resultados: titulos };
+    await env.RATE_LIMIT_KV.put(cacheKey, JSON.stringify(payload), { expirationTtl: 43200 }); // 12hs, compartido entre todos
+    return json(payload);
+  } catch (err) {
+    return errorResponse('Error consultando Watchmode: ' + err.message, 500);
+  }
+}
+
 /* ---------- Router ---------- */
 
 export default {
@@ -550,6 +645,7 @@ export default {
     else if (url.pathname === '/api/account' && request.method === 'DELETE') respuesta = await handleAccountDelete(request, env);
     else if (url.pathname === '/api/movies/search' && request.method === 'GET') respuesta = await handleMoviesSearch(request, env);
     else if (url.pathname === '/api/movies/detalle' && request.method === 'GET') respuesta = await handleMoviesDetalle(request, env);
+    else if (url.pathname === '/api/movies/cartelera' && request.method === 'GET') respuesta = await handleMoviesCartelera(request, env);
     else if (url.pathname === '/version.json' && request.method === 'GET') respuesta = json({ version: APP_LATEST_VERSION });
     else {
       // Todo lo que no sea /api/* se sirve como archivo estático (index.html, etc).
