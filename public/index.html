@@ -497,6 +497,17 @@
       .hoy-punto { animation: none; }
     }
 
+    /* Áreas táctiles más grandes y foco visible (accesibilidad) */
+    .modal-close { width: 44px; height: 44px; }
+    .icon-btn { width: 40px; height: 40px; }
+    .ep-visto-btn { width: 36px; height: 36px; font-size: 16px; }
+    .ep-visto-btn::after { content: ''; position: absolute; inset: -4px; }
+    .chip-plat { min-height: 40px; padding: 0 14px; display: inline-flex; align-items: center; }
+    .ep-checkbox { width: 24px; height: 24px; }
+    .mark-season-btn { padding: 9px 12px; }
+    .ver-mas-btn, .translate-btn { display: inline-block; padding: 12px 6px; margin: -12px -6px; }
+    [role="button"]:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; border-radius: 8px; }
+
     /* Carruseles de descubrimiento en la pantalla de Buscar */
     .discover-section { margin-bottom: 22px; }
     .discover-section h3 { font-size: 20px; color: var(--gold); margin-bottom: 10px; }
@@ -660,6 +671,12 @@
       </div>
 
       <div class="ajustes-seccion">
+        <div class="ajustes-seccion-titulo" id="ajustesTituloBackup">Copia de seguridad</div>
+        <button class="ajustes-btn" onclick="exportarCopia()" id="exportarCopiaBtn" style="margin-bottom:8px;">📤 Exportar mis series</button>
+        <button class="ajustes-btn" onclick="importarCopia()" id="importarCopiaBtn">📥 Importar copia</button>
+      </div>
+
+      <div class="ajustes-seccion">
         <button class="ajustes-btn" onclick="abrirAyuda()" id="ajustesAyudaBtn">
           <span id="ajustesAyudaTexto">🧭 Cómo usar Hobbi</span>
           <span>→</span>
@@ -792,6 +809,9 @@
       buscando: 'Buscando...',
       noEncontraron: 'No se encontraron series.',
       pistaTituloOriginal: 'TVMaze guarda los títulos en su idioma original: probá con el nombre en inglés.',
+      ajustesTituloBackup: 'Copia de seguridad', exportarCopia: '📤 Exportar mis series', importarCopia: '📥 Importar copia',
+      copiaExportada: 'Copia lista', copiaInvalida: 'Ese archivo no es una copia válida de Hobbi.', copiaGrande: 'El archivo es demasiado grande.',
+      copiaImportada: (n, v) => `Copia importada: ${n} series nuevas y ${v} episodios vistos.`,
       reintentar: 'Reintentar', muchaDemanda: 'TVMaze está con mucha demanda, reintentando…', hoyBadge: 'HOY',
       filtroTodas: 'Todas', filtroOtras: 'Otras', marcarVistoRiel: 'Marcar como visto', desmarcarVistoRiel: 'Desmarcar como visto',
       minimoLetras: 'Escribí al menos 3 letras para buscar.',
@@ -973,6 +993,9 @@
       buscando: 'Searching...',
       noEncontraron: 'No shows found.',
       pistaTituloOriginal: 'TVMaze lists titles in their original language: try the English name.',
+      ajustesTituloBackup: 'Backup', exportarCopia: '📤 Export my shows', importarCopia: '📥 Import backup',
+      copiaExportada: 'Backup ready', copiaInvalida: 'That file is not a valid Hobbi backup.', copiaGrande: 'The file is too large.',
+      copiaImportada: (n, v) => `Backup imported: ${n} new shows and ${v} watched episodes.`,
       reintentar: 'Retry', muchaDemanda: 'TVMaze is busy, retrying…', hoyBadge: 'TODAY',
       filtroTodas: 'All', filtroOtras: 'Other', marcarVistoRiel: 'Mark as watched', desmarcarVistoRiel: 'Mark as unwatched',
       minimoLetras: 'Type at least 3 letters to search.',
@@ -1324,6 +1347,9 @@
     document.getElementById('ajustesEliminarCuentaBtn').textContent = t('eliminarCuentaBoton');
     document.getElementById('ajustesTituloIdioma').textContent = t('ajustesTituloIdioma');
     document.getElementById('ajustesTituloNotif').textContent = t('ajustesTituloNotif');
+    document.getElementById('ajustesTituloBackup').textContent = t('ajustesTituloBackup');
+    document.getElementById('exportarCopiaBtn').textContent = t('exportarCopia');
+    document.getElementById('importarCopiaBtn').textContent = t('importarCopia');
     document.getElementById('ajustesAnticipacionLabel').textContent = t('anticipacionLabel');
     document.getElementById('menuIdioma').style.display = 'none';
     actualizarMenuIdioma();
@@ -2304,6 +2330,131 @@
   }
 
 
+  /* ==================== PEDIDOS CON TIMEOUT ==================== */
+  // Corta el pedido si TVMaze/la red no responde a tiempo, así no queda "Buscando…" para siempre.
+  // El corte cuenta como fallo de red: fetchJSON lo reintenta y después muestra el error con "Reintentar".
+  async function fetchConTimeout(url, ms = 7000) {
+    if (typeof AbortController === 'undefined') return fetch(url);
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), ms);
+    try { return await fetch(url, { signal: ctrl.signal }); }
+    finally { clearTimeout(timer); }
+  }
+
+  /* ==================== ACCESIBILIDAD: teclado en elementos clickeables ==================== */
+  // Los div/span con role="button" responden a Enter y Espacio como un botón real.
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter' && e.key !== ' ') return;
+    const el = e.target;
+    if (el && el.matches && el.matches('[role="button"]:not(button)')) {
+      e.preventDefault();
+      el.click();
+    }
+  });
+
+  /* ==================== COPIA DE SEGURIDAD (exportar / importar) ==================== */
+  function descargarBlob(blob, nombre) {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = nombre;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 4000);
+  }
+
+  async function exportarCopia() {
+    const hoyISO = new Date().toISOString().slice(0, 10);
+    const nombre = `hobbi-copia-${hoyISO}.json`;
+    const datos = { app: 'hobbi', version: 1, exportado: new Date().toISOString(), favoritos, episodiosVistos };
+    const blob = new Blob([JSON.stringify(datos)], { type: 'application/json' });
+    try {
+      const archivo = new File([blob], nombre, { type: 'application/json' });
+      // En el celu, la hoja de compartir deja guardar en Drive / Archivos / mandarte el archivo.
+      if (navigator.canShare && navigator.canShare({ files: [archivo] })) {
+        await navigator.share({ files: [archivo], title: nombre });
+        mostrarToast(t('copiaExportada'), 'ok');
+        return;
+      }
+    } catch (err) {
+      if (err && err.name === 'AbortError') return; // cerró la hoja de compartir
+    }
+    descargarBlob(blob, nombre);
+    mostrarToast(t('copiaExportada'), 'ok');
+  }
+
+  function importarCopia() {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.json,application/json';
+    input.onchange = async () => {
+      const archivo = input.files && input.files[0];
+      if (!archivo) return;
+      if (archivo.size > 5 * 1024 * 1024) { mostrarToast(t('copiaGrande'), 'error'); return; }
+      let datos;
+      try { datos = JSON.parse(await archivo.text()); } catch { mostrarToast(t('copiaInvalida'), 'error'); return; }
+
+      const favsOk = datos && datos.app === 'hobbi' && Array.isArray(datos.favoritos) && datos.favoritos.length <= 3000
+        && datos.favoritos.every((f) => f && typeof f === 'object' && Number.isInteger(f.id) && typeof f.name === 'string');
+      const vistosEntrada = datos && datos.episodiosVistos;
+      const vistosOk = vistosEntrada && typeof vistosEntrada === 'object' && !Array.isArray(vistosEntrada);
+      if (!favsOk || !vistosOk) { mostrarToast(t('copiaInvalida'), 'error'); return; }
+
+      // Se SUMA a lo que ya hay: no se borra ni se pisa nada.
+      const idsActuales = new Set(favoritos.map((f) => f.id));
+      let nuevas = 0, nuevosVistos = 0;
+      datos.favoritos.forEach((f) => {
+        if (!idsActuales.has(f.id)) { favoritos.push(f); idsActuales.add(f.id); nuevas++; }
+      });
+      Object.keys(vistosEntrada).forEach((id) => {
+        if (/^\d+$/.test(id) && vistosEntrada[id] === true && !episodiosVistos[id]) { episodiosVistos[id] = true; nuevosVistos++; }
+      });
+      guardarDatos();
+      if (vistaActual === 'detalle' && detalleActualId) verDetalles(detalleActualId, false);
+      else cambiarVista(vistaActual, false);
+      mostrarToast(t('copiaImportada')(nuevas, nuevosVistos), 'ok');
+    };
+    input.click();
+  }
+
+  /* ==================== AVISO DIARIO "HOY SALE…" (lo ejecuta el service worker) ==================== */
+  // La página le deja al service worker (vía IndexedDB) qué series seguís y el idioma;
+  // el service worker, cuando Android lo despierta (Periodic Background Sync), mira el
+  // calendario de hoy y avisa una vez por día. Es "mejor esfuerzo": el sistema decide cuándo.
+  function abrirDbSw() {
+    return new Promise((resolve, reject) => {
+      const req = indexedDB.open('hobbi-sw', 1);
+      req.onupgradeneeded = () => req.result.createObjectStore('kv');
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error);
+    });
+  }
+  async function guardarKvSw(clave, valor) {
+    try {
+      const db = await abrirDbSw();
+      await new Promise((resolve) => {
+        const tx = db.transaction('kv', 'readwrite');
+        tx.objectStore('kv').put(valor, clave);
+        tx.oncomplete = tx.onerror = tx.onabort = () => resolve();
+      });
+      db.close();
+    } catch { /* sin IndexedDB: simplemente no hay aviso diario */ }
+  }
+  function publicarEstadoParaSW() {
+    try {
+      guardarKvSw('favoritos', favoritos.map((f) => ({ id: f.id, name: f.name })));
+      guardarKvSw('idioma', idioma);
+    } catch { /* ignorar */ }
+  }
+  async function registrarAvisoDiario() {
+    try {
+      if (!('serviceWorker' in navigator) || !('Notification' in window) || Notification.permission !== 'granted') return;
+      const reg = await navigator.serviceWorker.ready;
+      if (!reg.periodicSync) return;
+      const estado = await navigator.permissions.query({ name: 'periodic-background-sync' });
+      if (estado.state !== 'granted') return;
+      await reg.periodicSync.register('hobbi-hoy', { minInterval: 12 * 60 * 60 * 1000 });
+    } catch { /* no soportado en este navegador */ }
+  }
+
   /* ==================== HELPERS DE UI: ESCAPADO Y ESTADOS ==================== */
   // Escapa texto de fuentes externas (TVMaze, OMDb) antes de meterlo en innerHTML/atributos.
   function esc(v) {
@@ -2513,14 +2664,16 @@
       let res;
       for (let intento = 0; ; intento++) {
         try {
-          res = await fetch(url);
+          res = await fetchConTimeout(url);
           const reintentable = res.status === 429 || res.status >= 500;
           if (res.status === 429 && intento < 2) mostrarToast(t('muchaDemanda'), 'error');
           if (!reintentable || intento >= 2) break;
           const ra = parseInt(res.headers.get('Retry-After'), 10);
           await new Promise(r => setTimeout(r, (ra > 0 ? Math.min(ra, 5) * 1000 : 800 * (intento + 1))));
         } catch (e) {
-          if (intento >= 2) throw e;
+          // Un corte por timeout se reintenta una sola vez (no 3: serían ~30 s de espera);
+          // el resto de los fallos de red, hasta 2 veces.
+          if (intento >= 2 || (e && e.name === 'AbortError' && intento >= 1)) throw e;
           await new Promise(r => setTimeout(r, 800 * (intento + 1)));
         }
       }
@@ -2598,6 +2751,8 @@
     if (permiso === 'granted') {
       mostrarToast(t('notifListo'), 'ok');
       programarTodasLasPendientes();
+      publicarEstadoParaSW();
+      registrarAvisoDiario();
     }
   }
 
@@ -2735,6 +2890,7 @@
     try {
       localStorage.setItem('hobi_favs', JSON.stringify(favoritos));
       localStorage.setItem('hobi_watched_eps', JSON.stringify(episodiosVistos));
+      publicarEstadoParaSW();
     } catch (err) {
       // QuotaExceededError acá ya no debería pasar por culpa del caché de TVMaze
       // (que ahora vive aparte, en IndexedDB) — pero por las dudas seguimos
@@ -3397,6 +3553,9 @@
       const item = document.createElement('div');
       item.className = 'discover-item has-rating';
       item.onclick = () => verDetalles(show.id);
+      item.setAttribute('role', 'button');
+      item.tabIndex = 0;
+      item.setAttribute('aria-label', show.name);
       const tieneImagen = show.image && (show.image.medium || show.image.original);
       const imagen = tieneImagen || placeholderPorNombre(show.name);
       const atrsFallback = tieneImagen ? '' : `data-fallback-nombre="${esc(show.name)}" data-fallback-buscado="0"`;
@@ -3433,7 +3592,7 @@
     section.innerHTML = `
       <div style="display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:10px;">
         <h3 class="marquee" style="margin-bottom:0;">${tituloConEmoji(id)}</h3>
-        <span class="ver-mas-btn" onclick="verCatalogoCompleto('${id}')">${t('verMas')}</span>
+        <span class="ver-mas-btn" role="button" tabindex="0" onclick="verCatalogoCompleto('${id}')">${t('verMas')}</span>
       </div>
     `;
 
@@ -4232,7 +4391,7 @@
         <div class="card-poster-wrap">
           <img src="${imgSrc}" onclick="verDetalles(${show.id})" loading="${loadingAttr}" decoding="async" alt="${esc(show.name)}" class="loading-image" onload="this.classList.remove('loading-image')" onerror="manejarErrorImagen(this)" ${atrsFallback}>
         </div>
-        <div class="card-info" onclick="verDetalles(${show.id})">
+        <div class="card-info" role="button" tabindex="0" onclick="verDetalles(${show.id})">
           <h3>${esc(show.name)}${badgeNuevo}</h3>
           <div class="status ${estado.clase}">${estadoTextoHTML}</div>
           ${ratingLineaHTML}
@@ -4692,7 +4851,7 @@
       sinopsisOriginal = sinopsisPlana;
       // Si la app ya está en inglés, la sinopsis (que TVMaze siempre da en inglés) ya calza: no hace falta el botón.
       const botonTraducirHTML = idioma === 'es'
-        ? `<span class="translate-btn" id="translateBtn" onclick="traducirSinopsis()">${t('traducirBtn')}</span>`
+        ? `<span class="translate-btn" id="translateBtn" role="button" tabindex="0" onclick="traducirSinopsis()">${t('traducirBtn')}</span>`
         : '';
       const sinopsisHTML = sinopsisPlana
         ? `<div class="synopsis">
@@ -4719,7 +4878,7 @@
               if (!persona || !persona.id) return '';
               const imagen = (persona.image && (persona.image.medium || persona.image.original)) || ACTOR_PLACEHOLDER;
               return `
-                <div class="discover-item actor-item" onclick="verSeriesDeActor(${persona.id}, ${JSON.stringify(persona.name).replace(/"/g, '&quot;')})">
+                <div class="discover-item actor-item" role="button" tabindex="0" onclick="verSeriesDeActor(${persona.id}, ${JSON.stringify(persona.name).replace(/"/g, '&quot;')})">
                   <img src="${imagen}" alt="${esc(persona.name)}" loading="lazy" onerror="this.onerror=null; this.src='${ACTOR_PLACEHOLDER}';">
                   <div class="discover-name">${esc(persona.name)}</div>
                   ${personaje && personaje.name ? `<div class="discover-name" style="color:var(--ink-muted); font-weight:400;">${esc(personaje.name)}</div>` : ''}
@@ -4731,7 +4890,7 @@
         : '';
 
       let html = `
-        <div class="detail-header" style="--detail-header-bg: url('${show.image && (show.image.original || show.image.medium) ? (show.image.original || show.image.medium).replace(/'/g, "\'") : ''}');">
+        <div class="detail-header" style="--detail-header-bg: url('${show.image && (show.image.medium || show.image.original) ? (show.image.medium || show.image.original).replace(/'/g, "\'") : ''}');">
           <button class="fav-btn" id="detailFavBtn" onclick="toggleFavorito(event, ${JSON.stringify(serieParaFav).replace(/"/g, '&quot;')})" aria-label="${esFavActual ? t('quitarDeFavoritos') : t('agregarAFavoritos')}">
             ${esFavActual ? '❤️' : '🤍'}
           </button>
@@ -4794,7 +4953,7 @@
       }
       // Actualizar con la URL del póster actual
       if (show.image && (show.image.medium || show.image.original)) {
-        blurBg.style.backgroundImage = `url('${show.image.original || show.image.medium}')`;
+        blurBg.style.backgroundImage = `url('${show.image.medium || show.image.original}')`;
         blurBg.style.display = 'block';
       } else {
         blurBg.style.display = 'none';
@@ -5017,7 +5176,7 @@
     const atrsFallbackSinVer = ep.imagen ? '' : `data-fallback-nombre="${ep.serieNombre.replace(/"/g, '&quot;')}" data-fallback-buscado="0"`;
     card.innerHTML = `
       <img src="${ep.imagen || placeholderPorNombre(ep.serieNombre)}" loading="lazy" onclick="verDetalles(${ep.serieId})" onerror="manejarErrorImagen(this)" ${atrsFallbackSinVer}>
-      <div class="sinver-info" onclick="verDetalles(${ep.serieId})">
+      <div class="sinver-info" role="button" tabindex="0" onclick="verDetalles(${ep.serieId})">
         <h4>${ep.serieNombre}</h4>
         <div class="sinver-badge">📺 ${etiquetaEpisodio}</div>
         <div class="sinver-fecha">${fechaTexto}</div>
@@ -5120,7 +5279,7 @@
           <span class="time-unit">${unidad}</span>
           <div class="timeline-dot"></div>
         </div>
-        <div class="timeline-card" onclick="verDetalles(${ep.serieId})">
+        <div class="timeline-card" role="button" tabindex="0" onclick="verDetalles(${ep.serieId})">
           <img src="${ep.imagen || placeholderPorNombre(ep.serieNombre)}" loading="lazy" onerror="manejarErrorImagen(this)" ${atrsFallbackTimeline}>
           <div class="timeline-card-info">
             <h4>${ep.serieNombre}</h4>
@@ -5213,7 +5372,7 @@
       const atrsFallbackTemp = temp.imagen ? '' : `data-fallback-nombre="${temp.serieNombre.replace(/"/g, '&quot;')}" data-fallback-buscado="0"`;
 
       card.innerHTML = `
-        <div class="season-upcoming-top" onclick="verDetalles(${temp.serieId})">
+        <div class="season-upcoming-top" role="button" tabindex="0" onclick="verDetalles(${temp.serieId})">
           <img src="${temp.imagen || placeholderPorNombre(temp.serieNombre)}" alt="${temp.serieNombre}" loading="lazy" onerror="manejarErrorImagen(this)" ${atrsFallbackTemp}>
           <div class="season-upcoming-info">
             <h4>${temp.serieNombre}</h4>
@@ -5572,6 +5731,8 @@
     if ('serviceWorker' in navigator) {
       // Se registra al cargar la página, sin bloquear nada del render.
       window.addEventListener('load', () => {
+        publicarEstadoParaSW();
+        registrarAvisoDiario();
         navigator.serviceWorker.register('/sw.js').then((registration) => {
           // Escuchamos mensajes del Service Worker (ej: "hay actualización disponible").
           navigator.serviceWorker.addEventListener('message', (event) => {
