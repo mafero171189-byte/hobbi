@@ -184,7 +184,9 @@
     .bottom-nav { position: fixed; left: 0; right: 0; bottom: 0; z-index: 500; display: flex; justify-content: center; background: var(--nav-bg); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border-top: 1px solid var(--border); padding-bottom: env(safe-area-inset-bottom); }
     .bottom-nav-inner { width: 100%; max-width: 480px; display: flex; }
     .bottom-nav-btn { flex: 1; background: none; border: none; color: var(--ink-muted); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; padding: 10px 4px 8px; cursor: pointer; font-size: 10px; font-weight: 600; letter-spacing: 0.2px; }
-    .bottom-nav-btn .bottom-nav-icon { font-size: 22px; line-height: 1; filter: grayscale(1) opacity(0.7); transition: filter 0.15s ease; }
+    .bottom-nav-btn .bottom-nav-icon { font-size: 22px; line-height: 1; filter: grayscale(1) opacity(0.7); transition: filter 0.15s ease; position: relative; }
+    .tab-badge { position: absolute; top: -5px; right: -11px; min-width: 17px; height: 17px; padding: 0 4px; border-radius: 9px; background: var(--danger); color: #fff; font-size: 10px; font-weight: 800; line-height: 17px; text-align: center; letter-spacing: 0; filter: none; box-shadow: 0 0 0 2px var(--bg); }
+    .tab-badge[hidden] { display: none; }
     .bottom-nav-btn.active { color: var(--gold); }
     .bottom-nav-btn.active .bottom-nav-icon { filter: none; }
     @media (prefers-reduced-motion: reduce) {
@@ -853,7 +855,7 @@
       <span class="bottom-nav-icon">🏠</span><span id="tSearch">Inicio</span>
     </button>
     <button class="bottom-nav-btn" id="tabFavs" onclick="vibrarTap(); cambiarVista('favoritos')" role="tab" aria-selected="false">
-      <span class="bottom-nav-icon">❤️</span><span id="tFavs">Favoritos</span>
+      <span class="bottom-nav-icon">❤️<span class="tab-badge" id="tabFavsBadge" hidden></span></span><span id="tFavs">Favoritos</span>
     </button>
     <button class="bottom-nav-btn" id="tabCalendar" onclick="vibrarTap(); cambiarVista('calendario')" role="tab" aria-selected="false">
       <span class="bottom-nav-icon">📅</span><span id="tCalendar">Calendario</span>
@@ -893,7 +895,7 @@
       ajustesTituloBackup: 'Copia de seguridad', exportarCopia: '📤 Exportar mis series', importarCopia: '📥 Importar copia',
       copiaExportada: 'Copia lista', copiaInvalida: 'Ese archivo no es una copia válida de Hobbi.', copiaGrande: 'El archivo es demasiado grande.',
       copiaImportada: (n, v) => `Copia importada: ${n} series nuevas y ${v} episodios vistos.`,
-      deshacer: 'Deshacer', borrarBusqueda: 'Borrar búsqueda', buscarSerieAria: 'Buscar serie',
+      tabFavsConNuevos: (n) => `${n} con episodios nuevos`, deshacer: 'Deshacer', borrarBusqueda: 'Borrar búsqueda', buscarSerieAria: 'Buscar serie',
       ajustesTituloTema: 'Apariencia', temaLabel: 'Tema', temaOscuro: 'Oscuro', temaClaro: 'Claro', temaAuto: 'Automático (como el celu)',
       tiempoAgotado: 'tiempo de espera agotado',
       syncReintentoAuto: 'Reintento automático', reintentar: 'Reintentar', muchaDemanda: 'TVMaze está con mucha demanda, reintentando…', hoyBadge: 'HOY',
@@ -1080,7 +1082,7 @@
       ajustesTituloBackup: 'Backup', exportarCopia: '📤 Export my shows', importarCopia: '📥 Import backup',
       copiaExportada: 'Backup ready', copiaInvalida: 'That file is not a valid Hobbi backup.', copiaGrande: 'The file is too large.',
       copiaImportada: (n, v) => `Backup imported: ${n} new shows and ${v} watched episodes.`,
-      deshacer: 'Undo', borrarBusqueda: 'Clear search', buscarSerieAria: 'Search shows',
+      tabFavsConNuevos: (n) => `${n} with new episodes`, deshacer: 'Undo', borrarBusqueda: 'Clear search', buscarSerieAria: 'Search shows',
       ajustesTituloTema: 'Appearance', temaLabel: 'Theme', temaOscuro: 'Dark', temaClaro: 'Light', temaAuto: 'Automatic (follow phone)',
       tiempoAgotado: 'request timed out',
       syncReintentoAuto: 'Retrying automatically', reintentar: 'Retry', muchaDemanda: 'TVMaze is busy, retrying…', hoyBadge: 'TODAY',
@@ -1293,6 +1295,7 @@
     document.getElementById('ajustesAcercaDeTexto') && (document.getElementById('ajustesAcercaDeTexto').textContent = t('ajustesAcercaDe'));
     document.getElementById('ajustesFAQTexto') && (document.getElementById('ajustesFAQTexto').textContent = t('ajustesFAQTexto'));
     document.getElementById('tFavs').textContent = t('favoritos');
+    actualizarBadgeTabFavoritos(); // la etiqueta accesible del tab incluye el idioma
     document.getElementById('tCalendar').textContent = t('calendario');
     document.getElementById('searchInput').placeholder = t('searchPlaceholder');
     document.getElementById('filtroFavoritos').placeholder = t('filtroFavPlaceholder');
@@ -1434,6 +1437,7 @@
     document.getElementById('ajustesEliminarCuentaBtn').textContent = t('eliminarCuentaBoton');
     document.getElementById('ajustesTituloIdioma').textContent = t('ajustesTituloIdioma');
     document.getElementById('ajustesTituloNotif').textContent = t('ajustesTituloNotif');
+    actualizarBadgeTabFavoritos();
     document.getElementById('ajustesTituloBackup').textContent = t('ajustesTituloBackup');
     document.getElementById('ajustesTituloTema').textContent = t('ajustesTituloTema');
     document.getElementById('ajustesTemaLabel').textContent = t('temaLabel');
@@ -2342,6 +2346,7 @@
     // Esperamos a que el caché esté hidratado antes de arrancar cualquier
     // pedido que pueda aprovecharlo (pósters de onboarding, sesión existente).
     await cacheListo;
+    actualizarBadgeTabFavoritos(); // la caché ya está cargada: primer cálculo del contador
     // No lo esperamos (sin await): es un chequeo secundario, no debe demorar
     // el arranque real de la app.
     chequearActualizacionApk();
@@ -2503,6 +2508,7 @@
   function marcarBadgeNuevoVisto(showId) {
     badgeNuevoVisto[showId] = Date.now();
     localStorage.setItem('hobi_badge_nuevo_visto', JSON.stringify(badgeNuevoVisto));
+    actualizarBadgeTabFavoritos();
   }
 
 
@@ -2774,7 +2780,52 @@
      del Map); guardarCache() escribe al Map al toque Y persiste en IndexedDB
      en segundo plano. */
   const CACHE_TTL_MS = 3 * 60 * 60 * 1000; // 3 horas
-  const CACHE_MAX_EDAD_MS = 7 * 24 * 60 * 60 * 1000; // 7 días: más viejo que esto, se borra solo
+  const CACHE_MAX_EDAD_MS = 7 * 24 * 60 * 60 * 1000; // piso: nada se borra antes de 7 días (lo que dura más, se borra a 2× su vida útil)
+
+  /* Cuánto dura cada tipo de dato antes de considerarse "vencido" (y volver a pedirse a TVMaze).
+     Antes todo duraba 3 h; pero un día del calendario ya pasado, o una serie terminada, casi no cambian.
+     Cuanto menos se repite un pedido, menos cupo de TVMaze se gasta y más rápido carga todo. */
+  const HORA_MS = 60 * 60 * 1000;
+  const ultimoEpisodioCache = new WeakMap();
+  function tsUltimoEpisodio(episodios) {
+    if (!Array.isArray(episodios)) return null;
+    if (ultimoEpisodioCache.has(episodios)) return ultimoEpisodioCache.get(episodios);
+    let max = null;
+    for (const ep of episodios) {
+      const t = ep && (ep.airstamp ? new Date(ep.airstamp).getTime() : (ep.airdate ? new Date(ep.airdate + 'T12:00:00').getTime() : NaN));
+      if (Number.isFinite(t) && (max === null || t > max)) max = t;
+    }
+    ultimoEpisodioCache.set(episodios, max);
+    return max;
+  }
+  function ttlParaClave(key, data) {
+    // Calendario por día: hoy y mañana cambian seguido; los pasados ya no; los lejanos casi no.
+    let m = /^schedule_web_(\d{4})-(\d{2})-(\d{2})$/.exec(key);
+    if (m) {
+      const dia = new Date(+m[1], +m[2] - 1, +m[3]);
+      const hoy = new Date(); hoy.setHours(0, 0, 0, 0);
+      const diff = Math.round((dia - hoy) / 86400000);
+      if (diff < 0) return 24 * HORA_MS;
+      if (diff <= 1) return 3 * HORA_MS;
+      return 12 * HORA_MS;
+    }
+    // Episodios de una serie: si tiene algo por salir (o reciente) se mantiene 3 h; si lleva meses sin
+    // emitir nada, 24 h. (No más: si anuncian temporada nueva, tiene que enterarse en un día.)
+    if (/^eps_\d+$/.test(key)) {
+      const ult = tsUltimoEpisodio(data);
+      if (ult !== null && Date.now() - ult > 60 * 24 * HORA_MS) return 24 * HORA_MS;
+      return 3 * HORA_MS;
+    }
+    if (/^(show|seasons)_\d+$/.test(key)) return 6 * HORA_MS;            // ficha y temporadas
+    if (/^season_eps_\d+$/.test(key)) return 12 * HORA_MS;
+    if (/^(cast|castcredits)_\d+$/.test(key)) return 7 * 24 * HORA_MS;   // reparto: casi nunca cambia
+    if (/^shows_page\d+$/.test(key)) return 12 * HORA_MS;                // listas de populares
+    if (key.startsWith('poster_')) {                                      // póster de respaldo (OMDb)
+      const hayPoster = data && typeof data.poster === 'string' && data.poster;
+      return hayPoster ? 30 * 24 * HORA_MS : 24 * HORA_MS;                // "sin póster" se reintenta en 1 día
+    }
+    return CACHE_TTL_MS;                                                  // búsquedas y el resto: 3 h
+  }
   const IDB_DB_NAME = 'hobbi_cache_db';
   const IDB_STORE_NAME = 'tvmaze_cache';
   const IDB_VERSION = 1;
@@ -2855,7 +2906,7 @@
     const ahora = Date.now();
     const keysVencidas = [];
     memoriaCache.forEach((valor, key) => {
-      if (ahora - (valor.ts || 0) > CACHE_MAX_EDAD_MS) keysVencidas.push(key);
+      if (ahora - (valor.ts || 0) > Math.max(CACHE_MAX_EDAD_MS, 2 * ttlParaClave(key, valor.data))) keysVencidas.push(key);
     });
     if (!keysVencidas.length) return;
     keysVencidas.forEach(key => memoriaCache.delete(key));
@@ -2877,12 +2928,13 @@
   function leerCache(key) {
     const entrada = memoriaCache.get(key);
     if (!entrada) return null;
-    return { data: entrada.data, vencido: (Date.now() - entrada.ts) > CACHE_TTL_MS };
+    return { data: entrada.data, vencido: (Date.now() - entrada.ts) > ttlParaClave(key, entrada.data) };
   }
 
   function guardarCache(key, data) {
     const entrada = { data, ts: Date.now() };
     memoriaCache.set(key, entrada); // disponible al instante para lecturas síncronas
+    if (key.startsWith('eps_')) actualizarBadgeTabFavoritos(); // llegaron episodios: puede cambiar el contador
     (async () => {
       try {
         const db = await abrirIDB();
@@ -3195,6 +3247,7 @@
       localStorage.setItem('hobi_favs', JSON.stringify(favoritos));
       localStorage.setItem('hobi_watched_eps', JSON.stringify(episodiosVistos));
       publicarEstadoParaSW();
+      actualizarBadgeTabFavoritos();
     } catch (err) {
       // QuotaExceededError acá ya no debería pasar por culpa del caché de TVMaze
       // (que ahora vive aparte, en IndexedDB) — pero por las dudas seguimos
@@ -3336,6 +3389,27 @@
       vibrarTap();
       cambiarVista(siguiente);
     });
+  }
+
+  /* ==================== CONTADOR DE "SIN VER" EN EL TAB DE FAVORITOS ====================
+     Cuenta cuántas de tus series tienen episodios ya emitidos que no viste (el mismo criterio del "🔴 Nuevo"
+     de cada tarjeta). Se calcula solo con lo que ya está en la caché: no hace ningún pedido. */
+  // `var` a propósito: aplicarIdioma() llama a esta función durante el arranque, antes de que corra esta línea;
+  // con `let` eso cortaba el script entero (zona muerta temporal).
+  var timerBadgeFavs = null;
+  function actualizarBadgeTabFavoritos() {
+    clearTimeout(timerBadgeFavs);
+    timerBadgeFavs = setTimeout(() => {
+      const el = document.getElementById('tabFavsBadge');
+      const tab = document.getElementById('tabFavs');
+      if (!el || !tab) return;
+      let n = 0;
+      try { n = favoritos.filter((f) => hayEpisodioNuevoSinVer(f)).length; } catch { n = 0; }
+      el.hidden = n === 0;
+      el.textContent = n > 9 ? '9+' : String(n);
+      const etiquetaTab = (document.getElementById('tFavs') || {}).textContent || 'Favoritos';
+      tab.setAttribute('aria-label', n ? `${etiquetaTab}, ${t('tabFavsConNuevos')(n)}` : etiquetaTab);
+    }, 120);
   }
 
   /* ==================== ESTADO DE PANTALLA (búsqueda y scroll al volver) ====================
@@ -6051,6 +6125,7 @@
   }
 
   function renderizarFavoritos() {
+    actualizarBadgeTabFavoritos();
     const container = document.getElementById('seriesList');
     const orden = document.getElementById('ordenFavoritos').value;
     const estado = document.getElementById('estadoFavoritos').value;
