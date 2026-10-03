@@ -2963,7 +2963,7 @@
     if (!url.startsWith('https://api.tvmaze.com/')) return;
     const cfg = window.HOBBI_CUPO_TVMAZE || {};
     const ventana = cfg.ventanaMs || 10000;
-    const limite = prioritario ? (cfg.limitePrioritario || 18) : (cfg.limite || 15);
+    const limite = prioritario ? (cfg.limitePrioritario || 19) : (cfg.limite || 17); // TVMaze corta a ~20 por 10 s: se deja 1-3 de margen
     if (prioritario) prioritariosEsperando++;
     try {
       for (;;) {
@@ -3678,12 +3678,14 @@
      lotes de 8 sin pausa, el Inicio se comía todo el presupuesto y dejaba
      al buscador sin cupo. Si el usuario está buscando, la pausa se duplica
      para que la búsqueda tenga prioridad. */
-  async function fetchEnLotesSuaves(items, fn, { tamanoLote = 4, pausaMs = 2200, necesitaRed = () => true } = {}) {
+  async function fetchEnLotesSuaves(items, fn, { tamanoLote = 4, pausaMs = 2200, necesitaRed = () => true, onLote = null } = {}) {
     const resultados = [];
     for (let i = 0; i < items.length; i += tamanoLote) {
       const lote = items.slice(i, i + tamanoLote);
       const usaRed = lote.some(necesitaRed);
       resultados.push(...await Promise.all(lote.map(fn)));
+      // Aviso de avance: lo acumulado hasta ahora (para poder mostrar resultados parciales).
+      if (onLote && i + tamanoLote < items.length) { try { onLote(resultados.slice()); } catch { /* un error al pintar no corta la carga */ } }
       if (usaRed && i + tamanoLote < items.length) {
         const inputBusqueda = document.getElementById('searchInput');
         const buscando = !!(inputBusqueda && inputBusqueda.value.trim());
@@ -3781,7 +3783,7 @@
       const d = new Date(inicioHoy); d.setDate(d.getDate() + i);
       fechas.push(formatearFechaISO(d));
     }
-    const dias = await fetchEnLotesSuaves(fechas, traerDiaSchedule, { tamanoLote: 4, pausaMs: 2000, necesitaRed: diaScheduleSinCache });
+    const dias = await fetchEnLotesSuaves(fechas, traerDiaSchedule, { tamanoLote: 4, pausaMs: 250, necesitaRed: diaScheduleSinCache });
     const momento = (ep) => new Date(ep.airstamp || `${ep.airdate}T00:00:00`);
     const porFecha = (a, b) => momento(a) - momento(b);
     const entradas = dias.flat().flatMap(normalizarEntradaWeb)
@@ -3806,7 +3808,7 @@
       fechasPasadas.push(formatearFechaISO(d));
     }
     // En lotes chicos y con pausa (antes: 5 pedidos de golpe al arrancar, compitiendo con lo que va primero).
-    const episodiosPasados = await fetchEnLotesSuaves(fechasPasadas, traerDiaSchedule, { tamanoLote: 3, pausaMs: 1500, necesitaRed: diaScheduleSinCache });
+    const episodiosPasados = await fetchEnLotesSuaves(fechasPasadas, traerDiaSchedule, { tamanoLote: 3, pausaMs: 250, necesitaRed: diaScheduleSinCache });
 
     // Nuevas: el primer capítulo de una serie (T1E1) salió en los últimos 5 días.
     return sinDuplicadosDeShow(
@@ -3837,7 +3839,7 @@
      días, así que se arma aparte en obtenerProximosEstrenos: esa sigue el
      resto del trabajo en segundo plano mientras el usuario ya está viendo
      Vuelven/Estrenos. */
-  async function obtenerEstrenosYVuelven() {
+  async function obtenerEstrenosYVuelven({ onParcial = null } = {}) {
     const hoy = new Date();
     const finDeMes = new Date(hoy.getFullYear(), hoy.getMonth() + 1, 0);
     const diasHastaFinDeMes = Math.round((finDeMes - hoy) / (24 * 60 * 60 * 1000));
@@ -3847,20 +3849,20 @@
       fechas.push(formatearFechaISO(d));
     }
 
-    const episodios = await fetchEnLotesSuaves(fechas, traerDiaSchedule, { tamanoLote: 5, pausaMs: 1500, necesitaRed: diaScheduleSinCache });
-    const entradasE1 = episodios.flat().flatMap(normalizarEntradaWeb).filter((ep) => ep.number === 1);
+    const armar = (episodios) => {
+      const entradasE1 = episodios.flat().flatMap(normalizarEntradaWeb).filter((ep) => ep.number === 1);
+      const porPeso = (a, b) => (b.show.weight || 0) - (a.show.weight || 0) || new Date(a.airstamp || a.airdate) - new Date(b.airstamp || b.airdate);
+      return {
+        estrenos: sinDuplicadosDeShow(entradasE1.filter((ep) => ep.season === 1).sort(porPeso)),
+        vuelven: sinDuplicadosDeShow(entradasE1.filter((ep) => ep.season > 1).sort(porPeso))
+      };
+    };
 
-    const estrenos = sinDuplicadosDeShow(
-      entradasE1.filter((ep) => ep.season === 1)
-        .sort((a, b) => (b.show.weight || 0) - (a.show.weight || 0) || new Date(a.airstamp || a.airdate) - new Date(b.airstamp || b.airdate))
-    );
-
-    const vuelven = sinDuplicadosDeShow(
-      entradasE1.filter((ep) => ep.season > 1)
-        .sort((a, b) => (b.show.weight || 0) - (a.show.weight || 0) || new Date(a.airstamp || a.airdate) - new Date(b.airstamp || b.airdate))
-    );
-
-    return { estrenos, vuelven };
+    const episodios = await fetchEnLotesSuaves(fechas, traerDiaSchedule, {
+      tamanoLote: 5, pausaMs: 250, necesitaRed: diaScheduleSinCache,
+      onLote: onParcial ? (acumulado) => onParcial(armar(acumulado)) : null
+    });
+    return armar(episodios);
   }
 
   /* Próximos Estrenos: series totalmente nuevas (T1E1) confirmadas en los 90
@@ -3870,7 +3872,7 @@
      los meses siguientes. Se pide aparte porque es la parte lenta (91
      pedidos en lotes de 8 → ~12 rondas secuenciales) y no debe bloquear a
      Estrenos/Vuelven, que son las secciones que el usuario ve primero. */
-  async function obtenerCatalogoProximosEstrenos() {
+  async function obtenerCatalogoProximosEstrenos({ onParcial = null } = {}) {
     // Resultado ya armado y cacheado (3hs, igual que el resto): si el usuario
     // vuelve al Inicio, no se rehace nada ni se toca la red.
     const CLAVE_ARMADO = 'proximos_estrenos_armado_v1';
@@ -3887,13 +3889,16 @@
       fechasFuturas.push(formatearFechaISO(d));
     }
 
-    const episodiosFuturos = await fetchEnLotesSuaves(fechasFuturas, traerDiaSchedule, { tamanoLote: 4, pausaMs: 2200, necesitaRed: diaScheduleSinCache });
-    const futurosE1 = episodiosFuturos.flat().flatMap(normalizarEntradaWeb).filter((ep) => ep.number === 1);
-
-    const proximosEstrenos = sinDuplicadosDeShow(
-      futurosE1.filter((ep) => ep.season === 1)
+    const armarProximos = (episodios) => sinDuplicadosDeShow(
+      episodios.flat().flatMap(normalizarEntradaWeb)
+        .filter((ep) => ep.number === 1 && ep.season === 1)
         .sort((a, b) => new Date(a.airstamp || a.airdate) - new Date(b.airstamp || b.airdate))
     );
+    const episodiosFuturos = await fetchEnLotesSuaves(fechasFuturas, traerDiaSchedule, {
+      tamanoLote: 4, pausaMs: 250, necesitaRed: diaScheduleSinCache,
+      onLote: onParcial ? (acumulado) => onParcial({ proximosEstrenos: armarProximos(acumulado) }) : null
+    });
+    const proximosEstrenos = armarProximos(episodiosFuturos);
 
     const resultado = { proximosEstrenos };
     guardarCache(CLAVE_ARMADO, resultado);
@@ -4416,6 +4421,29 @@
     holder.innerHTML = `<p style="text-align:center; color:var(--ink-muted); font-size:13px;">${t('noSePudoCargarCatalogo')}</p>`;
   }
 
+  /* Carga perezosa del Inicio: cada grupo de rieles se pide recién cuando su lugar está cerca de la
+     pantalla (a ~500 px). Antes se pedía TODO al abrir, ~55 pedidos a TVMaze (que corta a ~20 cada
+     10 s): con la caché vacía eran más de 30 s hasta completar rieles que ni estabas mirando.
+     Ahora lo de arriba carga primero y lo de abajo solo si scrolleás hasta ahí (y si no, nunca se pide).
+     Si el navegador no soporta IntersectionObserver, se pide todo enseguida, como antes. */
+  function cuandoVisibleSlot(holder, ids, fn, margenPx = 500) {
+    return new Promise((resolve) => {
+      const slots = ids.map((id) => holder.querySelector(`[data-seccion="${id}"]`)).filter(Boolean);
+      let hecho = false, obs = null;
+      const ejecutar = () => {
+        if (hecho) return;
+        hecho = true;
+        if (obs) obs.disconnect();
+        try { resolve(fn()); } catch (e) { resolve(Promise.reject(e)); }
+      };
+      if (!slots.length || typeof IntersectionObserver === 'undefined') { ejecutar(); return; }
+      obs = new IntersectionObserver((entradas) => {
+        if (entradas.some((e) => e.isIntersecting)) ejecutar();
+      }, { rootMargin: `${margenPx}px 0px ${margenPx}px 0px` });
+      slots.forEach((el) => obs.observe(el));
+    });
+  }
+
   async function cargarDescubrimiento() {
     const holder = document.getElementById('discoverHolder');
     if (!holder) return;
@@ -4427,7 +4455,21 @@
     // revalida que el holder siga siendo el actual antes de tocar el DOM.
     const holderVigente = () => document.getElementById('discoverHolder') === holder;
 
-    obtenerPopulares().then((popularesPool) => {
+    // Nuevos episodios va primero (es lo primero del Inicio): arranca antes que nada.
+    const pNuevosEp = obtenerNuevosEpisodios().then((nuevosEpisodios) => {
+      if (!holderVigente()) return;
+      nuevosEpisodiosTodos = nuevosEpisodios;
+      filtroPlataformaNuevosEp = 'todas';
+      resolverSlotDescubrimiento(holder, 'nuevosEpisodios', nuevosEpisodios, true);
+      quitarSlotSiQuedoVacio(holder);
+    }).catch(() => {
+      if (!holderVigente()) return;
+      resolverSlotDescubrimiento(holder, 'nuevosEpisodios', []);
+      quitarSlotSiQuedoVacio(holder);
+    });
+
+    // Populares (los rieles de más abajo): recién se piden cuando te acercás scrolleando.
+    pNuevosEp.then(() => cuandoVisibleSlot(holder, ['populares', 'popularesHollywood', 'popularesCoreana', 'popularesTurca', 'popularesLatina'], () => obtenerPopulares())).then((popularesPool) => {
       if (!holderVigente()) return;
       const populares = elegirAlAzar(popularesPool, 120);
       const porRegion = armarPopularesPorRegion(popularesPool);
@@ -4444,22 +4486,24 @@
       quitarSlotSiQuedoVacio(holder);
     });
 
-    // Nuevos episodios va primero (es lo primero del Inicio): arranca antes que nada.
-    const pNuevosEp = obtenerNuevosEpisodios().then((nuevosEpisodios) => {
-      if (!holderVigente()) return;
-      nuevosEpisodiosTodos = nuevosEpisodios;
-      filtroPlataformaNuevosEp = 'todas';
-      resolverSlotDescubrimiento(holder, 'nuevosEpisodios', nuevosEpisodios, true);
-      quitarSlotSiQuedoVacio(holder);
-    }).catch(() => {
-      if (!holderVigente()) return;
-      resolverSlotDescubrimiento(holder, 'nuevosEpisodios', []);
-      quitarSlotSiQuedoVacio(holder);
-    });
 
     // Estrenos/Vuelven arrancan recién cuando terminó Nuevos episodios (que ahora va primero en el Inicio);
     // los días que comparten ya están en caché, así que casi no suman pedidos.
-    const pEstrenos = pNuevosEp.then(() => obtenerEstrenosYVuelven()).then(({ estrenos, vuelven }) => {
+    /* Estrenos/Vuelven necesitan todos los días del mes (hasta ~28 pedidos, y TVMaze corta a ~20 por 10 s).
+       En vez de esperar a tenerlos todos, se pinta con lo que va llegando (como mucho cada 0,6 s) y al
+       final se pinta el resultado completo. Los rieles aparecen en ~1-2 s y se van completando. */
+    let ultimoParcialEstrenos = 0;
+    const pintarParcialEstrenos = ({ estrenos, vuelven }) => {
+      if (!holderVigente() || Date.now() - ultimoParcialEstrenos < 600) return;
+      ultimoParcialEstrenos = Date.now();
+      if (vuelven.length) resolverSlotDescubrimiento(holder, 'vuelven', vuelven, true);
+      if (estrenos.length) {
+        resolverSlotDescubrimiento(holder, 'estrenos', estrenos, true);
+        const hollywood = armarEstrenosHollywood(estrenos);
+        if (hollywood.length) resolverSlotDescubrimiento(holder, 'estrenosHollywood', hollywood, true);
+      }
+    };
+    const pEstrenos = pNuevosEp.then(() => cuandoVisibleSlot(holder, ['vuelven', 'estrenos', 'estrenosHollywood'], () => obtenerEstrenosYVuelven({ onParcial: pintarParcialEstrenos }))).then(({ estrenos, vuelven }) => {
       if (!holderVigente()) return;
       const estrenosHollywood = armarEstrenosHollywood(estrenos);
       resolverSlotDescubrimiento(holder, 'vuelven', vuelven, true);
@@ -4474,7 +4518,7 @@
     });
 
     // "Nuevas" va después de Nuevos episodios y de Estrenos/Vuelven (está más abajo en la pantalla).
-    const pNuevas = pEstrenos.then(() => obtenerNuevas()).then((nuevas) => {
+    const pNuevas = pNuevosEp.then(() => cuandoVisibleSlot(holder, ['nuevas'], () => obtenerNuevas())).then((nuevas) => {
       if (!holderVigente()) return;
       resolverSlotDescubrimiento(holder, 'nuevas', nuevas.map(ep => ep.show));
       quitarSlotSiQuedoVacio(holder);
@@ -4486,7 +4530,16 @@
 
     // Próximos Estrenos es lo más pesado: arranca recién cuando terminaron Estrenos/Vuelven
     // y Nuevos episodios (ambas cadenas terminan en .catch, nunca rechazan).
-    Promise.all([pEstrenos, pNuevosEp, pNuevas]).then(() => obtenerCatalogoProximosEstrenos()).then(({ proximosEstrenos }) => {
+    // Igual que Estrenos/Vuelven: se pinta con lo que va llegando y al final con todo.
+    let ultimoParcialProximos = 0;
+    const pintarParcialProximos = ({ proximosEstrenos }) => {
+      if (!holderVigente() || !proximosEstrenos.length || Date.now() - ultimoParcialProximos < 600) return;
+      ultimoParcialProximos = Date.now();
+      const porPlataforma = armarProximosPorPlataforma(proximosEstrenos);
+      const rieles = { proximosEstrenos, proximosNetflix: porPlataforma.netflix, proximosPrimeVideo: porPlataforma.primevideo, proximosHboMax: porPlataforma.hbomax, proximosAppleTv: porPlataforma.appletv, proximosDisney: porPlataforma.disney, proximosHulu: porPlataforma.hulu, proximosParamount: porPlataforma.paramount };
+      Object.entries(rieles).forEach(([id, items]) => { if (items && items.length) resolverSlotDescubrimiento(holder, id, items, true); });
+    };
+    pNuevosEp.then(() => cuandoVisibleSlot(holder, ['proximosEstrenos', 'proximosNetflix', 'proximosPrimeVideo', 'proximosHboMax', 'proximosAppleTv', 'proximosDisney', 'proximosHulu', 'proximosParamount'], () => obtenerCatalogoProximosEstrenos({ onParcial: pintarParcialProximos }))).then(({ proximosEstrenos }) => {
       if (!holderVigente()) return;
       const proximosPorPlataforma = armarProximosPorPlataforma(proximosEstrenos);
       resolverSlotDescubrimiento(holder, 'proximosEstrenos', proximosEstrenos, true);
