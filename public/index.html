@@ -2420,7 +2420,21 @@
       return cache.data;
     }
     try {
-      const res = await fetch(url);
+      // TVMaze limita a ~20 pedidos cada 10s por IP (responde 429) y a veces
+      // tira 5xx o corta la conexión: reintentamos hasta 3 veces con espera.
+      let res;
+      for (let intento = 0; ; intento++) {
+        try {
+          res = await fetch(url);
+          const reintentable = res.status === 429 || res.status >= 500;
+          if (!reintentable || intento >= 2) break;
+          const ra = parseInt(res.headers.get('Retry-After'), 10);
+          await new Promise(r => setTimeout(r, (ra > 0 ? Math.min(ra, 5) * 1000 : 800 * (intento + 1))));
+        } catch (e) {
+          if (intento >= 2) throw e;
+          await new Promise(r => setTimeout(r, 800 * (intento + 1)));
+        }
+      }
       if (!res.ok) throw new Error('HTTP ' + res.status);
       const data = await res.json();
       if (cacheKey) guardarCache(cacheKey, data);
