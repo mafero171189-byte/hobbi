@@ -3,10 +3,25 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <script>
+    /* Tema (oscuro / claro / automático): se aplica ACÁ, antes de que se pinte nada,
+       para que con tema claro no haya un destello oscuro al abrir. Por defecto: oscuro. */
+    (function () {
+      try {
+        var pref = localStorage.getItem('hobbi_tema') || 'oscuro';
+        var claro = pref === 'claro' || (pref === 'auto' && window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches);
+        document.documentElement.setAttribute('data-theme', claro ? 'light' : 'dark');
+      } catch (e) {}
+    })();
+  </script>
   <title>Hobbi: Control de Series</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&display=swap" rel="stylesheet">
+  <!-- La fuente carga en segundo plano: antes este <link rel="stylesheet"> bloqueaba el primer pintado
+       hasta que Google Fonts respondía (con mala señal, pantalla en blanco). Mientras llega se usa la
+       fuente del sistema (display=swap) y después se cambia sola. -->
+  <link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Bebas+Neue&display=swap" onload="this.onload=null;this.rel='stylesheet'">
+  <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bebas+Neue&display=swap"></noscript>
   <!-- Optimización de imágenes: prefetch DNS de proveedores y preconnect a APIs -->
   <link rel="dns-prefetch" href="https://api.tvmaze.com">
   <link rel="preconnect" href="https://api.tvmaze.com" crossorigin>
@@ -89,7 +104,52 @@
       --ink: #ffffff;
       --ink-muted: #8b8ba3;
       --ink-dim: #5a5a72;
+
+      --nav-bg: rgba(10,10,19,0.92);
+      color-scheme: dark;
     }
+
+    /* ==================== TEMA CLARO ====================
+       Se activa con <html data-theme="light">. Dorado y turquesa se oscurecen para que, como texto
+       sobre fondo claro, mantengan contraste legible (≥ 4.5:1); el texto sobre botones dorados pasa a blanco. */
+    :root[data-theme="light"] {
+      --bg: #f4f4f9;
+      --bg-glow: #ffffff;
+      --surface: #ffffff;
+      --surface-2: #ececf4;
+      --border: #d6d6e4;
+
+      --gold: #9a5700;
+      --gold-dim: #9a570020;
+      --gold-ink: #ffffff;
+
+      --teal: #0a7568;
+      --teal-dim: #0a756820;
+
+      --danger: #c9283a;
+      --danger-dim: #c9283a1f;
+
+      --ink: #15151f;
+      --ink-muted: #565670;
+      --ink-dim: #8a8aa0;
+
+      --nav-bg: rgba(255,255,255,0.92);
+      color-scheme: light;
+    }
+    /* La pantalla de bienvenida es una foto con degradado oscuro: se queda siempre oscura. */
+    :root[data-theme="light"] #onboardingScreen {
+      --bg: #0a0a13; --bg-glow: #1a1a2e; --surface: #15151f; --surface-2: #1c1c2c; --border: #27273b;
+      --gold: #f2a93b; --gold-dim: #f2a93b22; --gold-ink: #241a06;
+      --teal: #2dd7c4; --danger: #ef4757;
+      --ink: #ffffff; --ink-muted: #8b8ba3; --ink-dim: #5a5a72;
+      color-scheme: dark;
+    }
+    /* Elementos que van sobre el póster (fondo oscuro fijo): conservan sus colores claros de siempre. */
+    :root[data-theme="light"] .poster-rating-badge { color: #f2a93b; }
+    :root[data-theme="light"] .ep-visto-btn { color: #d7d7e6; }
+    :root[data-theme="light"] .ep-visto-btn.active { color: #ffffff; }
+    :root[data-theme="light"] .detail-header { background: var(--surface-2); }
+    :root[data-theme="light"] .detail-header::before { opacity: 0.22; }
 
     * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
     body { background: radial-gradient(ellipse 100% 40% at 50% -5%, var(--bg-glow) 0%, var(--bg) 60%) var(--bg); color: var(--ink); padding: 16px; padding-bottom: calc(84px + env(safe-area-inset-bottom)); display: flex; justify-content: center; }
@@ -121,7 +181,7 @@
        ícono arriba, etiqueta chica abajo, sin fondo de "pastilla" en el activo
        (solo cambia de color). Reemplaza a .nav-tabs, que queda sin usar en el
        HTML pero se deja en el CSS por si se vuelve a necesitar. */
-    .bottom-nav { position: fixed; left: 0; right: 0; bottom: 0; z-index: 500; display: flex; justify-content: center; background: rgba(10,10,19,0.92); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border-top: 1px solid var(--border); padding-bottom: env(safe-area-inset-bottom); }
+    .bottom-nav { position: fixed; left: 0; right: 0; bottom: 0; z-index: 500; display: flex; justify-content: center; background: var(--nav-bg); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border-top: 1px solid var(--border); padding-bottom: env(safe-area-inset-bottom); }
     .bottom-nav-inner { width: 100%; max-width: 480px; display: flex; }
     .bottom-nav-btn { flex: 1; background: none; border: none; color: var(--ink-muted); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; padding: 10px 4px 8px; cursor: pointer; font-size: 10px; font-weight: 600; letter-spacing: 0.2px; }
     .bottom-nav-btn .bottom-nav-icon { font-size: 22px; line-height: 1; filter: grayscale(1) opacity(0.7); transition: filter 0.15s ease; }
@@ -671,6 +731,18 @@
       </div>
 
       <div class="ajustes-seccion">
+        <div class="ajustes-seccion-titulo" id="ajustesTituloTema">Apariencia</div>
+        <div style="display:flex; align-items:center; justify-content:space-between; gap:10px;">
+          <label for="temaSelect" style="font-size:13px; color:var(--ink-muted);" id="ajustesTemaLabel">Tema</label>
+          <select id="temaSelect" onchange="cambiarTema(this.value)" style="padding:8px; border-radius:8px; border:1px solid var(--border); background:var(--surface); color:var(--ink); font-size:13px;">
+            <option value="oscuro">Oscuro</option>
+            <option value="claro">Claro</option>
+            <option value="auto">Automático (como el celu)</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="ajustes-seccion">
         <div class="ajustes-seccion-titulo" id="ajustesTituloBackup">Copia de seguridad</div>
         <button class="ajustes-btn" onclick="exportarCopia()" id="exportarCopiaBtn" style="margin-bottom:8px;">📤 Exportar mis series</button>
         <button class="ajustes-btn" onclick="importarCopia()" id="importarCopiaBtn">📥 Importar copia</button>
@@ -812,6 +884,8 @@
       ajustesTituloBackup: 'Copia de seguridad', exportarCopia: '📤 Exportar mis series', importarCopia: '📥 Importar copia',
       copiaExportada: 'Copia lista', copiaInvalida: 'Ese archivo no es una copia válida de Hobbi.', copiaGrande: 'El archivo es demasiado grande.',
       copiaImportada: (n, v) => `Copia importada: ${n} series nuevas y ${v} episodios vistos.`,
+      ajustesTituloTema: 'Apariencia', temaLabel: 'Tema', temaOscuro: 'Oscuro', temaClaro: 'Claro', temaAuto: 'Automático (como el celu)',
+      tiempoAgotado: 'tiempo de espera agotado',
       syncReintentoAuto: 'Reintento automático', reintentar: 'Reintentar', muchaDemanda: 'TVMaze está con mucha demanda, reintentando…', hoyBadge: 'HOY',
       filtroTodas: 'Todas', filtroOtras: 'Otras', marcarVistoRiel: 'Marcar como visto', desmarcarVistoRiel: 'Desmarcar como visto',
       minimoLetras: 'Escribí al menos 3 letras para buscar.',
@@ -996,6 +1070,8 @@
       ajustesTituloBackup: 'Backup', exportarCopia: '📤 Export my shows', importarCopia: '📥 Import backup',
       copiaExportada: 'Backup ready', copiaInvalida: 'That file is not a valid Hobbi backup.', copiaGrande: 'The file is too large.',
       copiaImportada: (n, v) => `Backup imported: ${n} new shows and ${v} watched episodes.`,
+      ajustesTituloTema: 'Appearance', temaLabel: 'Theme', temaOscuro: 'Dark', temaClaro: 'Light', temaAuto: 'Automatic (follow phone)',
+      tiempoAgotado: 'request timed out',
       syncReintentoAuto: 'Retrying automatically', reintentar: 'Retry', muchaDemanda: 'TVMaze is busy, retrying…', hoyBadge: 'TODAY',
       filtroTodas: 'All', filtroOtras: 'Other', marcarVistoRiel: 'Mark as watched', desmarcarVistoRiel: 'Mark as unwatched',
       minimoLetras: 'Type at least 3 letters to search.',
@@ -1348,6 +1424,11 @@
     document.getElementById('ajustesTituloIdioma').textContent = t('ajustesTituloIdioma');
     document.getElementById('ajustesTituloNotif').textContent = t('ajustesTituloNotif');
     document.getElementById('ajustesTituloBackup').textContent = t('ajustesTituloBackup');
+    document.getElementById('ajustesTituloTema').textContent = t('ajustesTituloTema');
+    document.getElementById('ajustesTemaLabel').textContent = t('temaLabel');
+    document.querySelector('#temaSelect option[value="oscuro"]').textContent = t('temaOscuro');
+    document.querySelector('#temaSelect option[value="claro"]').textContent = t('temaClaro');
+    document.querySelector('#temaSelect option[value="auto"]').textContent = t('temaAuto');
     document.getElementById('exportarCopiaBtn').textContent = t('exportarCopia');
     document.getElementById('importarCopiaBtn').textContent = t('importarCopia');
     document.getElementById('ajustesAnticipacionLabel').textContent = t('anticipacionLabel');
@@ -1733,8 +1814,22 @@
      sin esto, aunque el pedido llegue bien, el login "funciona" pero la
      sesión no queda guardada, o directo el navegador descarta la respuesta
      por política CORS con credenciales. */
-  function fetchApi(ruta, opciones = {}) {
-    return fetch(api(ruta), { ...opciones, credentials: 'include' });
+  /* Pedidos a TU servidor, con timeout. Sin él, un pedido colgado (mala señal) dejaba la marca de
+     "guardado en curso" encendida para siempre y la sincronización quedaba trabada hasta cerrar la app. */
+  async function fetchApi(ruta, opciones = {}) {
+    const ms = (window.HOBBI_TIMEOUTS && window.HOBBI_TIMEOUTS.api) || 12000;
+    if (typeof AbortController === 'undefined') return fetch(api(ruta), { ...opciones, credentials: 'include' });
+    const ctrl = new AbortController();
+    let agotado = false;
+    const timer = setTimeout(() => { agotado = true; ctrl.abort(); }, ms);
+    try {
+      return await fetch(api(ruta), { ...opciones, credentials: 'include', signal: opciones.signal || ctrl.signal });
+    } catch (e) {
+      if (agotado) throw new Error(t('tiempoAgotado'));
+      throw e;
+    } finally {
+      clearTimeout(timer);
+    }
   }
 
   /* ==================== LIVE UPDATE (solo APK) ====================
@@ -2375,6 +2470,33 @@
   }
 
 
+  /* ==================== TEMA (oscuro / claro / automático) ==================== */
+  function temaGuardado() {
+    try { return localStorage.getItem('hobbi_tema') || 'oscuro'; } catch { return 'oscuro'; }
+  }
+  function aplicarTema() {
+    const pref = temaGuardado();
+    const claro = pref === 'claro' || (pref === 'auto' && !!window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches);
+    document.documentElement.setAttribute('data-theme', claro ? 'light' : 'dark');
+    const meta = document.querySelector('meta[name="theme-color"]');
+    if (meta) meta.setAttribute('content', claro ? '#f4f4f9' : '#0a0a13');
+    const sel = document.getElementById('temaSelect');
+    if (sel) sel.value = pref;
+  }
+  function cambiarTema(valor) {
+    if (!['oscuro', 'claro', 'auto'].includes(valor)) return;
+    try { localStorage.setItem('hobbi_tema', valor); } catch {}
+    aplicarTema();
+  }
+  // En modo automático, sigue al celu si cambia entre claro y oscuro con la app abierta.
+  if (window.matchMedia) {
+    const mqClaro = window.matchMedia('(prefers-color-scheme: light)');
+    const alCambiarTemaSistema = () => { if (temaGuardado() === 'auto') aplicarTema(); };
+    if (mqClaro && mqClaro.addEventListener) mqClaro.addEventListener('change', alCambiarTemaSistema);
+    else if (mqClaro && mqClaro.addListener) mqClaro.addListener(alCambiarTemaSistema);
+  }
+  aplicarTema();
+
   /* ==================== PEDIDOS CON TIMEOUT ==================== */
   // Corta el pedido si TVMaze/la red no responde a tiempo, así no queda "Buscando…" para siempre.
   // El corte cuenta como fallo de red: fetchJSON lo reintenta y después muestra el error con "Reintentar".
@@ -2422,7 +2544,7 @@
   }
 
   async function exportarCopia() {
-    const hoyISO = new Date().toISOString().slice(0, 10);
+    const hoyISO = formatearFechaISO(new Date());
     const nombre = `hobbi-copia-${hoyISO}.json`;
     const datos = { app: 'hobbi', version: 1, exportado: new Date().toISOString(), favoritos, episodiosVistos };
     const blob = new Blob([JSON.stringify(datos)], { type: 'application/json' });
@@ -2713,7 +2835,60 @@
 
   /* fetch con caché + reintento + mensaje de error entendible.
      forzar=true ignora la caché aunque esté vigente (para "pull to refresh"). */
-  async function fetchJSON(url, cacheKey, { forzar = false, ttlVencidoSirve = true, signal = null } = {}) {
+  /* ---- Cupo de TVMaze ----
+     TVMaze corta (429) a partir de ~20 pedidos cada 10 s por IP. En vez de tirar ráfagas y reintentar
+     a ciegas, TODOS los pedidos a api.tvmaze.com pasan por acá y esperan su turno: hasta 15 por ventana
+     de 10 s, dejando 5 reservados para lo que tocás vos (búsqueda y detalle de serie). Si igual llega un
+     429, se frena todo unos segundos. */
+  const marcasTVMaze = [];
+  let enfriamientoTVMazeHasta = 0;
+  const dormirMs = (ms) => new Promise((r) => setTimeout(r, ms));
+  async function esperarCupoTVMaze(url, prioritario, signal) {
+    if (!url.startsWith('https://api.tvmaze.com/')) return;
+    const cfg = window.HOBBI_CUPO_TVMAZE || {};
+    const ventana = cfg.ventanaMs || 10000;
+    const limite = prioritario ? (cfg.limitePrioritario || 20) : (cfg.limite || 15);
+    for (;;) {
+      if (signal && signal.aborted) { const e = new Error('cancelado'); e.name = 'AbortError'; e.cancelada = true; throw e; }
+      const ahora = Date.now();
+      while (marcasTVMaze.length && ahora - marcasTVMaze[0] >= ventana) marcasTVMaze.shift();
+      if (ahora < enfriamientoTVMazeHasta) { await dormirMs(enfriamientoTVMazeHasta - ahora + 20); continue; }
+      if (marcasTVMaze.length < limite) { marcasTVMaze.push(ahora); return; }
+      await dormirMs(marcasTVMaze[0] + ventana - ahora + 20);
+    }
+  }
+
+  /* map con tope de pedidos en paralelo (reemplaza a Promise.all(lista.map(...)) cuando cada
+     elemento hace un pedido: con 30 favoritos eran 30 pedidos a la vez). */
+  async function mapConLimite(items, fn, limite = 6) {
+    const resultados = new Array(items.length);
+    let siguiente = 0;
+    const trabajadores = Array.from({ length: Math.min(limite, items.length) }, async () => {
+      for (;;) {
+        const i = siguiente++;
+        if (i >= items.length) return;
+        resultados[i] = await fn(items[i], i);
+      }
+    });
+    await Promise.all(trabajadores);
+    return resultados;
+  }
+
+  /* Dos pedidos iguales al mismo tiempo comparten una sola respuesta (el calendario, "sin ver" y el
+     refresco de favoritos piden los mismos episodios de cada serie a la vez). */
+  const pedidosJSONEnVuelo = new Map();
+  function fetchJSON(url, cacheKey, opciones = {}) {
+    if (!cacheKey || opciones.signal) return fetchJSONDirecto(url, cacheKey, opciones);
+    const clave = `${cacheKey}|${opciones.forzar ? 1 : 0}|${opciones.ttlVencidoSirve === false ? 0 : 1}`;
+    if (pedidosJSONEnVuelo.has(clave)) return pedidosJSONEnVuelo.get(clave);
+    const p = fetchJSONDirecto(url, cacheKey, opciones);
+    pedidosJSONEnVuelo.set(clave, p);
+    const limpiar = () => pedidosJSONEnVuelo.delete(clave);
+    p.then(limpiar, limpiar);
+    return p;
+  }
+
+  async function fetchJSONDirecto(url, cacheKey, { forzar = false, ttlVencidoSirve = true, signal = null, prioritario = false } = {}) {
     const cache = cacheKey ? leerCache(cacheKey) : null;
     if (cacheKey && cache && !cache.vencido && !forzar) {
       return cache.data;
@@ -2724,11 +2899,13 @@
       let res;
       for (let intento = 0; ; intento++) {
         try {
+          await esperarCupoTVMaze(url, prioritario || !!signal, signal);
           res = await fetchConTimeout(url, 7000, signal);
           const reintentable = res.status === 429 || res.status >= 500;
           if (res.status === 429 && intento < 2) mostrarToast(t('muchaDemanda'), 'error');
           if (!reintentable || intento >= 2) break;
           const ra = parseInt(res.headers.get('Retry-After'), 10);
+          if (res.status === 429) enfriamientoTVMazeHasta = Date.now() + (ra > 0 ? Math.min(ra, 10) : 3) * 1000;
           await new Promise(r => setTimeout(r, (ra > 0 ? Math.min(ra, 5) * 1000 : 800 * (intento + 1))));
         } catch (e) {
           if (e && e.cancelada) throw e; // cancelado a propósito: ni reintento ni aviso
@@ -3215,8 +3392,11 @@
   /* Trae Populares, Nuevas y Estrenan pronto para la pantalla inicial de Buscar,
      usando solo endpoints públicos de TVMaze. Todo pasa por fetchJSON, así que
      queda cacheado 3hs y no se vuelve a pedir cada vez que entrás a la pestaña. */
+  // Fecha LOCAL (YYYY-MM-DD). Antes usaba toISOString(), que da la fecha UTC: en Argentina, desde
+  // las 21:00 "hoy" pasaba a ser mañana (y el episodio de hoy dejaba de contar como próximo).
   function formatearFechaISO(date) {
-    return date.toISOString().split('T')[0];
+    const p = (n) => String(n).padStart(2, '0');
+    return `${date.getFullYear()}-${p(date.getMonth() + 1)}-${p(date.getDate())}`;
   }
 
   async function obtenerPopulares() {
@@ -4821,10 +5001,10 @@
 
     try {
       const [show, episodios, seasonsInfoResultado, cast] = await Promise.all([
-        fetchJSON(`https://api.tvmaze.com/shows/${showId}`, `show_${showId}`),
-        fetchJSON(`https://api.tvmaze.com/shows/${showId}/episodes`, `eps_${showId}`),
-        fetchJSON(`https://api.tvmaze.com/shows/${showId}/seasons`, `seasons_${showId}`).catch(() => null),
-        fetchJSON(`https://api.tvmaze.com/shows/${showId}/cast`, `cast_${showId}`).catch(() => null)
+        fetchJSON(`https://api.tvmaze.com/shows/${showId}`, `show_${showId}`, { prioritario: true }),
+        fetchJSON(`https://api.tvmaze.com/shows/${showId}/episodes`, `eps_${showId}`, { prioritario: true }),
+        fetchJSON(`https://api.tvmaze.com/shows/${showId}/seasons`, `seasons_${showId}`, { prioritario: true }).catch(() => null),
+        fetchJSON(`https://api.tvmaze.com/shows/${showId}/cast`, `cast_${showId}`, { prioritario: true }).catch(() => null)
       ]);
       // Si mientras esperábamos el usuario ya entró a ver otra serie (o volvió
       // a la lista), detalleActualId cambió — descartamos esta respuesta vieja
@@ -5133,7 +5313,7 @@
     const ahora = Date.now();
     let fallas = 0;
 
-    const resultados = await Promise.all(favoritos.map(async fav => {
+    const resultados = await mapConLimite(favoritos, async fav => {
       try {
         // Misma clave de caché que usa verDetalles/toggleFavorito: se reaprovecha el mismo pedido.
         const episodios = await fetchJSON(`https://api.tvmaze.com/shows/${fav.id}/episodes`, `eps_${fav.id}`, { forzar });
@@ -5173,7 +5353,7 @@
         fallas++;
         return null;
       }
-    }));
+    });
 
     if (fallas > 0) {
       mostrarToast(t('noSePudoActualizarSeries')(fallas), 'error');
@@ -5192,7 +5372,7 @@
     const ahora = Date.now();
     const LIMITE_ANTIGUEDAD_MS = 2 * 365 * 24 * 60 * 60 * 1000;
 
-    const resultadosPorSerie = await Promise.all(favoritos.map(async fav => {
+    const resultadosPorSerie = await mapConLimite(favoritos, async fav => {
       try {
         const episodios = await fetchJSON(`https://api.tvmaze.com/shows/${fav.id}/episodes`, `eps_${fav.id}`, { forzar });
 
@@ -5221,7 +5401,7 @@
       } catch {
         return [];
       }
-    }));
+    });
 
     return resultadosPorSerie.flat().sort((a, b) => new Date(b.airstamp) - new Date(a.airstamp));
   }
@@ -5400,7 +5580,7 @@
   async function obtenerProximasTemporadas(forzar = false) {
     const ahora = new Date();
 
-    const resultados = await Promise.all(favoritos.map(async fav => {
+    const resultados = await mapConLimite(favoritos, async fav => {
       try {
         const temporadas = await fetchJSON(`https://api.tvmaze.com/shows/${fav.id}/seasons`, `seasons_${fav.id}`, { forzar });
 
@@ -5437,7 +5617,7 @@
       } catch {
         return null;
       }
-    }));
+    });
 
     return resultados.filter(Boolean).sort((a, b) => new Date(a.estreno) - new Date(b.estreno));
   }
@@ -5599,7 +5779,7 @@
         const eps = await fetchJSON(`https://api.tvmaze.com/shows/${serie.id}/episodes`, `eps_${serie.id}`);
         serie.episodeIds = eps.map(e => e.id);
         serie.totalEpisodesCount = eps.length;
-        const hoy = new Date().toISOString().split('T')[0];
+        const hoy = formatearFechaISO(new Date());
         const futuros = eps.filter(e => e.airdate && e.airdate >= hoy);
         serie.proximoEstreno = futuros.length > 0 ? futuros[0].airdate : null;
       } catch {
@@ -5637,18 +5817,18 @@
     if (!favoritos.length) { renderizarFavoritos(); return; }
     mostrarEsqueletoFavoritos();
     try {
-      await Promise.all(favoritos.map(async (fav) => {
+      await mapConLimite(favoritos, async (fav) => {
         try {
           const eps = await fetchJSON(`https://api.tvmaze.com/shows/${fav.id}/episodes`, `eps_${fav.id}`, { forzar });
           fav.episodeIds = eps.map(e => e.id);
           fav.totalEpisodesCount = eps.length;
-          const hoy = new Date().toISOString().split('T')[0];
+          const hoy = formatearFechaISO(new Date());
           const futuros = eps.filter(e => e.airdate && e.airdate >= hoy);
           fav.proximoEstreno = futuros.length > 0 ? futuros[0].airdate : null;
         } catch {
           // Si falla una serie puntual seguimos con las demás; no cortamos todo el refresh por una.
         }
-      }));
+      });
       guardarDatos();
       if (forzar) mostrarToast(t('favoritosActualizados'), 'ok');
     } finally {
