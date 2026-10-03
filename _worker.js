@@ -5,8 +5,8 @@
 
 const GOOGLE_CLIENT_ID = '403618822429-pshtrss0fg4nnojujh6aqqagaboia66h.apps.googleusercontent.com';
 const SESSION_DIAS = 30;
-const OMDB_API_KEY = 'a58fd568'; // OMDb — búsqueda de películas
-const WATCHMODE_API_KEY = 'AqTbQT531bCAi2qT6BB8X8WZAJ0NFIsAjlvVdGUy'; // Watchmode — cartelera (populares, próximos estrenos, por plataforma)
+// La key de OMDb ya no va en el código: se guarda como secreto del Worker (env.OMDB_API_KEY).
+// La key de Watchmode ya no va en el código: se guarda como secreto del Worker (env.WATCHMODE_API_KEY).
 
 // Versión actual del contenido de la app, para el chequeo de Live Update de
 // la APK (ver index.html: chequearActualizacionApk). Va acá como constante
@@ -448,7 +448,7 @@ async function handleMoviesSearch(request, env) {
 
   try {
     const res = await fetch(
-      `https://www.omdbapi.com/?apikey=${OMDB_API_KEY}&s=${encodeURIComponent(q)}&type=movie`
+      `https://www.omdbapi.com/?apikey=${env.OMDB_API_KEY}&s=${encodeURIComponent(q)}&type=movie`
     );
     const data = await res.json();
     
@@ -502,7 +502,7 @@ async function handleMoviesDetalle(request, env) {
   if (!id) return errorResponse('Parámetro id requerido', 400);
 
   try {
-    const res = await fetch(`https://www.omdbapi.com/?apikey=${OMDB_API_KEY}&i=${encodeURIComponent(id)}&plot=short`);
+    const res = await fetch(`https://www.omdbapi.com/?apikey=${env.OMDB_API_KEY}&i=${encodeURIComponent(id)}&plot=short`);
     const data = await res.json();
     if (data.Response === 'False') return errorResponse(data.Error || 'No encontrada', 404);
 
@@ -529,8 +529,9 @@ async function handleMoviesDetalle(request, env) {
    por 12hs, compartido entre todo el mundo: si 500 personas abren la app
    en esas 12hs, Watchmode solo se consulta 1 vez, no 500. */
 
-async function watchmodeGet(path, params) {
-  const qs = new URLSearchParams({ apiKey: WATCHMODE_API_KEY, ...params });
+async function watchmodeGet(env, path, params) {
+  if (!env.WATCHMODE_API_KEY) return { ok: false, status: 503, data: null, textoCrudo: 'Falta el secreto WATCHMODE_API_KEY' };
+  const qs = new URLSearchParams({ apiKey: env.WATCHMODE_API_KEY, ...params });
   const res = await fetch(`https://api.watchmode.com/v1${path}?${qs.toString()}`);
   const textoCrudo = await res.text();
   let data;
@@ -551,7 +552,7 @@ async function obtenerFuentesWatchmode(env) {
   if (cacheado) {
     try { return JSON.parse(cacheado); } catch { /* si el cache quedó corrupto, lo repedimos */ }
   }
-  const { ok, data } = await watchmodeGet('/sources/', {});
+  const { ok, data } = await watchmodeGet(env, '/sources/', {});
   if (!ok || !Array.isArray(data)) return [];
   await env.RATE_LIMIT_KV.put(cacheKey, JSON.stringify(data), { expirationTtl: 86400 });
   return data;
@@ -617,7 +618,7 @@ async function handleMoviesCartelera(request, env) {
   }
 
   try {
-    const { ok, status, data, textoCrudo } = await watchmodeGet('/list-titles/', params);
+    const { ok, status, data, textoCrudo } = await watchmodeGet(env, '/list-titles/', params);
     if (!ok || !data) {
       const motivo = (data && (data.statusMessage || data.Error))
         || `HTTP ${status}: ${textoCrudo || '(vacío)'}`;
@@ -635,6 +636,30 @@ async function handleMoviesCartelera(request, env) {
     return json(payload);
   } catch (err) {
     return errorResponse('Error consultando Watchmode: ' + err.message, 500);
+  }
+}
+
+/* ---------- Póster de respaldo (OMDb) ----------
+   El front usa esto cuando TVMaze no tiene póster de una serie. La key vive
+   solo acá (secreto del Worker), ya no en el HTML. Siempre responde 200 con
+   { poster: url | null } para que el front cachee el resultado y no reintente. */
+async function handlePoster(request, env) {
+  const url = new URL(request.url);
+  const titulo = (url.searchParams.get('t') || '').trim();
+  if (!titulo || titulo.length > 120) return errorResponse('Parámetro t requerido', 400);
+  if (!env.OMDB_API_KEY) return json({ poster: null });
+
+  try {
+    const res = await fetch(`https://www.omdbapi.com/?apikey=${env.OMDB_API_KEY}&t=${encodeURIComponent(titulo)}`);
+    const data = await res.json();
+    const poster = (data && data.Response === 'True' && typeof data.Poster === 'string' && data.Poster.startsWith('https://'))
+      ? data.Poster
+      : null;
+    // Si OMDb avisa límite/key inválida no cacheamos en el navegador/CDN.
+    const errorOmdb = data && data.Response === 'False' && data.Error && data.Error !== 'Movie not found!';
+    return json({ poster }, { headers: { 'Cache-Control': errorOmdb ? 'no-store' : 'public, max-age=86400' } });
+  } catch {
+    return json({ poster: null }, { headers: { 'Cache-Control': 'no-store' } });
   }
 }
 
@@ -666,6 +691,7 @@ export default {
     else if (url.pathname === '/api/data' && request.method === 'GET') respuesta = await handleDataGet(request, env);
     else if (url.pathname === '/api/data' && request.method === 'POST') respuesta = await handleDataPost(request, env);
     else if (url.pathname === '/api/account' && request.method === 'DELETE') respuesta = await handleAccountDelete(request, env);
+    else if (url.pathname === '/api/poster' && request.method === 'GET') respuesta = await handlePoster(request, env);
     else if (url.pathname === '/api/movies/search' && request.method === 'GET') respuesta = await handleMoviesSearch(request, env);
     else if (url.pathname === '/api/movies/detalle' && request.method === 'GET') respuesta = await handleMoviesDetalle(request, env);
     else if (url.pathname === '/api/movies/cartelera' && request.method === 'GET') respuesta = await handleMoviesCartelera(request, env);
