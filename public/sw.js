@@ -149,22 +149,38 @@ async function avisarEpisodiosDeHoy() {
   const favoritos = await leerKv('favoritos');
   if (!Array.isArray(favoritos) || !favoritos.length) return;
 
-  const d = new Date();
-  const hoy = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+  const fmt = (d) => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+  const ahora = new Date();
+  const hoy = fmt(ahora);
   if ((await leerKv('ultimoAvisoDiario')) === hoy) return; // ya avisamos hoy
 
-  const res = await fetch('https://api.tvmaze.com/schedule/web?date=' + hoy);
-  if (!res.ok) return;
-  const dia = await res.json();
+  // "Hoy" = de 00:00 a 24:00 en la hora del celu. El calendario de TVMaze no coincide con el día
+  // local (en Argentina lo que sale de noche figura en el día siguiente), así que se piden
+  // los días vecinos y se filtra por la hora exacta de cada episodio.
+  const inicio = new Date(ahora.getFullYear(), ahora.getMonth(), ahora.getDate());
+  const fin = new Date(inicio); fin.setDate(fin.getDate() + 1);
+  const fechas = [hoy];
+  const offset = ahora.getTimezoneOffset();
+  if (offset > 0) { const m = new Date(inicio); m.setDate(m.getDate() + 1); fechas.push(fmt(m)); }
+  if (offset < 0) { const y = new Date(inicio); y.setDate(y.getDate() - 1); fechas.unshift(fmt(y)); }
+
   const ids = new Set(favoritos.map((f) => f.id));
   const nombres = [];
   const vistos = new Set();
-  (Array.isArray(dia) ? dia : []).forEach((ep) => {
-    const show = ep && (ep.show || (ep._embedded && ep._embedded.show));
-    if (!show || !ids.has(show.id) || vistos.has(show.id)) return;
-    vistos.add(show.id);
-    nombres.push(show.name);
-  });
+  for (const fecha of fechas) {
+    const res = await fetch('https://api.tvmaze.com/schedule/web?date=' + fecha);
+    if (!res.ok) continue;
+    const dia = await res.json();
+    (Array.isArray(dia) ? dia : []).forEach((ep) => {
+      const show = ep && (ep.show || (ep._embedded && ep._embedded.show));
+      if (!show || !ids.has(show.id) || vistos.has(show.id)) return;
+      const cuando = ep.airstamp ? new Date(ep.airstamp) : null;
+      const esHoy = cuando ? (cuando >= inicio && cuando < fin) : ep.airdate === hoy;
+      if (!esHoy) return;
+      vistos.add(show.id);
+      nombres.push(show.name);
+    });
+  }
   if (!nombres.length) return;
 
   const en = (await leerKv('idioma')) === 'en';
@@ -192,44 +208,5 @@ self.addEventListener('notificationclick', (event) => {
   );
 });
 
-/* ---------- Chequeo automático de actualizaciones cada 2 minutos ----------
-   Mientras la app esté abierta, el Service Worker chequea cada 2 minutos si
-   hay versión nueva (comparando CACHE_VERSION — que incluye la fecha). Si
-   detecta cambios, le notifica al cliente con un mensaje, para que la app
-   pueda mostrar un banner "Hay actualización disponible" o actualizar
-   silenciosamente. El cliente puede implementar la UX que quiera en respuesta. */
-
-self.addEventListener('message', (event) => {
-  if (event.data && event.data.type === 'SKIP_WAITING') {
-    self.skipWaiting();
-  }
-});
-
-// Chequea el Service Worker nuevo cada 2 minutos (120 segundos).
-// Esto solo funciona mientras la app esté abierta — al cerrarla, esto para.
-setInterval(() => {
-  fetch(self.location.href)
-    .then((respuesta) => respuesta.text())
-    .then((html) => {
-      // Buscamos en el HTML nuevo cuál es el CACHE_VERSION que tiene ahora.
-      // Si es distinto al actual, significa que hay versión nueva.
-      const versionMatch = html.match(/const CACHE_VERSION = 'hobbi-\d{4}-\d{2}-\d{2}'/);
-      if (versionMatch) {
-        const nuevaVersion = versionMatch[0].split("'")[1];
-        if (nuevaVersion !== CACHE_VERSION) {
-          // Hay versión nueva — notificamos a todos los clientes (las pestañas/app abierta)
-          self.clients.matchAll().then((clients) => {
-            clients.forEach((cliente) => {
-              cliente.postMessage({
-                type: 'UPDATE_AVAILABLE',
-                version: nuevaVersion
-              });
-            });
-          });
-        }
-      }
-    })
-    .catch(() => {
-      // Si falla el chequeo (sin internet), simplemente lo reintentamos en 2 minutos más.
-    });
-}, 120000); // 120000 ms = 2 minutos
+// (El chequeo de versión nueva ya no vive acá: un setInterval dentro del service worker
+//  se corta cuando Android lo duerme. Ahora lo hace la propia página — ver vigilarVersionNueva en index.html.)
