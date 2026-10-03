@@ -2956,32 +2956,50 @@
      429, se frena todo unos segundos. */
   const marcasTVMaze = [];
   let enfriamientoTVMazeHasta = 0;
+  let prioritariosEsperando = 0;        // pedidos de lo que el usuario está mirando que todavía no consiguieron turno
+  let ultimaActividadPrioritaria = 0;
   const dormirMs = (ms) => new Promise((r) => setTimeout(r, ms));
   async function esperarCupoTVMaze(url, prioritario, signal) {
     if (!url.startsWith('https://api.tvmaze.com/')) return;
     const cfg = window.HOBBI_CUPO_TVMAZE || {};
     const ventana = cfg.ventanaMs || 10000;
-    const limite = prioritario ? (cfg.limitePrioritario || 20) : (cfg.limite || 15);
-    for (;;) {
-      if (signal && signal.aborted) { const e = new Error('cancelado'); e.name = 'AbortError'; e.cancelada = true; throw e; }
-      const ahora = Date.now();
-      while (marcasTVMaze.length && ahora - marcasTVMaze[0] >= ventana) marcasTVMaze.shift();
-      if (ahora < enfriamientoTVMazeHasta) { await dormirMs(enfriamientoTVMazeHasta - ahora + 20); continue; }
-      if (marcasTVMaze.length < limite) { marcasTVMaze.push(ahora); return; }
-      await dormirMs(marcasTVMaze[0] + ventana - ahora + 20);
+    const limite = prioritario ? (cfg.limitePrioritario || 18) : (cfg.limite || 15);
+    if (prioritario) prioritariosEsperando++;
+    try {
+      for (;;) {
+        if (signal && signal.aborted) { const e = new Error('cancelado'); e.name = 'AbortError'; e.cancelada = true; throw e; }
+        const ahora = Date.now();
+        while (marcasTVMaze.length && ahora - marcasTVMaze[0] >= ventana) marcasTVMaze.shift();
+        if (ahora < enfriamientoTVMazeHasta) { await dormirMs(enfriamientoTVMazeHasta - ahora + 20); continue; }
+        // Lo de fondo (rieles del Inicio) CEDE el paso mientras haya algo que el usuario espera ver
+        // (calendario, favoritos, detalle, búsqueda). Sin esto, abrir el Calendario con el Inicio cargando
+        // hacía cola detrás de ~60 pedidos de fondo y tardaba casi un minuto.
+        if (!prioritario && (prioritariosEsperando > 0 || ahora - ultimaActividadPrioritaria < 1500)) { await dormirMs(250); continue; }
+        if (marcasTVMaze.length < limite) {
+          marcasTVMaze.push(ahora);
+          if (prioritario) ultimaActividadPrioritaria = ahora;
+          return;
+        }
+        await dormirMs(marcasTVMaze[0] + ventana - ahora + 20);
+      }
+    } finally {
+      if (prioritario) { prioritariosEsperando--; ultimaActividadPrioritaria = Date.now(); }
     }
   }
 
   /* map con tope de pedidos en paralelo (reemplaza a Promise.all(lista.map(...)) cuando cada
      elemento hace un pedido: con 30 favoritos eran 30 pedidos a la vez). */
-  async function mapConLimite(items, fn, limite = 6) {
+  async function mapConLimite(items, fn, limite = 6, onProgreso = null) {
     const resultados = new Array(items.length);
-    let siguiente = 0;
+    let siguiente = 0, hechos = 0;
+    if (onProgreso) onProgreso(0, items.length);
     const trabajadores = Array.from({ length: Math.min(limite, items.length) }, async () => {
       for (;;) {
         const i = siguiente++;
         if (i >= items.length) return;
         resultados[i] = await fn(items[i], i);
+        hechos++;
+        if (onProgreso) onProgreso(hechos, items.length);
       }
     });
     await Promise.all(trabajadores);
@@ -2993,7 +3011,7 @@
   const pedidosJSONEnVuelo = new Map();
   function fetchJSON(url, cacheKey, opciones = {}) {
     if (!cacheKey || opciones.signal) return fetchJSONDirecto(url, cacheKey, opciones);
-    const clave = `${cacheKey}|${opciones.forzar ? 1 : 0}|${opciones.ttlVencidoSirve === false ? 0 : 1}`;
+    const clave = `${cacheKey}|${opciones.forzar ? 1 : 0}|${opciones.ttlVencidoSirve === false ? 0 : 1}|${opciones.prioritario ? 1 : 0}`;
     if (pedidosJSONEnVuelo.has(clave)) return pedidosJSONEnVuelo.get(clave);
     const p = fetchJSONDirecto(url, cacheKey, opciones);
     pedidosJSONEnVuelo.set(clave, p);
@@ -5041,7 +5059,7 @@
     let episodeIds = fav.episodeIds;
     if (!episodeIds || !episodeIds.length) {
       try {
-        const episodios = await fetchJSON(`https://api.tvmaze.com/shows/${fav.id}/episodes`, `eps_${fav.id}`);
+        const episodios = await fetchJSON(`https://api.tvmaze.com/shows/${fav.id}/episodes`, `eps_${fav.id}`, { prioritario: true });
         episodeIds = episodios.map(e => e.id);
         fav.episodeIds = episodeIds;
         fav.totalEpisodesCount = episodios.length;
@@ -5556,14 +5574,23 @@
 
   /* Obtiene el próximo episodio confirmado de CADA serie favorita.
      Usa airstamp cuando existe y airdate como respaldo. */
-  async function obtenerProximosEstrenos(forzar = false) {
+  // Lectura de la caché SIN red (aunque esté vencida): sirve para pintar el calendario al instante.
+  function datoDeCacheOError(key) {
+    const c = leerCache(key);
+    if (c && c.data) return c.data;
+    throw new Error('sin caché');
+  }
+
+  async function obtenerProximosEstrenos(forzar = false, { soloCache = false, onProgreso = null } = {}) {
     const ahora = Date.now();
     let fallas = 0;
 
     const resultados = await mapConLimite(favoritos, async fav => {
       try {
         // Misma clave de caché que usa verDetalles/toggleFavorito: se reaprovecha el mismo pedido.
-        const episodios = await fetchJSON(`https://api.tvmaze.com/shows/${fav.id}/episodes`, `eps_${fav.id}`, { forzar });
+        const episodios = soloCache
+          ? datoDeCacheOError(`eps_${fav.id}`)
+          : await fetchJSON(`https://api.tvmaze.com/shows/${fav.id}/episodes`, `eps_${fav.id}`, { forzar, prioritario: true });
 
         const futuros = episodios
           .filter(e => e.airdate || e.airstamp)
@@ -5600,7 +5627,9 @@
         fallas++;
         return null;
       }
-    });
+    }, 6, onProgreso);
+
+    if (soloCache) return resultados.filter(Boolean).sort((a, b) => new Date(a.airstamp) - new Date(b.airstamp));
 
     if (fallas > 0) {
       mostrarToast(t('noSePudoActualizarSeries')(fallas), 'error');
@@ -5615,13 +5644,15 @@
      no agrega tráfico de red extra — solo se filtra distinto sobre el mismo
      array. Se limita a los últimos 2 años para no inundar la lista con series
      viejas que recién se agregaron como favoritas. */
-  async function obtenerEpisodiosSinVer(forzar = false) {
+  async function obtenerEpisodiosSinVer(forzar = false, { soloCache = false, onProgreso = null } = {}) {
     const ahora = Date.now();
     const LIMITE_ANTIGUEDAD_MS = 2 * 365 * 24 * 60 * 60 * 1000;
 
     const resultadosPorSerie = await mapConLimite(favoritos, async fav => {
       try {
-        const episodios = await fetchJSON(`https://api.tvmaze.com/shows/${fav.id}/episodes`, `eps_${fav.id}`, { forzar });
+        const episodios = soloCache
+          ? datoDeCacheOError(`eps_${fav.id}`)
+          : await fetchJSON(`https://api.tvmaze.com/shows/${fav.id}/episodes`, `eps_${fav.id}`, { forzar, prioritario: true });
 
         return episodios
           .filter(e => e.airdate || e.airstamp)
@@ -5648,7 +5679,7 @@
       } catch {
         return [];
       }
-    });
+    }, 6, onProgreso);
 
     return resultadosPorSerie.flat().sort((a, b) => new Date(b.airstamp) - new Date(a.airstamp));
   }
@@ -5824,12 +5855,14 @@
 
   /* Busca la próxima temporada que todavía no comenzó en cada serie favorita.
      TVMaze expone número, cantidad prevista de episodios y fecha de estreno de la temporada. */
-  async function obtenerProximasTemporadas(forzar = false) {
+  async function obtenerProximasTemporadas(forzar = false, { soloCache = false, onProgreso = null } = {}) {
     const ahora = new Date();
 
     const resultados = await mapConLimite(favoritos, async fav => {
       try {
-        const temporadas = await fetchJSON(`https://api.tvmaze.com/shows/${fav.id}/seasons`, `seasons_${fav.id}`, { forzar });
+        const temporadas = soloCache
+          ? datoDeCacheOError(`seasons_${fav.id}`)
+          : await fetchJSON(`https://api.tvmaze.com/shows/${fav.id}/seasons`, `seasons_${fav.id}`, { forzar, prioritario: true });
 
         const futuras = temporadas
           .filter(temp => temp.number > 0 && temp.premiereDate && new Date(temp.premiereDate + 'T00:00:00') >= ahora)
@@ -5844,7 +5877,9 @@
         // Si TVMaze no informa episodeOrder, intentamos contar los episodios ya registrados.
         if (!cantidad) {
           try {
-            const episodios = await fetchJSON(`https://api.tvmaze.com/seasons/${temporada.id}/episodes`, `season_eps_${temporada.id}`);
+            const episodios = soloCache
+              ? datoDeCacheOError(`season_eps_${temporada.id}`)
+              : await fetchJSON(`https://api.tvmaze.com/seasons/${temporada.id}/episodes`, `season_eps_${temporada.id}`, { prioritario: true });
             if (episodios.length) {
               cantidad = episodios.length;
               esRegistrado = true;
@@ -5864,7 +5899,7 @@
       } catch {
         return null;
       }
-    });
+    }, 6, onProgreso);
 
     return resultados.filter(Boolean).sort((a, b) => new Date(a.estreno) - new Date(b.estreno));
   }
@@ -5907,27 +5942,31 @@
   }
 
   /* PESTAÑA CALENDARIO: próximos episodios + próximas temporadas de los favoritos */
-  async function cargarCalendario(forzar = false) {
-    const container = document.getElementById('calendarContent');
-    container.innerHTML = `<p style="text-align:center; color:var(--ink-muted);">${forzar ? t('actualizando') : t('buscandoEstrenos')}</p>`;
-    actualizarBotonNotif();
+  /* ==================== CALENDARIO ====================
+     Carga en dos fases para no hacerte esperar mirando "Buscando…":
+       1) Se pinta AL INSTANTE con lo que ya está guardado (aunque esté vencido).
+       2) En segundo plano se actualiza desde TVMaze y se vuelve a pintar. Primero lo principal (episodios);
+          las "próximas temporadas" se suman después, porque cuestan otro pedido por serie.
+     Si todavía no hay nada guardado, se muestra el avance en porcentaje. Los pedidos del calendario tienen
+     prioridad sobre la carga de fondo del Inicio. */
+  let tokenCalendario = 0;
+  let calendarioYaPintado = false;
+  let textoAvanceCalendario = '';
 
-    if (favoritos.length === 0) {
-      container.innerHTML = `<p style="text-align:center; color:var(--ink-muted); margin-top:20px;">${t('agregaFavoritos')}</p>`;
-      return;
+  function pintarCalendario(container, proximos, temporadas, sinVer, parcial = false) {
+    const yAntes = calendarioYaPintado ? (window.scrollY || 0) : 0;
+    ultimosProximos = proximos;
+    if (!parcial) programarTodasLasPendientes();
+    container.innerHTML = '';
+
+    // Pintado parcial (todavía llegando datos): una línea arriba muestra cuánto falta.
+    if (parcial) {
+      const avanceEl = document.createElement('p');
+      avanceEl.id = 'calendarProgreso';
+      avanceEl.style.cssText = 'text-align:center; color:var(--ink-muted); font-size:12px; margin:0 0 10px;';
+      avanceEl.textContent = textoAvanceCalendario;
+      container.appendChild(avanceEl);
     }
-
-    try {
-      const [proximos, temporadas, sinVer] = await Promise.all([
-        obtenerProximosEstrenos(forzar),
-        obtenerProximasTemporadas(forzar),
-        obtenerEpisodiosSinVer(forzar)
-      ]);
-
-      ultimosProximos = proximos;
-      programarTodasLasPendientes();
-
-      container.innerHTML = '';
 
       // Separamos los episodios que ya salen hoy (misma fecha local) del resto,
       // para destacarlos arriba de todo en su propia sección.
@@ -5991,8 +6030,95 @@
         container.innerHTML = `<p style="text-align:center; color:var(--ink-muted); margin-top:20px;">${t('noHayProximos')}</p>`;
       }
 
+    calendarioYaPintado = true;
+    if (yAntes > 0) window.scrollTo(0, yAntes); // al refrescar no te mueve de donde estabas
+  }
+
+  async function cargarCalendario(forzar = false) {
+    const container = document.getElementById('calendarContent');
+    const token = ++tokenCalendario;
+    calendarioYaPintado = false;
+    const textoBase = forzar ? t('actualizando') : t('buscandoEstrenos');
+    container.innerHTML = `<p id="calendarProgreso" style="text-align:center; color:var(--ink-muted);">${textoBase}</p>`;
+    actualizarBotonNotif();
+
+    if (favoritos.length === 0) {
+      container.innerHTML = `<p style="text-align:center; color:var(--ink-muted); margin-top:20px;">${t('agregaFavoritos')}</p>`;
+      return;
+    }
+
+    const vigente = () => token === tokenCalendario && vistaActual === 'calendario';
+
+    // Avance combinado de las 3 consultas (se muestra solo si todavía no hay nada para pintar).
+    const avance = { prox: [0, 1], temp: [0, 1], sin: [0, 1] };
+    const mostrarAvance = () => {
+      if (token !== tokenCalendario) return;
+      const hechos = avance.prox[0] + avance.temp[0] + avance.sin[0];
+      const total = avance.prox[1] + avance.temp[1] + avance.sin[1];
+      textoAvanceCalendario = `${textoBase} ${Math.min(99, Math.round(100 * hechos / Math.max(1, total)))}%`;
+      const el = document.getElementById('calendarProgreso');
+      if (el) el.textContent = textoAvanceCalendario;
+    };
+
+    /* Pintado progresivo: a medida que van llegando los episodios de cada serie (quedan en la caché),
+       se vuelve a pintar el calendario con lo que ya hay, como mucho cada 0,7 s. Antes se esperaba a
+       tener TODAS las series para mostrar algo: con la caché vacía eran varios segundos de pantalla
+       en "Buscando próximos estrenos…". */
+    let ultimoParcial = 0, parcialEnCurso = false, faseFinal = false, timerParcial = null;
+    const ejecutarPintadoParcial = async () => {
+      timerParcial = null;
+      if (parcialEnCurso || faseFinal || !vigente()) return;
+      parcialEnCurso = true; ultimoParcial = Date.now();
+      try {
+        const [pc, sc] = await Promise.all([
+          obtenerProximosEstrenos(false, { soloCache: true }),
+          obtenerEpisodiosSinVer(false, { soloCache: true })
+        ]);
+        if (vigente() && !faseFinal && (pc.length || sc.length)) pintarCalendario(container, pc, temporadasPrevias, sc, true);
+      } catch { /* sin datos todavía: sigue el texto de carga */ }
+      finally { parcialEnCurso = false; }
+    };
+    // Con "cola final": si llegan datos mientras estamos esperando el intervalo, se agenda UN pintado
+    // para cuando se cumpla (así el último dato nunca se pierde), en vez de ignorarlos.
+    const pintarParcial = () => {
+      if (timerParcial || faseFinal || !vigente()) return;
+      const espera = Math.max(150, 700 - (Date.now() - ultimoParcial));
+      timerParcial = setTimeout(ejecutarPintadoParcial, espera);
+    };
+    const progreso = (clave) => (h, tt) => { avance[clave] = [h, tt]; mostrarAvance(); if (clave !== 'temp' && h > 0) pintarParcial(); };
+
+    // Fase 1: lo guardado, sin red.
+    let temporadasPrevias = [];
+    if (!forzar) {
+      try {
+        const [pc, tc, sc] = await Promise.all([
+          obtenerProximosEstrenos(false, { soloCache: true }),
+          obtenerProximasTemporadas(false, { soloCache: true }),
+          obtenerEpisodiosSinVer(false, { soloCache: true })
+        ]);
+        temporadasPrevias = tc;
+        if (vigente() && (pc.length || tc.length || sc.length)) pintarCalendario(container, pc, tc, sc);
+      } catch { /* sin caché útil: se sigue a la fase 2 */ }
+    }
+
+    // Fase 2: actualizar desde TVMaze.
+    try {
+      const [proximos, sinVer] = await Promise.all([
+        obtenerProximosEstrenos(forzar, { onProgreso: progreso('prox') }),
+        obtenerEpisodiosSinVer(forzar, { onProgreso: progreso('sin') })
+      ]);
+      faseFinal = true; // desde acá no entran más pintados parciales (pisarían al definitivo)
+      clearTimeout(timerParcial);
+      if (!vigente()) return;
+      pintarCalendario(container, proximos, temporadasPrevias, sinVer);
+
+      const temporadas = await obtenerProximasTemporadas(forzar, { onProgreso: progreso('temp') });
+      if (!vigente()) return;
+      pintarCalendario(container, proximos, temporadas, sinVer);
+
       if (forzar) mostrarToast(t('calendarioActualizado'), 'ok');
     } catch {
+      if (!vigente() || calendarioYaPintado) return; // ya hay algo en pantalla: no lo pisamos con un error
       container.innerHTML = `<p style="text-align:center; color:var(--danger);">${t('errorCalendario')}</p>`;
     }
   }
@@ -6016,7 +6142,7 @@
       quitarFavoritoConDeshacer(serie.id);
     } else {
       try {
-        const eps = await fetchJSON(`https://api.tvmaze.com/shows/${serie.id}/episodes`, `eps_${serie.id}`);
+        const eps = await fetchJSON(`https://api.tvmaze.com/shows/${serie.id}/episodes`, `eps_${serie.id}`, { prioritario: true });
         serie.episodeIds = eps.map(e => e.id);
         serie.totalEpisodesCount = eps.length;
         const hoy = formatearFechaISO(new Date());
@@ -6053,7 +6179,7 @@
     try {
       await mapConLimite(favoritos, async (fav) => {
         try {
-          const eps = await fetchJSON(`https://api.tvmaze.com/shows/${fav.id}/episodes`, `eps_${fav.id}`, { forzar });
+          const eps = await fetchJSON(`https://api.tvmaze.com/shows/${fav.id}/episodes`, `eps_${fav.id}`, { forzar, prioritario: true });
           fav.episodeIds = eps.map(e => e.id);
           fav.totalEpisodesCount = eps.length;
           const hoy = formatearFechaISO(new Date());
