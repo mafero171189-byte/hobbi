@@ -766,7 +766,7 @@
       avisosActivados: '🔔 Avisos de estrenos activados',
       verMas: 'Ver más →',
       estrenanPronto: 'Estrenan pronto', nuevas: 'Nuevas', populares: 'Populares',
-      estrenosMes: 'Estrenos este mes', vuelvenMes: 'Vuelven este mes',
+      estrenosMes: 'Estrenos este mes', vuelvenMes: 'Vuelven este mes', nuevosEpisodios: 'Nuevos episodios esta semana',
       regionHollywood: 'Populares Hollywood', regionCoreana: 'Populares coreanas', regionTurca: 'Populares turcas', regionLatina: 'Populares Latinas/España',
       estrenosHollywoodMes: 'Estrenos Hollywood',
       proximosEstrenosClave: 'Próximos Estrenos',
@@ -943,7 +943,7 @@
       avisosActivados: '🔔 Premiere alerts on',
       verMas: 'See more →',
       estrenanPronto: 'Coming soon', nuevas: 'New', populares: 'Popular',
-      estrenosMes: 'Premiering this month', vuelvenMes: 'Returning this month',
+      estrenosMes: 'Premiering this month', vuelvenMes: 'Returning this month', nuevosEpisodios: 'New episodes this week',
       regionHollywood: 'Popular Hollywood', regionCoreana: 'Popular Korean', regionTurca: 'Popular Turkish', regionLatina: 'Popular Latin/Spain',
       estrenosHollywoodMes: 'Hollywood Premieres',
       proximosEstrenosClave: 'Upcoming Premieres',
@@ -2994,7 +2994,42 @@
     });
   }
 
-  const traerDiaSchedule = (fecha) => fetchJSON(`https://api.tvmaze.com/schedule/web?date=${fecha}`, `schedule_web_${fecha}`).catch(() => []);
+  // Si dos secciones piden el mismo día a la vez (Estrenos, Próximos y Nuevos
+  // episodios se pisan en los primeros días), comparten un solo pedido en vez
+  // de pegarle dos veces a TVMaze. Se limpia al terminar, así el TTL de la
+  // caché sigue mandando.
+  const pedidosDiaEnVuelo = new Map();
+  const traerDiaSchedule = (fecha) => {
+    if (pedidosDiaEnVuelo.has(fecha)) return pedidosDiaEnVuelo.get(fecha);
+    const p = fetchJSON(`https://api.tvmaze.com/schedule/web?date=${fecha}`, `schedule_web_${fecha}`).catch(() => []);
+    pedidosDiaEnVuelo.set(fecha, p);
+    const limpiar = () => pedidosDiaEnVuelo.delete(fecha);
+    p.then(limpiar, limpiar);
+    return p;
+  };
+
+  /* Nuevos episodios: lo que sale en los próximos 7 días de series que ya
+     están en emisión (episodio > 1, así no se repite con Estrenos/Vuelven).
+     Una entrada por serie, con su próximo episodio; ordenadas por popularidad
+     y tope de 60 para que "Ver más" no sea interminable. Reusa los mismos días
+     cacheados del schedule, así que no suma pedidos nuevos. */
+  async function obtenerNuevosEpisodios() {
+    const hoy = new Date();
+    const fechas = [];
+    for (let i = 0; i < 7; i++) {
+      const d = new Date(hoy); d.setDate(d.getDate() + i);
+      fechas.push(formatearFechaISO(d));
+    }
+    const dias = await fetchEnLotes(fechas, traerDiaSchedule, 8);
+    const porFecha = (a, b) => new Date(a.airstamp || a.airdate) - new Date(b.airstamp || b.airdate);
+    const entradas = dias.flat().flatMap(normalizarEntradaWeb)
+      .filter((ep) => typeof ep.number === 'number' && ep.number > 1)
+      .sort(porFecha);
+    return sinDuplicadosDeShow(entradas)
+      .map((ep) => ({ ...ep, conEpisodio: true }))
+      .sort((a, b) => (b.show.weight || 0) - (a.show.weight || 0) || porFecha(a, b))
+      .slice(0, 60);
+  }
 
   /* "Nuevas" sale sola de los últimos 5 días: son solo 5 pedidos en paralelo,
      así que resuelve rápido. La separamos de los futuros (91 pedidos en
@@ -3092,11 +3127,12 @@
   }
 
   /* Guarda la última tanda completa de cada categoría para que "Ver más" no tenga que volver a pedir nada. */
-  let catalogoDescubrimiento = { estrenos: [], estrenosHollywood: [], proximosEstrenos: [], vuelven: [], nuevas: [], populares: [], popularesHollywood: [], popularesCoreana: [], popularesTurca: [], popularesLatina: [], proximosNetflix: [], proximosPrimeVideo: [], proximosHboMax: [], proximosAppleTv: [], proximosDisney: [], proximosHulu: [], proximosParamount: [] };
+  let catalogoDescubrimiento = { nuevosEpisodios: [], estrenos: [], estrenosHollywood: [], proximosEstrenos: [], vuelven: [], nuevas: [], populares: [], popularesHollywood: [], popularesCoreana: [], popularesTurca: [], popularesLatina: [], proximosNetflix: [], proximosPrimeVideo: [], proximosHboMax: [], proximosAppleTv: [], proximosDisney: [], proximosHulu: [], proximosParamount: [] };
   let primerRailRenderizado = false;
   const CATEGORIAS_DESCUBRIMIENTO = {
     estrenos: { emoji: '🆕', clave: 'estrenosMes' },
     estrenosHollywood: { emoji: '🎬', clave: 'estrenosHollywoodMes' },
+    nuevosEpisodios: { emoji: '📺', clave: 'nuevosEpisodios' },
     proximosEstrenos: { emoji: '📅', clave: 'proximosEstrenosClave' },
     vuelven: { emoji: '🔁', clave: 'vuelvenMes' },
     nuevas: { emoji: '✨', clave: 'nuevas' },
@@ -3132,6 +3168,11 @@
     const ts = entrada && (entrada.airstamp || entrada.airdate);
     if (!ts) return '';
     const fecha = new Date(entrada.airstamp || `${entrada.airdate}T00:00:00`);
+    // Entradas de "Nuevos episodios": T2E5 · jue 8 (qué episodio y qué día sale)
+    if (entrada.conEpisodio) {
+      const dia = fecha.toLocaleDateString(t('localeFecha'), { weekday: 'short', day: 'numeric' });
+      return `T${entrada.season}E${entrada.number} · ${dia}`;
+    }
     return fecha.toLocaleDateString(t('localeFecha'), { day: 'numeric', month: 'short' });
   }
 
@@ -3178,7 +3219,7 @@
 
   /* Muestra el catálogo completo de una categoría como lista vertical, con vuelta al descubrimiento. */
   const CATEGORIAS_CON_FECHA = new Set([
-    'estrenos', 'estrenosHollywood', 'vuelven',
+    'estrenos', 'estrenosHollywood', 'vuelven', 'nuevosEpisodios',
     'proximosEstrenos', 'proximosNetflix', 'proximosPrimeVideo', 'proximosHboMax', 'proximosAppleTv', 'proximosDisney', 'proximosHulu', 'proximosParamount'
   ]);
 
@@ -3413,7 +3454,7 @@
      antes que las lentas (Estrenos/Vuelven/Próximos, que dependen de ~91
      pedidos a la API). */
   const ORDEN_SECCIONES_DESCUBRIMIENTO = [
-    'vuelven', 'estrenos', 'estrenosHollywood', 'nuevas',
+    'vuelven', 'estrenos', 'estrenosHollywood', 'nuevosEpisodios', 'nuevas',
     'proximosNetflix', 'proximosPrimeVideo', 'proximosHboMax', 'proximosAppleTv', 'proximosDisney', 'proximosHulu', 'proximosParamount',
     'populares', 'popularesHollywood', 'popularesCoreana', 'popularesTurca', 'popularesLatina'
   ];
@@ -3524,6 +3565,16 @@
       if (!holderVigente()) return;
       ['vuelven', 'estrenos', 'estrenosHollywood']
         .forEach((id) => resolverSlotDescubrimiento(holder, id, []));
+      quitarSlotSiQuedoVacio(holder);
+    });
+
+    obtenerNuevosEpisodios().then((nuevosEpisodios) => {
+      if (!holderVigente()) return;
+      resolverSlotDescubrimiento(holder, 'nuevosEpisodios', nuevosEpisodios, true);
+      quitarSlotSiQuedoVacio(holder);
+    }).catch(() => {
+      if (!holderVigente()) return;
+      resolverSlotDescubrimiento(holder, 'nuevosEpisodios', []);
       quitarSlotSiQuedoVacio(holder);
     });
 
