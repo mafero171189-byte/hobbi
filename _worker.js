@@ -644,8 +644,21 @@ async function handleMoviesCartelera(request, env) {
    El front usa esto cuando TVMaze no tiene póster de una serie. La key vive
    solo acá (secreto del Worker), ya no en el HTML. Siempre responde 200 con
    { poster: url | null } para que el front cachee el resultado y no reintente. */
+/* /api/poster solo para la propia app: la APK (Origin permitido) o la PWA/TWA (mismo origen).
+   No es una barrera infalible —un script puede falsificar headers—, pero corta el uso casual
+   de la ruta para gastar la cuota de OMDb desde otros sitios o desde un navegador cualquiera. */
+function pedidoDeLaApp(request, url) {
+  const origen = request.headers.get('Origin');
+  if (origen) return ORIGENES_PERMITIDOS.includes(origen);
+  const sitio = request.headers.get('Sec-Fetch-Site');
+  if (sitio) return sitio === 'same-origin' || sitio === 'same-site';
+  const ref = request.headers.get('Referer'); // navegadores viejos sin Sec-Fetch-Site
+  return !!ref && ref.startsWith(url.origin + '/');
+}
+
 async function handlePoster(request, env) {
   const url = new URL(request.url);
+  if (!pedidoDeLaApp(request, url)) return errorResponse('No permitido', 403);
   const titulo = (url.searchParams.get('t') || '').trim();
   if (!titulo || titulo.length > 120) return errorResponse('Parámetro t requerido', 400);
 
