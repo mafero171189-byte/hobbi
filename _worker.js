@@ -676,6 +676,19 @@ async function handlePoster(request, env) {
   }
 }
 
+/* Headers de seguridad para las páginas y archivos estáticos (el HTML de la app). Antes solo los tenían
+   las respuestas de /api/*. No se agrega Content-Security-Policy a propósito: la app usa scripts y estilos
+   inline y el login de Google necesita cargar scripts de accounts.google.com; una CSP mal puesta lo rompería. */
+function conHeadersDeSeguridad(respuesta) {
+  const r = new Response(respuesta.body, respuesta); // copia con headers editables (mismo estado y cuerpo)
+  r.headers.set('X-Content-Type-Options', 'nosniff');
+  r.headers.set('Referrer-Policy', 'strict-origin-when-cross-origin');
+  r.headers.set('X-Frame-Options', 'DENY');
+  r.headers.set('Permissions-Policy', 'camera=(), microphone=(), geolocation=(), payment=(), usb=()');
+  r.headers.set('Strict-Transport-Security', 'max-age=31536000');
+  return r;
+}
+
 /* ---------- Router ---------- */
 
 export default {
@@ -711,7 +724,7 @@ export default {
     else if (url.pathname === '/version.json' && request.method === 'GET') respuesta = json({ version: APP_LATEST_VERSION });
     else {
       // Todo lo que no sea /api/* se sirve como archivo estático (index.html, etc).
-      return env.ASSETS.fetch(request);
+      return conHeadersDeSeguridad(await env.ASSETS.fetch(request));
     }
 
     // Agregamos los headers CORS a la respuesta real de cualquier endpoint
