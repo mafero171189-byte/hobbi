@@ -297,6 +297,10 @@
     .ajustes-idioma-opcion .check { color: var(--gold); font-weight: 700; }
 
     /* Buscador */
+    .search-box { position: relative; }
+    .search-box input { padding-right: 46px !important; }
+    .search-clear { position: absolute; right: 4px; top: 50%; transform: translateY(-50%); width: 44px; height: 44px; border: none; background: none; color: var(--ink-muted); font-size: 16px; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+    .search-clear[hidden] { display: none; }
     .search-box input { width: 100%; padding: 14px; border-radius: 12px; border: 1px solid var(--border); background-color: var(--surface); color: var(--ink); font-size: 15px; outline: none; }
     .search-box input:focus { border-color: var(--gold); }
 
@@ -482,6 +486,8 @@
     .toast { background: var(--surface-2); border: 1px solid var(--border); color: var(--ink); font-size: 13px; padding: 10px 14px; border-radius: 10px; box-shadow: 0 4px 16px rgba(0,0,0,0.4); opacity: 0; transform: translateY(8px); transition: opacity 0.25s, transform 0.25s; max-width: 100%; text-align: center; }
     .toast.show { opacity: 1; transform: translateY(0); }
     .toast.error { border-color: var(--danger); }
+    .toast.con-accion { pointer-events: auto; display: flex; align-items: center; gap: 12px; text-align: left; }
+    .toast .toast-accion { background: none; border: none; color: var(--gold); font-weight: 800; font-size: 13px; cursor: pointer; padding: 8px 6px; margin: -8px -6px; flex-shrink: 0; text-transform: uppercase; letter-spacing: 0.3px; }
     .toast.ok { border-color: var(--teal); }
 
     /* Banda de "sin conexión" */
@@ -634,7 +640,10 @@
   <!-- VISTA DE BÚSQUEDA Y FAVORITOS -->
   <div id="listView">
     <div class="search-box" id="searchBoxContainer">
-      <input type="text" id="searchInput" placeholder="Buscar serie online..." oninput="debouncedSearch()">
+      <input type="text" id="searchInput" placeholder="Buscar serie online..." aria-label="Buscar serie"
+             inputmode="search" enterkeyhint="search" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
+             oninput="debouncedSearch(); actualizarBotonLimpiarBusqueda()" onkeydown="teclaBusqueda(event)">
+      <button type="button" id="searchClearBtn" class="search-clear" aria-label="Borrar búsqueda" onclick="limpiarBusqueda()" hidden>✕</button>
     </div>
 
     <div id="favsToolbar" style="display:none; flex-direction: column; gap: 10px; margin-bottom: 12px;">
@@ -884,6 +893,7 @@
       ajustesTituloBackup: 'Copia de seguridad', exportarCopia: '📤 Exportar mis series', importarCopia: '📥 Importar copia',
       copiaExportada: 'Copia lista', copiaInvalida: 'Ese archivo no es una copia válida de Hobbi.', copiaGrande: 'El archivo es demasiado grande.',
       copiaImportada: (n, v) => `Copia importada: ${n} series nuevas y ${v} episodios vistos.`,
+      deshacer: 'Deshacer', borrarBusqueda: 'Borrar búsqueda', buscarSerieAria: 'Buscar serie',
       ajustesTituloTema: 'Apariencia', temaLabel: 'Tema', temaOscuro: 'Oscuro', temaClaro: 'Claro', temaAuto: 'Automático (como el celu)',
       tiempoAgotado: 'tiempo de espera agotado',
       syncReintentoAuto: 'Reintento automático', reintentar: 'Reintentar', muchaDemanda: 'TVMaze está con mucha demanda, reintentando…', hoyBadge: 'HOY',
@@ -1070,6 +1080,7 @@
       ajustesTituloBackup: 'Backup', exportarCopia: '📤 Export my shows', importarCopia: '📥 Import backup',
       copiaExportada: 'Backup ready', copiaInvalida: 'That file is not a valid Hobbi backup.', copiaGrande: 'The file is too large.',
       copiaImportada: (n, v) => `Backup imported: ${n} new shows and ${v} watched episodes.`,
+      deshacer: 'Undo', borrarBusqueda: 'Clear search', buscarSerieAria: 'Search shows',
       ajustesTituloTema: 'Appearance', temaLabel: 'Theme', temaOscuro: 'Dark', temaClaro: 'Light', temaAuto: 'Automatic (follow phone)',
       tiempoAgotado: 'request timed out',
       syncReintentoAuto: 'Retrying automatically', reintentar: 'Retry', muchaDemanda: 'TVMaze is busy, retrying…', hoyBadge: 'TODAY',
@@ -1777,10 +1788,35 @@
     });
   }
 
-  let favoritos = JSON.parse(localStorage.getItem('hobi_favs')) || [];
+  /* Lectura segura de datos guardados. Antes, un valor corrupto en localStorage hacía que
+     JSON.parse tirara un error al arrancar y la app quedaba en blanco. Ahora, si el dato no se
+     puede leer o no tiene la forma esperada, se usa un valor vacío y se guarda una COPIA del
+     original en 'hobbi_corrupto_<clave>' (así lo ilegible no se pierde del todo). */
+  function leerJSONSeguro(clave, porDefecto, validar, limpiar) {
+    let crudo = null;
+    try { crudo = localStorage.getItem(clave); } catch { return porDefecto(); }
+    if (crudo == null) return porDefecto();
+    try {
+      let v = JSON.parse(crudo);
+      if (validar(v)) {
+        const limpio = limpiar ? limpiar(v) : v;
+        // Si al limpiar se descartaron elementos inutilizables, también queda una copia del original.
+        if (Array.isArray(v) && Array.isArray(limpio) && limpio.length !== v.length) {
+          try { localStorage.setItem('hobbi_corrupto_' + clave, crudo); } catch {}
+        }
+        return limpio;
+      }
+    } catch { /* cae al respaldo de abajo */ }
+    try { localStorage.setItem('hobbi_corrupto_' + clave, crudo); } catch {}
+    return porDefecto();
+  }
+  const esObjetoPlano = (v) => !!v && typeof v === 'object' && !Array.isArray(v);
+
+  let favoritos = leerJSONSeguro('hobi_favs', () => [], Array.isArray,
+    (arr) => arr.filter((f) => f && typeof f === 'object' && Number.isInteger(f.id)));
 
 
-  let episodiosVistos = JSON.parse(localStorage.getItem('hobi_watched_eps')) || {}; // { episodeId: true }
+  let episodiosVistos = leerJSONSeguro('hobi_watched_eps', () => ({}), esObjetoPlano); // { episodeId: true }
   let timeoutBusqueda = null;
 
   /* ==================== LOGIN CON GOOGLE + SYNC EN LA NUBE ====================
@@ -2463,7 +2499,7 @@
   // Marca de tiempo por serie: última vez que el usuario entró a ver sus detalles.
   // Se usa para dejar de mostrar el badge "Nuevo" en Favoritos una vez que ya la vio,
   // aunque todavía tenga episodios sin marcar como vistos.
-  let badgeNuevoVisto = JSON.parse(localStorage.getItem('hobi_badge_nuevo_visto')) || {}; // { showId: timestamp }
+  let badgeNuevoVisto = leerJSONSeguro('hobi_badge_nuevo_visto', () => ({}), esObjetoPlano); // { showId: timestamp }
   function marcarBadgeNuevoVisto(showId) {
     badgeNuevoVisto[showId] = Date.now();
     localStorage.setItem('hobi_badge_nuevo_visto', JSON.stringify(badgeNuevoVisto));
@@ -2664,6 +2700,32 @@
 
   /* ==================== TOASTS (avisos no intrusivos) ==================== */
   const toastsRecientes = new Set();
+  // Aviso con un botón de acción (ej: "Deshacer"). Dura un poco más y no se agrupa con otros.
+  function mostrarToastConAccion(mensaje, etiquetaAccion, accion, ms = 5500) {
+    const holder = document.getElementById('toastHolder');
+    const toast = document.createElement('div');
+    toast.className = 'toast ok con-accion';
+    toast.setAttribute('role', 'status');
+    toast.setAttribute('aria-live', 'polite');
+    const texto = document.createElement('span');
+    texto.textContent = mensaje;
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'toast-accion';
+    btn.textContent = etiquetaAccion;
+    let cerrado = false;
+    const cerrar = () => {
+      if (cerrado) return; cerrado = true;
+      toast.classList.remove('show');
+      setTimeout(() => toast.remove(), 300);
+    };
+    btn.onclick = () => { try { accion(); } finally { cerrar(); } };
+    toast.append(texto, btn);
+    holder.appendChild(toast);
+    requestAnimationFrame(() => toast.classList.add('show'));
+    setTimeout(cerrar, ms);
+  }
+
   function mostrarToast(mensaje, tipo = 'error') {
     // Si el mismo mensaje ya se mostró hace instantes (ej: varias series fallando juntas), no lo repetimos.
     if (toastsRecientes.has(mensaje)) return;
@@ -2889,6 +2951,9 @@
   }
 
   async function fetchJSONDirecto(url, cacheKey, { forzar = false, ttlVencidoSirve = true, signal = null, prioritario = false } = {}) {
+    // Antes de mirar la caché hay que esperar a que termine de cargarse desde IndexedDB: si el Inicio
+    // pedía datos antes de eso, no encontraba nada guardado y los volvía a bajar de la red.
+    try { await cacheListo; } catch { /* sin IndexedDB: se sigue igual con la caché en memoria */ }
     const cache = cacheKey ? leerCache(cacheKey) : null;
     if (cacheKey && cache && !cache.vencido && !forzar) {
       return cache.data;
@@ -2937,7 +3002,7 @@
      del estreno). Cuando esto se compile como APK con Capacitor, conviene
      reemplazar programarNotificacionEpisodio() por @capacitor/local-notifications
      (LocalNotifications.schedule), que sí funciona con la app cerrada. */
-  let notificados = JSON.parse(localStorage.getItem('hobi_notificados')) || {};
+  let notificados = leerJSONSeguro('hobi_notificados', () => ({}), esObjetoPlano);
   const timersNotif = {}; // episodioId -> id de setTimeout, para no programar el mismo dos veces
 
   function guardarNotificados() {
@@ -3273,6 +3338,50 @@
     });
   }
 
+  /* ==================== ESTADO DE PANTALLA (búsqueda y scroll al volver) ====================
+     Al abrir una serie (o "Ver más") desde Inicio, Favoritos, Calendario o un catálogo, se guarda dónde
+     estabas: el texto de la búsqueda y cuánto habías scrolleado. Al volver con Atrás se restaura.
+     Antes, volver reconstruía la pantalla desde cero: se perdía la búsqueda y quedabas arriba de todo.
+     Cada estado se usa una sola vez (al restaurarlo se descarta). */
+  const estadoPantalla = {};
+  let catalogoActualId = null;
+  let tokenRestauroScroll = 0;
+
+  function claveEstadoPantalla() {
+    if (vistaActual === 'catalogo') return 'catalogo:' + catalogoActualId;
+    return ['inicio', 'favoritos', 'calendario'].includes(vistaActual) ? vistaActual : null;
+  }
+  function guardarEstadoPantalla() {
+    const clave = claveEstadoPantalla();
+    if (!clave) return;
+    const e = { scrollY: window.scrollY || window.pageYOffset || 0 };
+    if (clave === 'inicio') {
+      const inp = document.getElementById('searchInput');
+      e.query = inp ? inp.value.trim() : '';
+    }
+    estadoPantalla[clave] = e;
+  }
+  // Scrollea a la posición guardada apenas el contenido (que puede cargar de a poco) sea lo bastante alto.
+  function restaurarScroll(y) {
+    const token = ++tokenRestauroScroll;
+    const cancelar = () => { tokenRestauroScroll++; };
+    window.addEventListener('touchstart', cancelar, { once: true, passive: true });
+    window.addEventListener('wheel', cancelar, { once: true, passive: true });
+    let intentos = 0;
+    const paso = () => {
+      if (token !== tokenRestauroScroll) return;
+      const maxScroll = document.documentElement.scrollHeight - window.innerHeight;
+      if (maxScroll >= y - 2 || ++intentos > 25) {
+        window.scrollTo(0, y);
+        window.removeEventListener('touchstart', cancelar);
+        window.removeEventListener('wheel', cancelar);
+        return;
+      }
+      setTimeout(paso, 120);
+    };
+    requestAnimationFrame(paso);
+  }
+
   function cambiarVista(vista, push = true) {
     // Si el usuario toca el tab en el que ya está parado (común sin querer en
     // mobile), no relanzamos nada: evita borrar una búsqueda en curso en Inicio
@@ -3280,6 +3389,10 @@
     // para forzar un refresco real (cambio de idioma, volver del detalle), así
     // que la guarda solo aplica cuando push=true (o sea, un tap real del tab).
     if (push && vistaActual === vista) return;
+
+    // Estado guardado de esta pantalla: solo se usa al VOLVER (push=false). Un toque real en el tab empieza de cero.
+    const guardado = push ? null : (estadoPantalla[vista] || null);
+    delete estadoPantalla[vista];
 
     document.getElementById('detailView').style.display = 'none';
     const blurBg = document.getElementById('detailBlurBg');
@@ -3302,10 +3415,17 @@
 
     if (vista === 'favoritos') renderizarFavoritos();
     else if (vista === 'calendario') cargarCalendario();
-    else {
+    else if (guardado && guardado.query) {
+      // Volvemos a una búsqueda: se repone el texto y se repite (sale de la caché, es casi instantáneo).
+      document.getElementById('searchInput').value = guardado.query;
+      actualizarBotonLimpiarBusqueda();
+      buscarOnline();
+    } else {
       mostrarPlaceholderBusqueda();
       document.getElementById('searchInput').value = '';
+      actualizarBotonLimpiarBusqueda();
     }
+    if (guardado && guardado.scrollY > 0) restaurarScroll(guardado.scrollY);
 
     // Los tabs se comportan como en Ajustes: desde Inicio, entrar a Favoritos
     // o Calendario apila UNA entrada (así Atrás vuelve a Inicio primero, y
@@ -3378,6 +3498,32 @@
   function debouncedSearch() {
     clearTimeout(timeoutBusqueda);
     timeoutBusqueda = setTimeout(buscarOnline, 600);
+  }
+
+  // ✕ para borrar: solo visible cuando hay texto.
+  function actualizarBotonLimpiarBusqueda() {
+    const inp = document.getElementById('searchInput');
+    const btn = document.getElementById('searchClearBtn');
+    if (!inp || !btn) return;
+    const hayTexto = inp.value.length > 0;
+    btn.hidden = !hayTexto;
+    btn.setAttribute('aria-label', t('borrarBusqueda'));
+  }
+  function limpiarBusqueda() {
+    const inp = document.getElementById('searchInput');
+    clearTimeout(timeoutBusqueda);
+    inp.value = '';
+    actualizarBotonLimpiarBusqueda();
+    inp.focus();
+    buscarOnline(); // con el texto vacío vuelve al Inicio (y cancela lo que estuviera pidiendo)
+  }
+  // Enter / tecla "Buscar" del teclado: busca ya (sin esperar el debounce) y baja el teclado para ver los resultados.
+  function teclaBusqueda(e) {
+    if (e.key !== 'Enter') return;
+    e.preventDefault();
+    clearTimeout(timeoutBusqueda);
+    e.target.blur();
+    buscarOnline();
   }
 
   function mostrarPlaceholderBusqueda() {
@@ -3567,7 +3713,8 @@
       const d = new Date(hoy); d.setDate(d.getDate() - i);
       fechasPasadas.push(formatearFechaISO(d));
     }
-    const episodiosPasados = await Promise.all(fechasPasadas.map(traerDiaSchedule));
+    // En lotes chicos y con pausa (antes: 5 pedidos de golpe al arrancar, compitiendo con lo que va primero).
+    const episodiosPasados = await fetchEnLotesSuaves(fechasPasadas, traerDiaSchedule, { tamanoLote: 3, pausaMs: 1500, necesitaRed: diaScheduleSinCache });
 
     // Nuevas: el primer capítulo de una serie (T1E1) salió en los últimos 5 días.
     return sinDuplicadosDeShow(
@@ -3879,6 +4026,9 @@
   ]);
 
   function verCatalogoCompleto(id, push = true) {
+    if (push) guardarEstadoPantalla();
+    const guardadoCatalogo = push ? null : (estadoPantalla['catalogo:' + id] || null);
+    delete estadoPantalla['catalogo:' + id];
     const items = catalogoDescubrimiento[id] || [];
     // Estas categorías guardan entradas {show, airstamp, ...} (para tener la
     // fecha disponible); el resto de categorías guarda shows directos.
@@ -3928,6 +4078,7 @@
       history.pushState({ view: 'catalogo', catalogoId: id }, '', '#catalogo-' + id);
     }
     vistaActual = 'catalogo';
+    catalogoActualId = id;
     const lista = document.createElement('div');
     lista.className = 'series-list';
     const idsFav = new Set(favoritos.map(f => f.id));
@@ -3943,6 +4094,8 @@
     });
     container.appendChild(lista);
     dispararFallbackImagenes(lista);
+    if (push) window.scrollTo(0, 0);
+    else if (guardadoCatalogo && guardadoCatalogo.scrollY > 0) restaurarScroll(guardadoCatalogo.scrollY);
   }
 
   /* Heurística de región/origen de una serie: mira el país del canal o
@@ -4109,7 +4262,7 @@
      antes que las lentas (Estrenos/Vuelven/Próximos, que dependen de ~91
      pedidos a la API). */
   const ORDEN_SECCIONES_DESCUBRIMIENTO = [
-    'vuelven', 'estrenos', 'estrenosHollywood', 'nuevosEpisodios', 'nuevas',
+    'nuevosEpisodios', 'vuelven', 'estrenos', 'estrenosHollywood', 'nuevas',
     'proximosNetflix', 'proximosPrimeVideo', 'proximosHboMax', 'proximosAppleTv', 'proximosDisney', 'proximosHulu', 'proximosParamount',
     'populares', 'popularesHollywood', 'popularesCoreana', 'popularesTurca', 'popularesLatina'
   ];
@@ -4199,17 +4352,22 @@
       quitarSlotSiQuedoVacio(holder);
     });
 
-    obtenerNuevas().then((nuevas) => {
+    // Nuevos episodios va primero (es lo primero del Inicio): arranca antes que nada.
+    const pNuevosEp = obtenerNuevosEpisodios().then((nuevosEpisodios) => {
       if (!holderVigente()) return;
-      resolverSlotDescubrimiento(holder, 'nuevas', nuevas.map(ep => ep.show));
+      nuevosEpisodiosTodos = nuevosEpisodios;
+      filtroPlataformaNuevosEp = 'todas';
+      resolverSlotDescubrimiento(holder, 'nuevosEpisodios', nuevosEpisodios, true);
       quitarSlotSiQuedoVacio(holder);
     }).catch(() => {
       if (!holderVigente()) return;
-      resolverSlotDescubrimiento(holder, 'nuevas', []);
+      resolverSlotDescubrimiento(holder, 'nuevosEpisodios', []);
       quitarSlotSiQuedoVacio(holder);
     });
 
-    const pEstrenos = obtenerEstrenosYVuelven().then(({ estrenos, vuelven }) => {
+    // Estrenos/Vuelven arrancan recién cuando terminó Nuevos episodios (que ahora va primero en el Inicio);
+    // los días que comparten ya están en caché, así que casi no suman pedidos.
+    const pEstrenos = pNuevosEp.then(() => obtenerEstrenosYVuelven()).then(({ estrenos, vuelven }) => {
       if (!holderVigente()) return;
       const estrenosHollywood = armarEstrenosHollywood(estrenos);
       resolverSlotDescubrimiento(holder, 'vuelven', vuelven, true);
@@ -4223,21 +4381,20 @@
       quitarSlotSiQuedoVacio(holder);
     });
 
-    const pNuevosEp = obtenerNuevosEpisodios().then((nuevosEpisodios) => {
+    // "Nuevas" va después de Nuevos episodios y de Estrenos/Vuelven (está más abajo en la pantalla).
+    const pNuevas = pEstrenos.then(() => obtenerNuevas()).then((nuevas) => {
       if (!holderVigente()) return;
-      nuevosEpisodiosTodos = nuevosEpisodios;
-      filtroPlataformaNuevosEp = 'todas';
-      resolverSlotDescubrimiento(holder, 'nuevosEpisodios', nuevosEpisodios, true);
+      resolverSlotDescubrimiento(holder, 'nuevas', nuevas.map(ep => ep.show));
       quitarSlotSiQuedoVacio(holder);
     }).catch(() => {
       if (!holderVigente()) return;
-      resolverSlotDescubrimiento(holder, 'nuevosEpisodios', []);
+      resolverSlotDescubrimiento(holder, 'nuevas', []);
       quitarSlotSiQuedoVacio(holder);
     });
 
     // Próximos Estrenos es lo más pesado: arranca recién cuando terminaron Estrenos/Vuelven
     // y Nuevos episodios (ambas cadenas terminan en .catch, nunca rechazan).
-    Promise.all([pEstrenos, pNuevosEp]).then(() => obtenerCatalogoProximosEstrenos()).then(({ proximosEstrenos }) => {
+    Promise.all([pEstrenos, pNuevosEp, pNuevas]).then(() => obtenerCatalogoProximosEstrenos()).then(({ proximosEstrenos }) => {
       if (!holderVigente()) return;
       const proximosPorPlataforma = armarProximosPorPlataforma(proximosEstrenos);
       resolverSlotDescubrimiento(holder, 'proximosEstrenos', proximosEstrenos, true);
@@ -4755,28 +4912,43 @@
     });
   }
 
-  async function ejecutarSwipeEliminar(wrapper, card, show) {
-    const ok = await confirmarEliminar(
-      t('confirmarSacarTitulo')(show.name),
-      t('confirmarSacarMsg')
-    );
-    if (!ok) {
-      card.style.transform = 'translateX(0)';
-      return;
+  /* Quitar de favoritos SIN pedir confirmación: se quita al instante y aparece "Deshacer" unos segundos.
+     Al deshacer vuelve a su lugar, con sus episodios vistos. */
+  function refrescarVistaTrasCambioFavorito(serieId) {
+    if (vistaActual === 'detalle') {
+      actualizarBotonFavoritoDetalle(serieId);
+    } else if (document.getElementById('tabFavs').classList.contains('active')) {
+      renderizarFavoritos();
+    } else {
+      buscarOnline();
     }
+  }
+  function quitarFavoritoConDeshacer(serieId) {
+    const idx = favoritos.findIndex(f => f.id === serieId);
+    if (idx < 0) return false;
+    const fav = favoritos[idx];
+    const vistosPrevios = {};
+    (fav.episodeIds || []).forEach((id) => { if (episodiosVistos[id]) vistosPrevios[id] = true; });
+    favoritos.splice(idx, 1);
+    limpiarEpisodiosVistos(fav);
+    guardarDatos();
+    mostrarToastConAccion(t('sacasteDeFavoritos')(fav.name), t('deshacer'), () => {
+      if (favoritos.some(f => f.id === fav.id)) return; // ya lo volvieron a agregar a mano
+      favoritos.splice(Math.min(idx, favoritos.length), 0, fav);
+      Object.assign(episodiosVistos, vistosPrevios);
+      guardarDatos();
+      refrescarVistaTrasCambioFavorito(fav.id);
+    });
+    return true;
+  }
 
+  async function ejecutarSwipeEliminar(wrapper, card, show) {
     card.style.transform = `translateX(-${wrapper.offsetWidth}px)`;
     wrapper.style.transition = 'height 0.2s, margin 0.2s';
     setTimeout(() => {
-      const idx = favoritos.findIndex(f => f.id === show.id);
-      if (idx > -1) {
-        limpiarEpisodiosVistos(favoritos[idx]);
-        favoritos.splice(idx, 1);
-      }
-      guardarDatos();
+      quitarFavoritoConDeshacer(show.id);
       wrapper.style.height = wrapper.offsetHeight + 'px';
       requestAnimationFrame(() => { wrapper.style.height = '0px'; wrapper.style.marginBottom = '0px'; wrapper.style.overflow = 'hidden'; });
-      mostrarToast(t('sacasteDeFavoritos')(show.name), 'ok');
       setTimeout(() => wrapper.remove(), 220);
     }, 150);
   }
@@ -4977,6 +5149,7 @@
   }
 
   async function verDetalles(showId, push = true) {
+    if (push) { guardarEstadoPantalla(); window.scrollTo(0, 0); } // recordar dónde estabas antes de entrar
     document.getElementById('listView').style.display = 'none';
     document.getElementById('calendarView').style.display = 'none';
     const detailView = document.getElementById('detailView');
@@ -5766,14 +5939,7 @@
     e.stopPropagation();
     const idx = favoritos.findIndex(f => f.id === serie.id);
     if (idx > -1) {
-      const favReal = favoritos[idx];
-      const ok = await confirmarEliminar(
-        t('confirmarSacarTitulo')(favReal.name),
-        t('confirmarSacarMsg')
-      );
-      if (!ok) return;
-      favoritos.splice(idx, 1);
-      limpiarEpisodiosVistos(favReal);
+      quitarFavoritoConDeshacer(serie.id);
     } else {
       try {
         const eps = await fetchJSON(`https://api.tvmaze.com/shows/${serie.id}/episodes`, `eps_${serie.id}`);
@@ -5789,13 +5955,7 @@
       favoritos.push(serie);
     }
     guardarDatos();
-    if (vistaActual === 'detalle') {
-      actualizarBotonFavoritoDetalle(serie.id);
-    } else if (document.getElementById('tabFavs').classList.contains('active')) {
-      renderizarFavoritos();
-    } else {
-      buscarOnline();
-    }
+    refrescarVistaTrasCambioFavorito(serie.id);
   }
 
   function actualizarBotonFavoritoDetalle(showId) {
