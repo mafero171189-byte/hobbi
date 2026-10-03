@@ -2931,8 +2931,8 @@
     return { data: entrada.data, vencido: (Date.now() - entrada.ts) > ttlParaClave(key, entrada.data) };
   }
 
-  function guardarCache(key, data) {
-    const entrada = { data, ts: Date.now() };
+  function guardarCache(key, data, ts = Date.now()) {
+    const entrada = { data, ts };
     memoriaCache.set(key, entrada); // disponible al instante para lecturas síncronas
     if (key.startsWith('eps_')) actualizarBadgeTabFavoritos(); // llegaron episodios: puede cambiar el contador
     (async () => {
@@ -3695,10 +3695,55 @@
     return resultados;
   }
 
-  // ¿Ese día del schedule habría que pedirlo a la red (sin caché vigente)?
+  /* ---- Calendario precalculado (public/data/schedule.json) ----
+     Una GitHub Action (cada 3 h) baja el schedule de TVMaze una sola vez y lo deja en un JSON ya
+     recortado. Así el Inicio no pide ~50 días a TVMaze en cada visita: baja ese archivo (1 pedido) y
+     siembra con él la caché de cada día. Si el archivo no existe, no se puede bajar, le falta un día o
+     tiene más de 9 h, todo sigue como antes: ese día se pide a TVMaze. */
+  const SCHEDULE_ARCHIVO_MAX_EDAD_MS = 9 * HORA_MS;
+  let scheduleArchivo = null;        // contenido válido del archivo (null si no hay / no sirve)
+  let scheduleArchivoPromesa = null;
+  let scheduleArchivoIntentoTs = 0;
+  function cargarScheduleArchivo() {
+    // Si falló (sin red, 404), se reintenta recién a los 3 min para no insistir en cada pedido.
+    if (scheduleArchivoPromesa && (scheduleArchivo || Date.now() - scheduleArchivoIntentoTs < 3 * 60 * 1000)) return scheduleArchivoPromesa;
+    scheduleArchivoIntentoTs = Date.now();
+    scheduleArchivoPromesa = (async () => {
+      try {
+        const res = await fetchConTimeout(api('/data/schedule.json?v=' + Math.floor(Date.now() / (30 * 60 * 1000))), 8000);
+        if (!res.ok) return null;
+        const json = await res.json();
+        if (!json || typeof json.generadoEn !== 'number' || !json.dias || typeof json.dias !== 'object') return null;
+        const edad = Date.now() - json.generadoEn;
+        if (edad > SCHEDULE_ARCHIVO_MAX_EDAD_MS || edad < -10 * 60 * 1000) return null;
+        scheduleArchivo = json;
+        return json;
+      } catch { return null; }
+    })();
+    return scheduleArchivoPromesa;
+  }
+  // Devuelve el día desde el archivo (y lo deja en la caché con su edad real), o null si hay que ir a la red.
+  async function scheduleDiaDesdeArchivo(fecha) {
+    try {
+      try { await cacheListo; } catch { /* sin IndexedDB: sigue con la caché en memoria */ }
+      const clave = `schedule_web_${fecha}`;
+      const c = leerCache(clave);
+      if (c && !c.vencido) return null; // la caché propia alcanza
+      const arch = await cargarScheduleArchivo();
+      const dia = arch && arch.dias[fecha];
+      if (!Array.isArray(dia)) return null;
+      const previa = memoriaCache.get(clave);
+      if (previa && previa.ts >= arch.generadoEn) return null; // lo que había es más nuevo que el archivo
+      guardarCache(clave, dia, arch.generadoEn);
+      return dia;
+    } catch { return null; }
+  }
+
+  // ¿Ese día del schedule habría que pedirlo a la red (sin caché vigente ni archivo que lo cubra)?
   const diaScheduleSinCache = (fecha) => {
     const c = leerCache(`schedule_web_${fecha}`);
-    return !c || c.vencido;
+    if (c && !c.vencido) return false;
+    return !(scheduleArchivo && Array.isArray(scheduleArchivo.dias[fecha]));
   };
 
   /* Antes esta única función pedía pasados y futuros juntos y devolvía todo
@@ -3757,7 +3802,9 @@
   const pedidosDiaEnVuelo = new Map();
   const traerDiaSchedule = (fecha) => {
     if (pedidosDiaEnVuelo.has(fecha)) return pedidosDiaEnVuelo.get(fecha);
-    const p = fetchJSON(`https://api.tvmaze.com/schedule/web?date=${fecha}`, `schedule_web_${fecha}`).catch(() => []);
+    const p = scheduleDiaDesdeArchivo(fecha)
+      .then((dia) => dia || fetchJSON(`https://api.tvmaze.com/schedule/web?date=${fecha}`, `schedule_web_${fecha}`))
+      .catch(() => []);
     pedidosDiaEnVuelo.set(fecha, p);
     const limpiar = () => pedidosDiaEnVuelo.delete(fecha);
     p.then(limpiar, limpiar);
