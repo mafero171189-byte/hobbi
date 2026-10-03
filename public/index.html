@@ -759,6 +759,8 @@
       ningunaCoincide: 'Ninguna coincide con ese filtro.',
       buscando: 'Buscando...',
       noEncontraron: 'No se encontraron series.',
+      pistaTituloOriginal: 'TVMaze guarda los títulos en su idioma original: probá con el nombre en inglés.',
+      minimoLetras: 'Escribí al menos 3 letras para buscar.',
       cargandoEpisodios: 'Cargando episodios...',
       temporadas: 'Temporadas',
       marcarToda: '✓ Toda',
@@ -936,6 +938,8 @@
       ningunaCoincide: 'None match that filter.',
       buscando: 'Searching...',
       noEncontraron: 'No shows found.',
+      pistaTituloOriginal: 'TVMaze lists titles in their original language: try the English name.',
+      minimoLetras: 'Type at least 3 letters to search.',
       cargandoEpisodios: 'Loading episodes...',
       temporadas: 'Seasons',
       marcarToda: '✓ All',
@@ -1570,7 +1574,7 @@
      Si la serie ya no está en pantalla cuando responde OMDb (cambiaste de
      pestaña), simplemente no encuentra ninguna <img> que actualizar y no
      rompe nada. */
-  const OMDB_API_KEY = 'ba5c4b62';
+  // La key de OMDb ya no vive acá: el Worker la guarda como secreto (/api/poster).
   const cacheFallbackPoster = new Map(); // nombre normalizado -> URL de póster (o null si ya se buscó y no hay)
   const fallbackEnVuelo = new Set(); // nombres con un pedido a OMDb ya en curso, para no duplicar
 
@@ -1582,14 +1586,14 @@
     fallbackEnVuelo.add(clave);
     try {
       const data = await fetchJSON(
-        `https://www.omdbapi.com/?t=${encodeURIComponent(nombre)}&apikey=${OMDB_API_KEY}`,
-        `omdb_${clave}`
+        api(`/api/poster?t=${encodeURIComponent(nombre)}`),
+        `poster_${clave}`
       );
       // OMDb devuelve 200 OK aunque no encuentre nada: Response:"False" es el
       // caso de "no existe" (no un error de red), y Poster:"N/A" es "existe
       // pero no tiene póster cargado" — ambos casos se cachean como null para
       // no volver a pedirlo cada vez que aparece esta serie.
-      const url = (data && data.Response === 'True' && data.Poster && data.Poster !== 'N/A') ? data.Poster : null;
+      const url = (data && typeof data.poster === 'string' && data.poster.startsWith('https://')) ? data.poster : null;
       cacheFallbackPoster.set(clave, url);
       return url;
     } catch {
@@ -2893,7 +2897,7 @@
 
   function debouncedSearch() {
     clearTimeout(timeoutBusqueda);
-    timeoutBusqueda = setTimeout(buscarOnline, 400);
+    timeoutBusqueda = setTimeout(buscarOnline, 600);
   }
 
   function mostrarPlaceholderBusqueda() {
@@ -2948,6 +2952,33 @@
     }
     return resultados;
   }
+
+  /* Igual que fetchEnLotes pero "suave": lotes chicos y una pausa entre lotes
+     SOLO si el lote anterior fue a la red (los días ya cacheados pasan sin
+     esperar). TVMaze corta en ~20 pedidos cada 10s por IP; con 90 días en
+     lotes de 8 sin pausa, el Inicio se comía todo el presupuesto y dejaba
+     al buscador sin cupo. Si el usuario está buscando, la pausa se duplica
+     para que la búsqueda tenga prioridad. */
+  async function fetchEnLotesSuaves(items, fn, { tamanoLote = 4, pausaMs = 2200, necesitaRed = () => true } = {}) {
+    const resultados = [];
+    for (let i = 0; i < items.length; i += tamanoLote) {
+      const lote = items.slice(i, i + tamanoLote);
+      const usaRed = lote.some(necesitaRed);
+      resultados.push(...await Promise.all(lote.map(fn)));
+      if (usaRed && i + tamanoLote < items.length) {
+        const inputBusqueda = document.getElementById('searchInput');
+        const buscando = !!(inputBusqueda && inputBusqueda.value.trim());
+        await new Promise((r) => setTimeout(r, buscando ? pausaMs * 2 : pausaMs));
+      }
+    }
+    return resultados;
+  }
+
+  // ¿Ese día del schedule habría que pedirlo a la red (sin caché vigente)?
+  const diaScheduleSinCache = (fecha) => {
+    const c = leerCache(`schedule_web_${fecha}`);
+    return !c || c.vencido;
+  };
 
   /* Antes esta única función pedía pasados y futuros juntos y devolvía todo
      recién cuando ambos terminaban. Se separó en obtenerNuevas (rápida, 5
@@ -3020,7 +3051,7 @@
       const d = new Date(hoy); d.setDate(d.getDate() + i);
       fechas.push(formatearFechaISO(d));
     }
-    const dias = await fetchEnLotes(fechas, traerDiaSchedule, 8);
+    const dias = await fetchEnLotesSuaves(fechas, traerDiaSchedule, { tamanoLote: 4, pausaMs: 2000, necesitaRed: diaScheduleSinCache });
     const porFecha = (a, b) => new Date(a.airstamp || a.airdate) - new Date(b.airstamp || b.airdate);
     const entradas = dias.flat().flatMap(normalizarEntradaWeb)
       .filter((ep) => typeof ep.number === 'number' && ep.number > 1)
@@ -3083,7 +3114,7 @@
       fechas.push(formatearFechaISO(d));
     }
 
-    const episodios = await fetchEnLotes(fechas, traerDiaSchedule, 8);
+    const episodios = await fetchEnLotesSuaves(fechas, traerDiaSchedule, { tamanoLote: 5, pausaMs: 1500, necesitaRed: diaScheduleSinCache });
     const entradasE1 = episodios.flat().flatMap(normalizarEntradaWeb).filter((ep) => ep.number === 1);
 
     const estrenos = sinDuplicadosDeShow(
@@ -3107,15 +3138,23 @@
      pedidos en lotes de 8 → ~12 rondas secuenciales) y no debe bloquear a
      Estrenos/Vuelven, que son las secciones que el usuario ve primero. */
   async function obtenerCatalogoProximosEstrenos() {
+    // Resultado ya armado y cacheado (3hs, igual que el resto): si el usuario
+    // vuelve al Inicio, no se rehace nada ni se toca la red.
+    const CLAVE_ARMADO = 'proximos_estrenos_armado_v1';
+    const armado = leerCache(CLAVE_ARMADO);
+    if (armado && !armado.vencido && armado.data && Array.isArray(armado.data.proximosEstrenos)) {
+      return armado.data;
+    }
+
     const hoy = new Date();
-    const HORIZONTE_DIAS_FUTUROS = 90;
+    const HORIZONTE_DIAS_FUTUROS = 45;
     const fechasFuturas = [];
     for (let i = 0; i <= HORIZONTE_DIAS_FUTUROS; i++) {
       const d = new Date(hoy); d.setDate(d.getDate() + i);
       fechasFuturas.push(formatearFechaISO(d));
     }
 
-    const episodiosFuturos = await fetchEnLotes(fechasFuturas, traerDiaSchedule, 8);
+    const episodiosFuturos = await fetchEnLotesSuaves(fechasFuturas, traerDiaSchedule, { tamanoLote: 4, pausaMs: 2200, necesitaRed: diaScheduleSinCache });
     const futurosE1 = episodiosFuturos.flat().flatMap(normalizarEntradaWeb).filter((ep) => ep.number === 1);
 
     const proximosEstrenos = sinDuplicadosDeShow(
@@ -3123,7 +3162,9 @@
         .sort((a, b) => new Date(a.airstamp || a.airdate) - new Date(b.airstamp || b.airdate))
     );
 
-    return { proximosEstrenos };
+    const resultado = { proximosEstrenos };
+    guardarCache(CLAVE_ARMADO, resultado);
+    return resultado;
   }
 
   /* Guarda la última tanda completa de cada categoría para que "Ver más" no tenga que volver a pedir nada. */
@@ -3554,7 +3595,7 @@
       quitarSlotSiQuedoVacio(holder);
     });
 
-    obtenerEstrenosYVuelven().then(({ estrenos, vuelven }) => {
+    const pEstrenos = obtenerEstrenosYVuelven().then(({ estrenos, vuelven }) => {
       if (!holderVigente()) return;
       const estrenosHollywood = armarEstrenosHollywood(estrenos);
       resolverSlotDescubrimiento(holder, 'vuelven', vuelven, true);
@@ -3568,7 +3609,7 @@
       quitarSlotSiQuedoVacio(holder);
     });
 
-    obtenerNuevosEpisodios().then((nuevosEpisodios) => {
+    const pNuevosEp = obtenerNuevosEpisodios().then((nuevosEpisodios) => {
       if (!holderVigente()) return;
       resolverSlotDescubrimiento(holder, 'nuevosEpisodios', nuevosEpisodios, true);
       quitarSlotSiQuedoVacio(holder);
@@ -3578,7 +3619,9 @@
       quitarSlotSiQuedoVacio(holder);
     });
 
-    obtenerCatalogoProximosEstrenos().then(({ proximosEstrenos }) => {
+    // Próximos Estrenos es lo más pesado: arranca recién cuando terminaron Estrenos/Vuelven
+    // y Nuevos episodios (ambas cadenas terminan en .catch, nunca rechazan).
+    Promise.all([pEstrenos, pNuevosEp]).then(() => obtenerCatalogoProximosEstrenos()).then(({ proximosEstrenos }) => {
       if (!holderVigente()) return;
       const proximosPorPlataforma = armarProximosPorPlataforma(proximosEstrenos);
       resolverSlotDescubrimiento(holder, 'proximosEstrenos', proximosEstrenos, true);
@@ -3713,6 +3756,11 @@
     if (!query) return mostrarPlaceholderBusqueda();
 
     const miToken = ++tokenBusquedaActual;
+    // Menos de 3 letras: no pegamos a la API (TVMaze devuelve ruido) y avisamos.
+    if (query.length < 3) {
+      container.innerHTML = `<p style="text-align:center; color:var(--ink-muted);">${t('minimoLetras')}</p>`;
+      return;
+    }
     container.innerHTML = `<p style="text-align:center; color:var(--ink-muted);">${t('buscando')}</p>`;
 
     try {
@@ -3722,22 +3770,30 @@
         { ttlVencidoSirve: false }
       );
 
-      const [dataInicial, personas] = await Promise.all([
-        buscarTexto(query),
-        buscarPersonas(query)
-      ]);
+      // Primero solo series (1 pedido). Antes se pedían series y actores juntos
+      // en cada búsqueda, el doble de pedidos contra el límite de TVMaze.
+      let data = await buscarTexto(query);
       if (miToken !== tokenBusquedaActual) return; // llegó una búsqueda más nueva mientras esperábamos
-      let data = dataInicial;
 
-      // Si buscar la frase completa no encontró nada (ej: "dark matter"), probamos
-      // achicándola palabra por palabra (ej: "dark") en vez de depender solo del
-      // matching difuso de la API.
-      if (data.length === 0 && query.includes(' ')) {
-        const palabras = query.split(/\s+/);
-        while (data.length === 0 && palabras.length > 1) {
-          palabras.pop();
-          data = await buscarTexto(palabras.join(' '));
-          if (miToken !== tokenBusquedaActual) return; // idem, chequeamos de nuevo tras cada vuelta
+      // Actores solo si no hubo series con esa frase (ej: "Bryan Cranston").
+      let personas = [];
+      if (data.length === 0) {
+        personas = await buscarPersonas(query);
+        if (miToken !== tokenBusquedaActual) return;
+
+        // Si tampoco hay actores, achicamos la frase palabra por palabra
+        // (ej: "dark matter" -> "dark"), con tope de 2 intentos extra.
+        if (personas.length === 0 && query.includes(' ')) {
+          const palabras = query.split(/\s+/);
+          let intentos = 0;
+          while (data.length === 0 && palabras.length > 1 && intentos < 2) {
+            palabras.pop();
+            intentos++;
+            const frase = palabras.join(' ');
+            if (frase.length < 3) break;
+            data = await buscarTexto(frase);
+            if (miToken !== tokenBusquedaActual) return;
+          }
         }
       }
 
@@ -3746,7 +3802,7 @@
 
       if (data.length === 0) {
         if (!personas.length) {
-          container.innerHTML = `<p style="text-align:center; color:var(--ink-muted);">${t('noEncontraron')}</p>`;
+          container.innerHTML = `<p style="text-align:center; color:var(--ink-muted);">${t('noEncontraron')}</p><p style="text-align:center; color:var(--ink-muted); font-size:12px; margin-top:6px;">${t('pistaTituloOriginal')}</p>`;
         }
         return;
       }
