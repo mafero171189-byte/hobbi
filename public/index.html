@@ -465,6 +465,38 @@
     .confirm-btn.cancel { background: var(--surface-2); color: var(--ink); }
     .confirm-btn.delete { background: var(--danger); color: #fff; }
 
+    /* Estados (inicio de búsqueda, sin resultados, error, sin conexión) */
+    .estado-vacio { display: flex; flex-direction: column; align-items: center; gap: 10px; text-align: center; padding: 26px 16px; color: var(--ink-muted); }
+    .estado-vacio .estado-icono svg { width: 52px; height: 52px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; display: block; }
+    .estado-vacio.inicio { color: var(--gold); }
+    .estado-vacio.error { color: var(--danger); }
+    .estado-vacio .estado-texto { font-size: 14px; line-height: 1.5; color: var(--ink); max-width: 300px; }
+    .estado-vacio.inicio .estado-texto { color: var(--ink-muted); font-size: 13px; }
+    .estado-vacio .estado-pista { font-size: 12px; line-height: 1.5; color: var(--ink-muted); max-width: 300px; }
+    .estado-reintentar { margin-top: 4px; min-height: 40px; padding: 0 20px; border-radius: 20px; border: 1px solid var(--gold); background: transparent; color: var(--gold); font-weight: 700; font-size: 13px; cursor: pointer; }
+    .estado-reintentar:active { background: var(--gold-dim); }
+
+    /* Chips de plataforma (Nuevos episodios) */
+    .chips-plataforma { display: flex; gap: 6px; overflow-x: auto; margin-bottom: 10px; padding-bottom: 2px; scrollbar-width: none; }
+    .chips-plataforma::-webkit-scrollbar { display: none; }
+    .chip-plat { flex-shrink: 0; border: 1px solid var(--border); background: var(--surface); color: var(--ink-muted); font-size: 12px; font-weight: 700; padding: 6px 12px; border-radius: 20px; cursor: pointer; white-space: nowrap; }
+    .chip-plat.active { background: var(--gold); color: var(--gold-ink); border-color: var(--gold); }
+
+    /* "HOY" sobre episodios que salen hoy, y tilde de visto en el riel */
+    .hoy-badge { position: absolute; top: 6px; left: 6px; z-index: 2; display: flex; align-items: center; gap: 4px; background: var(--gold); color: var(--gold-ink); font-size: 9px; font-weight: 800; letter-spacing: 0.4px; padding: 2px 6px; border-radius: 6px; line-height: 1.3; }
+    .hoy-punto { width: 5px; height: 5px; border-radius: 50%; background: currentColor; animation: hoyPulso 1.6s ease-in-out infinite; }
+    @keyframes hoyPulso { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+    .ep-visto-btn { position: absolute; top: 108px; right: 6px; z-index: 3; width: 30px; height: 30px; border-radius: 50%; border: 1px solid var(--border); background: rgba(0,0,0,0.75); color: var(--ink-muted); font-size: 15px; font-weight: 800; line-height: 1; display: flex; align-items: center; justify-content: center; cursor: pointer; padding: 0; }
+    .ep-visto-btn.active { background: var(--teal); border-color: var(--teal); color: var(--bg); }
+
+    /* Entrada al abrir una serie desde una tarjeta: sube y se asienta */
+    @keyframes detalleEntrando { from { opacity: 0; transform: translateY(18px) scale(0.985); } to { opacity: 1; transform: none; } }
+    .detalle-entrando { animation: detalleEntrando 0.32s cubic-bezier(0.2, 0.8, 0.2, 1); }
+    @media (prefers-reduced-motion: reduce) {
+      .detalle-entrando { animation: none; }
+      .hoy-punto { animation: none; }
+    }
+
     /* Carruseles de descubrimiento en la pantalla de Buscar */
     .discover-section { margin-bottom: 22px; }
     .discover-section h3 { font-size: 20px; color: var(--gold); margin-bottom: 10px; }
@@ -760,6 +792,8 @@
       buscando: 'Buscando...',
       noEncontraron: 'No se encontraron series.',
       pistaTituloOriginal: 'TVMaze guarda los títulos en su idioma original: probá con el nombre en inglés.',
+      reintentar: 'Reintentar', muchaDemanda: 'TVMaze está con mucha demanda, reintentando…', hoyBadge: 'HOY',
+      filtroTodas: 'Todas', filtroOtras: 'Otras', marcarVistoRiel: 'Marcar como visto', desmarcarVistoRiel: 'Desmarcar como visto',
       minimoLetras: 'Escribí al menos 3 letras para buscar.',
       cargandoEpisodios: 'Cargando episodios...',
       temporadas: 'Temporadas',
@@ -939,6 +973,8 @@
       buscando: 'Searching...',
       noEncontraron: 'No shows found.',
       pistaTituloOriginal: 'TVMaze lists titles in their original language: try the English name.',
+      reintentar: 'Retry', muchaDemanda: 'TVMaze is busy, retrying…', hoyBadge: 'TODAY',
+      filtroTodas: 'All', filtroOtras: 'Other', marcarVistoRiel: 'Mark as watched', desmarcarVistoRiel: 'Mark as unwatched',
       minimoLetras: 'Type at least 3 letters to search.',
       cargandoEpisodios: 'Loading episodes...',
       temporadas: 'Seasons',
@@ -2067,7 +2103,8 @@
   // parsea el script, sin esperar a 'load': así llega lo más lista posible
   // para cuando algo pida buscar/mostrar pósters. Si algo lee caché antes de
   // que esto termine, no pasa nada roto — solo pide a la red esa vez.
-  const cacheListo = hidratarCacheDesdeIDB().then(() => limpiarCacheViejo());
+  // (cacheListo se declara más abajo, después de las constantes del caché: llamarlo acá
+  //  caía en la zona muerta de const/let y la hidratación fallaba en silencio.)
 
   window.addEventListener('load', async () => {
     // En la APK (Capacitor), intercept el botón atrás de Android. En la PWA
@@ -2267,6 +2304,31 @@
   }
 
 
+  /* ==================== HELPERS DE UI: ESCAPADO Y ESTADOS ==================== */
+  // Escapa texto de fuentes externas (TVMaze, OMDb) antes de meterlo en innerHTML/atributos.
+  function esc(v) {
+    return String(v == null ? '' : v)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  }
+
+  const ICONOS_ESTADO = {
+    buscar: '<svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>',
+    sinResultados: '<svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5M8.5 8.5l5 5M13.5 8.5l-5 5"/></svg>',
+    error: '<svg viewBox="0 0 24 24"><path d="M12 3L2 20h20L12 3z"/><path d="M12 10v4.5M12 17.5v.01"/></svg>',
+    offline: '<svg viewBox="0 0 24 24"><path d="M2 8.8a15 15 0 0 1 20 0M5 12.5a10 10 0 0 1 14 0M8.5 16a5 5 0 0 1 7 0M12 19.5v.01"/><path d="M3 3l18 18"/></svg>'
+  };
+
+  // tipo: 'inicio' (dorado), 'neutro' o 'error' (rojo). accion: JS que ejecuta el botón Reintentar.
+  function htmlEstado(icono, texto, { tipo = 'neutro', pista = '', reintentar = false, accion = 'buscarOnline()' } = {}) {
+    return `<div class="estado-vacio ${tipo}" role="status">
+      <div class="estado-icono" aria-hidden="true">${ICONOS_ESTADO[icono] || ''}</div>
+      <p class="estado-texto">${esc(texto)}</p>
+      ${pista ? `<p class="estado-pista">${esc(pista)}</p>` : ''}
+      ${reintentar ? `<button class="estado-reintentar" onclick="${accion}">${esc(t('reintentar'))}</button>` : ''}
+    </div>`;
+  }
+
   /* ==================== TOASTS (avisos no intrusivos) ==================== */
   const toastsRecientes = new Set();
   function mostrarToast(mensaje, tipo = 'error') {
@@ -2321,6 +2383,9 @@
   const IDB_DB_NAME = 'hobbi_cache_db';
   const IDB_STORE_NAME = 'tvmaze_cache';
   const IDB_VERSION = 1;
+  // Subir este valor cuando cambie el formato de lo que se guarda en caché: al arrancar,
+  // si no coincide con el guardado, se vacía el caché una vez en vez de leer datos viejos.
+  const CACHE_SCHEMA_VERSION = '2026.10.03.1';
 
   const memoriaCache = new Map(); // key -> { data, ts } — espejo en RAM de lo que hay en IndexedDB
   let idbPromise = null;
@@ -2347,6 +2412,21 @@
      (si algo lee antes de que esto termine, simplemente no encuentra nada
      cacheado todavía y pide a la red — no rompe nada, solo pierde el caché
      de esa primera vez). */
+  async function invalidarCacheSiCambioEsquema(db) {
+    let guardada = null;
+    try { guardada = localStorage.getItem('hobbi_cache_schema'); } catch {}
+    if (guardada === CACHE_SCHEMA_VERSION) return;
+    memoriaCache.clear();
+    await new Promise((resolve) => {
+      try {
+        const tx = db.transaction(IDB_STORE_NAME, 'readwrite');
+        tx.objectStore(IDB_STORE_NAME).clear();
+        tx.oncomplete = tx.onerror = tx.onabort = () => resolve();
+      } catch { resolve(); }
+    });
+    try { localStorage.setItem('hobbi_cache_schema', CACHE_SCHEMA_VERSION); } catch {}
+  }
+
   async function hidratarCacheDesdeIDB() {
     try {
       const db = await abrirIDB();
@@ -2365,6 +2445,7 @@
         };
         req.onerror = () => reject(req.error);
       });
+      await invalidarCacheSiCambioEsquema(db);
     } catch {
       // Sin IndexedDB disponible (navegador viejo, modo privado estricto, etc.):
       // la app sigue funcionando, solo que sin caché persistente entre sesiones.
@@ -2394,6 +2475,9 @@
       // volver a evaluar (y si siguen viejas, se van a volver a intentar borrar).
     }
   }
+
+  // Si arrancó antes de tiempo (ver comentario arriba), la hidratación nunca llegaba a leer IndexedDB.
+  const cacheListo = hidratarCacheDesdeIDB().then(() => limpiarCacheViejo());
 
   function leerCache(key) {
     const entrada = memoriaCache.get(key);
@@ -2431,6 +2515,7 @@
         try {
           res = await fetch(url);
           const reintentable = res.status === 429 || res.status >= 500;
+          if (res.status === 429 && intento < 2) mostrarToast(t('muchaDemanda'), 'error');
           if (!reintentable || intento >= 2) break;
           const ra = parseInt(res.headers.get('Retry-After'), 10);
           await new Promise(r => setTimeout(r, (ra > 0 ? Math.min(ra, 5) * 1000 : 800 * (intento + 1))));
@@ -2674,11 +2759,11 @@
       overlay.className = 'confirm-overlay';
       overlay.innerHTML = `
         <div class="confirm-box">
-          <div class="confirm-title">${titulo}</div>
-          <div class="confirm-msg">${mensaje}</div>
+          <div class="confirm-title">${esc(titulo)}</div>
+          <div class="confirm-msg">${esc(mensaje)}</div>
           <div class="confirm-actions">
             <button class="confirm-btn cancel">${t('cancelar')}</button>
-            <button class="confirm-btn delete">${textoBoton || t('eliminar')}</button>
+            <button class="confirm-btn delete">${esc(textoBoton || t('eliminar'))}</button>
           </div>
         </div>
       `;
@@ -2903,9 +2988,7 @@
   function mostrarPlaceholderBusqueda() {
     document.getElementById('searchBoxContainer').style.display = 'block';
     document.getElementById('seriesList').innerHTML = `
-      <div style="text-align:center; margin: 20px 0 22px; padding: 0 10px;">
-        <p style="color:var(--ink-muted); font-size:13px; line-height:1.5;">${t('buscarSerieEmpezar')}</p>
-      </div>
+      ${htmlEstado('buscar', t('buscarSerieEmpezar'), { tipo: 'inicio' })}
       <div id="discoverHolder"></div>
     `;
     cargarDescubrimiento();
@@ -2999,6 +3082,7 @@
     const episodiosAgrupados = ep._embedded && Array.isArray(ep._embedded.episodes) ? ep._embedded.episodes : null;
     if (episodiosAgrupados && episodiosAgrupados.length) {
       return episodiosAgrupados.map(sub => ({
+        id: sub.id,
         show,
         season: sub.season,
         number: sub.number,
@@ -3008,6 +3092,7 @@
     }
 
     return [{
+      id: ep.id,
       show,
       season: ep.season,
       number: ep.number,
@@ -3217,21 +3302,95 @@
     return fecha.toLocaleDateString(t('localeFecha'), { day: 'numeric', month: 'short' });
   }
 
-  function renderizarRailDescubrimiento(container, id, items, mostrarFechas = false, esRailPrioritario = false) {
-    if (!items.length) return;
-    catalogoDescubrimiento[id] = items;
+  // ¿El episodio sale hoy (día local del celu)?
+  function esHoyLocal(entrada) {
+    const ts = entrada && (entrada.airstamp || entrada.airdate);
+    if (!ts) return false;
+    const f = new Date(entrada.airstamp || `${entrada.airdate}T00:00:00`);
+    const h = new Date();
+    return f.getFullYear() === h.getFullYear() && f.getMonth() === h.getMonth() && f.getDate() === h.getDate();
+  }
 
-    const section = document.createElement('div');
-    section.className = 'discover-section';
-    section.innerHTML = `
-      <div style="display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:10px;">
-        <h3 class="marquee" style="margin-bottom:0;">${tituloConEmoji(id)}</h3>
-        <span class="ver-mas-btn" onclick="verCatalogoCompleto('${id}')">${t('verMas')}</span>
-      </div>
-    `;
+  // Solo con hora exacta (airstamp): un episodio futuro no se puede marcar como visto.
+  function episodioYaSalio(entrada) {
+    return !!(entrada && entrada.airstamp && new Date(entrada.airstamp) <= new Date());
+  }
 
-    const rail = document.createElement('div');
-    rail.className = 'discover-rail';
+  /* ---- Nuevos episodios: filtro por plataforma ---- */
+  let nuevosEpisodiosTodos = [];
+  let filtroPlataformaNuevosEp = 'todas';
+
+  function plataformaDeShow(show) {
+    const nombreCanal = ((show.network && show.network.name) || (show.webChannel && show.webChannel.name) || '').trim().toLowerCase();
+    const p = PLATAFORMA_CANONICA.get(nombreCanal);
+    return p ? { id: p.id, nombre: p.nombre } : { id: 'otras', nombre: t('filtroOtras') };
+  }
+
+  function construirChipsNuevosEp() {
+    const cuentas = new Map();
+    nuevosEpisodiosTodos.forEach((e) => {
+      const p = plataformaDeShow(e.show);
+      if (!cuentas.has(p.id)) cuentas.set(p.id, { id: p.id, nombre: p.nombre, n: 0 });
+      cuentas.get(p.id).n++;
+    });
+    if (cuentas.size < 2) return null; // con una sola plataforma el filtro no aporta nada
+    const rango = (id) => {
+      if (id === 'otras') return 999;
+      const i = ORDEN_PLATAFORMAS_PROXIMOS.indexOf(id);
+      return i >= 0 ? i : 100;
+    };
+    const lista = [...cuentas.values()].sort((a, b) => rango(a.id) - rango(b.id) || b.n - a.n);
+    const chip = (id, nombre) => {
+      const act = filtroPlataformaNuevosEp === id;
+      return `<button class="chip-plat ${act ? 'active' : ''}" data-plat="${id}" aria-pressed="${act}" onclick="filtrarNuevosEpisodios('${id}')">${esc(nombre)}</button>`;
+    };
+    const wrap = document.createElement('div');
+    wrap.className = 'chips-plataforma';
+    wrap.setAttribute('role', 'group');
+    wrap.innerHTML = chip('todas', t('filtroTodas')) + lista.map((p) => chip(p.id, p.nombre)).join('');
+    return wrap;
+  }
+
+  function filtrarNuevosEpisodios(id) {
+    filtroPlataformaNuevosEp = id;
+    const filtrados = id === 'todas'
+      ? nuevosEpisodiosTodos
+      : nuevosEpisodiosTodos.filter((e) => plataformaDeShow(e.show).id === id);
+    catalogoDescubrimiento.nuevosEpisodios = filtrados; // "Ver más" respeta el filtro
+    const section = document.querySelector('[data-seccion="nuevosEpisodios"]');
+    if (!section) return;
+    const rail = section.querySelector('.discover-rail');
+    if (rail) {
+      rail.innerHTML = '';
+      llenarRailDescubrimiento(rail, filtrados, true, false);
+      rail.scrollLeft = 0;
+    }
+    section.querySelectorAll('.chip-plat').forEach((b) => {
+      const act = b.dataset.plat === id;
+      b.classList.toggle('active', act);
+      b.setAttribute('aria-pressed', String(act));
+    });
+    dispararFallbackImagenes(section);
+  }
+
+  /* Tilde de visto en el riel (solo episodios ya emitidos de series que seguís). */
+  function marcarVistoDesdeRiel(ev, epId, btn) {
+    ev.stopPropagation();
+    if (episodiosVistos[epId]) delete episodiosVistos[epId];
+    else episodiosVistos[epId] = true;
+    guardarDatos();
+    const visto = !!episodiosVistos[epId];
+    const etiqueta = visto ? t('desmarcarVistoRiel') : t('marcarVistoRiel');
+    btn.classList.toggle('active', visto);
+    btn.setAttribute('aria-pressed', String(visto));
+    btn.setAttribute('aria-label', etiqueta);
+    btn.title = etiqueta;
+    if (visto) mostrarToast(t('episodioMarcadoVisto')(btn.dataset.nombre || ''), 'ok');
+  }
+
+  /* Arma las tarjetas de un riel. Se usa al renderizar y al filtrar. */
+  function llenarRailDescubrimiento(rail, items, mostrarFechas, esRailPrioritario) {
+    const idsFavRail = new Set(favoritos.map(f => f.id));
     items.slice(0, 12).forEach((entrada, idx) => {
       const show = mostrarFechas ? entrada.show : entrada;
       if (!show || !show.id) return;
@@ -3240,19 +3399,52 @@
       item.onclick = () => verDetalles(show.id);
       const tieneImagen = show.image && (show.image.medium || show.image.original);
       const imagen = tieneImagen || placeholderPorNombre(show.name);
-      const atrsFallback = tieneImagen ? '' : `data-fallback-nombre="${show.name.replace(/"/g, '&quot;')}" data-fallback-buscado="0"`;
+      const atrsFallback = tieneImagen ? '' : `data-fallback-nombre="${esc(show.name)}" data-fallback-buscado="0"`;
       // Si es rail prioritario (primer rail visible), las primeras 6 cards usan eager; el resto lazy
       // Si no es prioritario, todas usan lazy (están debajo del fold)
       const loadingAttr = (esRailPrioritario && idx < 6) ? 'eager' : 'lazy';
       const ratingHTML = (show.rating && show.rating.average) ? `<div class="poster-rating-badge">⭐ ${show.rating.average.toFixed(1)}</div>` : '';
       let fechaHTML = '';
+      let extraHTML = '';
       if (mostrarFechas) {
         const fechaTexto = formatearFechaEstrenoTexto(entrada);
         if (fechaTexto) fechaHTML = `<div class="discover-name" style="color:var(--ink-muted); font-weight:700;">${fechaTexto}</div>`;
+        if (entrada.conEpisodio) {
+          if (esHoyLocal(entrada)) extraHTML += `<div class="hoy-badge"><span class="hoy-punto"></span>${t('hoyBadge')}</div>`;
+          if (entrada.id && idsFavRail.has(show.id) && episodioYaSalio(entrada)) {
+            const visto = !!episodiosVistos[entrada.id];
+            const etiqueta = visto ? t('desmarcarVistoRiel') : t('marcarVistoRiel');
+            extraHTML += `<button class="ep-visto-btn ${visto ? 'active' : ''}" aria-pressed="${visto}" aria-label="${esc(etiqueta)}" title="${esc(etiqueta)}" data-nombre="${esc(show.name)}" onclick="marcarVistoDesdeRiel(event, ${Number(entrada.id)}, this)">✓</button>`;
+          }
+        }
       }
-      item.innerHTML = `<img src="${imagen}" alt="${show.name}" loading="${loadingAttr}" class="loading-image" onload="this.classList.remove('loading-image')" onerror="manejarErrorImagen(this)" ${atrsFallback}>${ratingHTML}<div class="discover-name">${show.name}</div>${fechaHTML}`;
+      item.innerHTML = `<img src="${imagen}" alt="${esc(show.name)}" loading="${loadingAttr}" class="loading-image" onload="this.classList.remove('loading-image')" onerror="manejarErrorImagen(this)" ${atrsFallback}>${ratingHTML}${extraHTML}<div class="discover-name">${esc(show.name)}</div>${fechaHTML}`;
       rail.appendChild(item);
     });
+  }
+
+  function renderizarRailDescubrimiento(container, id, items, mostrarFechas = false, esRailPrioritario = false) {
+    if (!items.length) return;
+    catalogoDescubrimiento[id] = items;
+
+    const section = document.createElement('div');
+    section.className = 'discover-section';
+    section.dataset.seccion = id;
+    section.innerHTML = `
+      <div style="display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:10px;">
+        <h3 class="marquee" style="margin-bottom:0;">${tituloConEmoji(id)}</h3>
+        <span class="ver-mas-btn" onclick="verCatalogoCompleto('${id}')">${t('verMas')}</span>
+      </div>
+    `;
+
+    if (id === 'nuevosEpisodios') {
+      const chips = construirChipsNuevosEp();
+      if (chips) section.appendChild(chips);
+    }
+
+    const rail = document.createElement('div');
+    rail.className = 'discover-rail';
+    llenarRailDescubrimiento(rail, items, mostrarFechas, esRailPrioritario);
     section.appendChild(rail);
     container.appendChild(section);
     dispararFallbackImagenes(section);
@@ -3611,6 +3803,8 @@
 
     const pNuevosEp = obtenerNuevosEpisodios().then((nuevosEpisodios) => {
       if (!holderVigente()) return;
+      nuevosEpisodiosTodos = nuevosEpisodios;
+      filtroPlataformaNuevosEp = 'todas';
       resolverSlotDescubrimiento(holder, 'nuevosEpisodios', nuevosEpisodios, true);
       quitarSlotSiQuedoVacio(holder);
     }).catch(() => {
@@ -3669,7 +3863,7 @@
       div.className = 'discover-item actor-item';
       div.onclick = () => verSeriesDeActor(persona.id, persona.name);
       const imagen = (persona.image && (persona.image.medium || persona.image.original)) || ACTOR_PLACEHOLDER;
-      div.innerHTML = `<img src="${imagen}" alt="${persona.name}" loading="lazy" onerror="this.onerror=null; this.src='${ACTOR_PLACEHOLDER}';"><div class="discover-name">${persona.name}</div>`;
+      div.innerHTML = `<img src="${imagen}" alt="${esc(persona.name)}" loading="lazy" onerror="this.onerror=null; this.src='${ACTOR_PLACEHOLDER}';"><div class="discover-name">${esc(persona.name)}</div>`;
       rail.appendChild(div);
     });
     section.appendChild(rail);
@@ -3716,7 +3910,7 @@
 
       container.innerHTML = `
         <button class="back-btn" onclick="buscarOnline()" style="margin-bottom:12px;">${t('volver')}</button>
-        <h3 class="marquee" style="color:var(--gold); font-size:22px; margin-bottom:12px;">🎭 ${nombre}</h3>
+        <h3 class="marquee" style="color:var(--gold); font-size:22px; margin-bottom:12px;">🎭 ${esc(nombre)}</h3>
       `;
 
       if (!shows.length) {
@@ -3740,7 +3934,9 @@
       container.appendChild(lista);
       dispararFallbackImagenes(lista);
     } catch {
-      container.innerHTML = `<p style="text-align:center; color:var(--danger);">${t('errorBuscador')}</p>`;
+      container.innerHTML = navigator.onLine
+        ? htmlEstado('error', t('errorBuscador'), { tipo: 'error' })
+        : htmlEstado('offline', t('sinConexionBuscador'), { tipo: 'error' });
     }
   }
 
@@ -3802,7 +3998,7 @@
 
       if (data.length === 0) {
         if (!personas.length) {
-          container.innerHTML = `<p style="text-align:center; color:var(--ink-muted);">${t('noEncontraron')}</p><p style="text-align:center; color:var(--ink-muted); font-size:12px; margin-top:6px;">${t('pistaTituloOriginal')}</p>`;
+          container.innerHTML = htmlEstado('sinResultados', t('noEncontraron'), { pista: t('pistaTituloOriginal') });
         }
         return;
       }
@@ -3832,8 +4028,8 @@
     } catch {
       if (miToken !== tokenBusquedaActual) return; // el error es de una búsqueda vieja, no pisamos la actual
       container.innerHTML = navigator.onLine
-        ? `<p style="text-align:center; color:var(--danger);">${t('errorBuscador')}</p>`
-        : `<p style="text-align:center; color:var(--danger);">${t('sinConexionBuscador')}</p>`;
+        ? htmlEstado('error', t('errorBuscador'), { tipo: 'error', reintentar: true })
+        : htmlEstado('offline', t('sinConexionBuscador'), { tipo: 'error', reintentar: true });
     }
   }
 
@@ -4028,16 +4224,16 @@
 
     const tieneImagen = !!show.image;
     const imgSrc = tieneImagen ? show.image : placeholderPorNombre(show.name);
-    const atrsFallback = tieneImagen ? '' : `data-fallback-nombre="${show.name.replace(/"/g, '&quot;')}" data-fallback-buscado="0"`;
+    const atrsFallback = tieneImagen ? '' : `data-fallback-nombre="${esc(show.name)}" data-fallback-buscado="0"`;
     const loadingAttr = loadingPrioritario ? 'eager' : 'lazy';
 
     card.innerHTML = `
       <div class="card-top">
         <div class="card-poster-wrap">
-          <img src="${imgSrc}" onclick="verDetalles(${show.id})" loading="${loadingAttr}" decoding="async" alt="${show.name}" class="loading-image" onload="this.classList.remove('loading-image')" onerror="manejarErrorImagen(this)" ${atrsFallback}>
+          <img src="${imgSrc}" onclick="verDetalles(${show.id})" loading="${loadingAttr}" decoding="async" alt="${esc(show.name)}" class="loading-image" onload="this.classList.remove('loading-image')" onerror="manejarErrorImagen(this)" ${atrsFallback}>
         </div>
         <div class="card-info" onclick="verDetalles(${show.id})">
-          <h3>${show.name}${badgeNuevo}</h3>
+          <h3>${esc(show.name)}${badgeNuevo}</h3>
           <div class="status ${estado.clase}">${estadoTextoHTML}</div>
           ${ratingLineaHTML}
           ${progresoHTML}
@@ -4343,9 +4539,9 @@
       item.onclick = () => verDetalles(s.id);
       const tieneImagen = s.image && (s.image.medium || s.image.original);
       const imagen = tieneImagen || placeholderPorNombre(s.name);
-      const atrsFallback = tieneImagen ? '' : `data-fallback-nombre="${s.name.replace(/"/g, '&quot;')}" data-fallback-buscado="0"`;
+      const atrsFallback = tieneImagen ? '' : `data-fallback-nombre="${esc(s.name)}" data-fallback-buscado="0"`;
       const ratingHTML = (s.rating && s.rating.average) ? `<div class="poster-rating-badge">⭐ ${s.rating.average.toFixed(1)}</div>` : '';
-      item.innerHTML = `<img src="${imagen}" alt="${s.name}" loading="lazy" class="loading-image" onload="this.classList.remove('loading-image')" onerror="manejarErrorImagen(this)" ${atrsFallback}>${ratingHTML}<div class="discover-name">${s.name}</div>`;
+      item.innerHTML = `<img src="${imagen}" alt="${esc(s.name)}" loading="lazy" class="loading-image" onload="this.classList.remove('loading-image')" onerror="manejarErrorImagen(this)" ${atrsFallback}>${ratingHTML}<div class="discover-name">${esc(s.name)}</div>`;
       rail.appendChild(item);
     });
     section.appendChild(rail);
@@ -4360,6 +4556,13 @@
     const container = document.getElementById('detailContent');
     detailView.style.display = 'block';
     reiniciarFadeIn(detailView);
+    if (push) {
+      // Al abrir desde una tarjeta: entra subiendo y asentándose (no al volver con Atrás).
+      detailView.classList.remove('detalle-entrando');
+      void detailView.offsetWidth;
+      detailView.classList.add('detalle-entrando');
+      detailView.addEventListener('animationend', () => detailView.classList.remove('detalle-entrando'), { once: true });
+    }
     container.innerHTML = `<p style="text-align:center; color:var(--ink-muted);">${t('cargandoEpisodios')}</p>`;
     detalleActualId = showId;
     marcarBadgeNuevoVisto(showId);
@@ -4517,9 +4720,9 @@
               const imagen = (persona.image && (persona.image.medium || persona.image.original)) || ACTOR_PLACEHOLDER;
               return `
                 <div class="discover-item actor-item" onclick="verSeriesDeActor(${persona.id}, ${JSON.stringify(persona.name).replace(/"/g, '&quot;')})">
-                  <img src="${imagen}" alt="${persona.name}" loading="lazy" onerror="this.onerror=null; this.src='${ACTOR_PLACEHOLDER}';">
-                  <div class="discover-name">${persona.name}</div>
-                  ${personaje && personaje.name ? `<div class="discover-name" style="color:var(--ink-muted); font-weight:400;">${personaje.name}</div>` : ''}
+                  <img src="${imagen}" alt="${esc(persona.name)}" loading="lazy" onerror="this.onerror=null; this.src='${ACTOR_PLACEHOLDER}';">
+                  <div class="discover-name">${esc(persona.name)}</div>
+                  ${personaje && personaje.name ? `<div class="discover-name" style="color:var(--ink-muted); font-weight:400;">${esc(personaje.name)}</div>` : ''}
                 </div>
               `;
             }).join('')}
@@ -4532,9 +4735,9 @@
           <button class="fav-btn" id="detailFavBtn" onclick="toggleFavorito(event, ${JSON.stringify(serieParaFav).replace(/"/g, '&quot;')})" aria-label="${esFavActual ? t('quitarDeFavoritos') : t('agregarAFavoritos')}">
             ${esFavActual ? '❤️' : '🤍'}
           </button>
-          <img class="detail-poster" src="${show.image ? (show.image.medium || show.image.original) : placeholderPorNombre(show.name)}" srcset="${show.image ? `${show.image.medium || show.image.original} 1x${show.image.original ? `, ${show.image.original} 2x` : ''}` : ''}" alt="${show.name}" loading="eager" fetchpriority="high" decoding="async" onerror="manejarErrorImagen(this)" ${show.image ? '' : `data-fallback-nombre="${show.name.replace(/"/g, '&quot;')}" data-fallback-buscado="0"`}>
+          <img class="detail-poster" src="${show.image ? (show.image.medium || show.image.original) : placeholderPorNombre(show.name)}" srcset="${show.image ? `${show.image.medium || show.image.original} 1x${show.image.original ? `, ${show.image.original} 2x` : ''}` : ''}" alt="${esc(show.name)}" loading="eager" fetchpriority="high" decoding="async" onerror="manejarErrorImagen(this)" ${show.image ? '' : `data-fallback-nombre="${esc(show.name)}" data-fallback-buscado="0"`}>
           ${ratingHTML}
-          <h2>${show.name}</h2>
+          <h2>${esc(show.name)}</h2>
           <p class="detail-tags">${show.genres.join(', ')}</p>
           <div style="display:flex; flex-direction:column; align-items:center; gap:6px;">
             ${plataformaHTML}
@@ -4564,8 +4767,8 @@
                 return `
                   <div class="episode-item ${estrenado ? '' : 'future-episode'}">
                     <div class="episode-left">
-                      <input type="checkbox" class="ep-checkbox" ${visto ? 'checked' : ''} ${estrenado ? '' : 'disabled'} onchange="toggleEpisodioVisto(${e.id})" title="${estrenado ? t('marcarLeido') : t('todaviaNoEstreno')}" aria-label="${(estrenado ? t('marcarLeido') : t('todaviaNoEstreno'))} — E${e.number} ${e.name}">
-                      <span class="ep-title ${visto ? 'watched' : ''}" id="ep-title-${e.id}">E${e.number} - ${e.name}</span>
+                      <input type="checkbox" class="ep-checkbox" ${visto ? 'checked' : ''} ${estrenado ? '' : 'disabled'} onchange="toggleEpisodioVisto(${e.id})" title="${estrenado ? t('marcarLeido') : t('todaviaNoEstreno')}" aria-label="${(estrenado ? t('marcarLeido') : t('todaviaNoEstreno'))} — E${e.number} ${esc(e.name)}">
+                      <span class="ep-title ${visto ? 'watched' : ''}" id="ep-title-${e.id}">E${e.number} - ${esc(e.name)}</span>
                     </div>
                     <span class="ep-date">${e.airdate || t('sinFecha')}${estrenado ? '' : t('proximoLabel')} </span>
                   </div>
