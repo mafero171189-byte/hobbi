@@ -1,0 +1,41 @@
+# Ruta en el repo: .github/workflows/schedule.yml
+name: Actualizar calendario de estrenos
+
+on:
+  schedule:
+    - cron: '17 */3 * * *'   # cada 3 horas (minuto 17 para evitar el pico de las horas en punto)
+  workflow_dispatch:          # también se puede correr a mano desde la pestaña Actions
+
+permissions:
+  contents: write
+
+concurrency:
+  group: actualizar-schedule
+  cancel-in-progress: false
+
+jobs:
+  generar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Generar public/data/schedule.json
+        run: node scripts/generar-schedule.mjs
+
+      - name: Subir cambios
+        run: |
+          git config user.name "hobbi-bot"
+          git config user.email "hobbi-bot@users.noreply.github.com"
+          git add public/data/schedule.json
+          if git diff --cached --quiet; then
+            echo "Sin cambios"
+          else
+            git commit -m "Actualizar calendario de estrenos"
+            git pull --rebase --autostash origin "${GITHUB_REF_NAME}"
+            git push
+          fi
