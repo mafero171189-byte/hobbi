@@ -5,8 +5,10 @@
 
 const GOOGLE_CLIENT_ID = '403618822429-pshtrss0fg4nnojujh6aqqagaboia66h.apps.googleusercontent.com';
 const SESSION_DIAS = 30;
-// La key de OMDb ya no va en el código: se guarda como secreto del Worker (env.OMDB_API_KEY).
-// La key de Watchmode ya no va en el código: se guarda como secreto del Worker (env.WATCHMODE_API_KEY).
+const OMDB_API_KEY = 'a58fd568'; // OMDb — búsqueda de películas
+const WATCHMODE_API_KEY = 'AqTbQT531bCAi2qT6BB8X8WZAJ0NFIsAjlvVdGUy'; // Watchmode — cartelera (populares, próximos estrenos, por plataforma)
+// Si algún día cargás secrets en Cloudflare con estos nombres (OMDB_API_KEY / WATCHMODE_API_KEY),
+// el Worker los usa en lugar de las constantes de arriba; mientras no existan, usa las constantes.
 
 // Versión actual del contenido de la app, para el chequeo de Live Update de
 // la APK (ver index.html: chequearActualizacionApk). Va acá como constante
@@ -448,7 +450,7 @@ async function handleMoviesSearch(request, env) {
 
   try {
     const res = await fetch(
-      `https://www.omdbapi.com/?apikey=${env.OMDB_API_KEY}&s=${encodeURIComponent(q)}&type=movie`
+      `https://www.omdbapi.com/?apikey=${env.OMDB_API_KEY || OMDB_API_KEY}&s=${encodeURIComponent(q)}&type=movie`
     );
     const data = await res.json();
     
@@ -502,7 +504,7 @@ async function handleMoviesDetalle(request, env) {
   if (!id) return errorResponse('Parámetro id requerido', 400);
 
   try {
-    const res = await fetch(`https://www.omdbapi.com/?apikey=${env.OMDB_API_KEY}&i=${encodeURIComponent(id)}&plot=short`);
+    const res = await fetch(`https://www.omdbapi.com/?apikey=${env.OMDB_API_KEY || OMDB_API_KEY}&i=${encodeURIComponent(id)}&plot=short`);
     const data = await res.json();
     if (data.Response === 'False') return errorResponse(data.Error || 'No encontrada', 404);
 
@@ -530,8 +532,7 @@ async function handleMoviesDetalle(request, env) {
    en esas 12hs, Watchmode solo se consulta 1 vez, no 500. */
 
 async function watchmodeGet(env, path, params) {
-  if (!env.WATCHMODE_API_KEY) return { ok: false, status: 503, data: null, textoCrudo: 'Falta el secreto WATCHMODE_API_KEY' };
-  const qs = new URLSearchParams({ apiKey: env.WATCHMODE_API_KEY, ...params });
+  const qs = new URLSearchParams({ apiKey: (env.WATCHMODE_API_KEY || WATCHMODE_API_KEY), ...params });
   const res = await fetch(`https://api.watchmode.com/v1${path}?${qs.toString()}`);
   const textoCrudo = await res.text();
   let data;
@@ -647,10 +648,9 @@ async function handlePoster(request, env) {
   const url = new URL(request.url);
   const titulo = (url.searchParams.get('t') || '').trim();
   if (!titulo || titulo.length > 120) return errorResponse('Parámetro t requerido', 400);
-  if (!env.OMDB_API_KEY) return json({ poster: null });
 
   try {
-    const res = await fetch(`https://www.omdbapi.com/?apikey=${env.OMDB_API_KEY}&t=${encodeURIComponent(titulo)}`);
+    const res = await fetch(`https://www.omdbapi.com/?apikey=${env.OMDB_API_KEY || OMDB_API_KEY}&t=${encodeURIComponent(titulo)}`);
     const data = await res.json();
     const poster = (data && data.Response === 'True' && typeof data.Poster === 'string' && data.Poster.startsWith('https://'))
       ? data.Poster
