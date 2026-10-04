@@ -117,8 +117,7 @@ self.addEventListener('fetch', (event) => {
    La página guarda en IndexedDB ('hobbi-sw') la lista de series que seguís y
    el idioma. Cuando Android/Chrome despierta al service worker (best-effort:
    el sistema decide cuándo, normalmente cada 12 hs o más, y solo en la app
-   instalada), se mira el calendario de hoy y, si sale un episodio de alguna de
-   tus series, se muestra UNA notificación por día. */
+   instalada), se mira el capítulo anterior y el próximo de cada favorita y, si alguno sale hoy, se muestra UNA notificación por día. */
 function abrirDbSw() {
   return new Promise((resolve, reject) => {
     const req = indexedDB.open('hobbi-sw', 1);
@@ -154,32 +153,36 @@ async function avisarEpisodiosDeHoy() {
   const hoy = fmt(ahora);
   if ((await leerKv('ultimoAvisoDiario')) === hoy) return; // ya avisamos hoy
 
-  // "Hoy" = de 00:00 a 24:00 en la hora del celu. El calendario de TVMaze no coincide con el día
-  // local (en Argentina lo que sale de noche figura en el día siguiente), así que se piden
-  // los días vecinos y se filtra por la hora exacta de cada episodio.
+  // "Hoy" = de 00:00 a 24:00 en la hora del celu, mirando la hora exacta de cada episodio (airstamp):
+  // el día del calendario de TVMaze no coincide con el día local (en Argentina lo que sale de noche
+  // figura en el día siguiente).
   const inicio = new Date(ahora.getFullYear(), ahora.getMonth(), ahora.getDate());
   const fin = new Date(inicio); fin.setDate(fin.getDate() + 1);
-  const fechas = [hoy];
-  const offset = ahora.getTimezoneOffset();
-  if (offset > 0) { const m = new Date(inicio); m.setDate(m.getDate() + 1); fechas.push(fmt(m)); }
-  if (offset < 0) { const y = new Date(inicio); y.setDate(y.getDate() - 1); fechas.unshift(fmt(y)); }
+  const esDeHoy = (ep) => {
+    if (!ep) return false;
+    if (ep.airstamp) { const c = new Date(ep.airstamp); return c >= inicio && c < fin; }
+    return ep.airdate === hoy;
+  };
 
-  const ids = new Set(favoritos.map((f) => f.id));
+  // Se le pide a TVMaze el capítulo anterior y el próximo de CADA serie favorita (en vez del calendario
+  // de streaming de hoy, que dejaba afuera a las series de TV tradicional). El anterior sirve para
+  // capítulos que ya salieron hoy antes de que Android despertara al service worker.
   const nombres = [];
-  const vistos = new Set();
-  for (const fecha of fechas) {
-    const res = await fetch('https://api.tvmaze.com/schedule/web?date=' + fecha);
-    if (!res.ok) continue;
-    const dia = await res.json();
-    (Array.isArray(dia) ? dia : []).forEach((ep) => {
-      const show = ep && (ep.show || (ep._embedded && ep._embedded.show));
-      if (!show || !ids.has(show.id) || vistos.has(show.id)) return;
-      const cuando = ep.airstamp ? new Date(ep.airstamp) : null;
-      const esHoy = cuando ? (cuando >= inicio && cuando < fin) : ep.airdate === hoy;
-      if (!esHoy) return;
-      vistos.add(show.id);
-      nombres.push(show.name);
-    });
+  const TAMANO_LOTE = 5;
+  for (let i = 0; i < favoritos.length; i += TAMANO_LOTE) {
+    const lote = favoritos.slice(i, i + TAMANO_LOTE);
+    const resultados = await Promise.all(lote.map(async (fav) => {
+      try {
+        const res = await fetch('https://api.tvmaze.com/shows/' + encodeURIComponent(fav.id) + '?embed[]=nextepisode&embed[]=previousepisode');
+        if (!res.ok) return null;
+        const show = await res.json();
+        const emb = (show && show._embedded) || {};
+        const nombre = (show && show.name) || fav.name;
+        return (esDeHoy(emb.nextepisode) || esDeHoy(emb.previousepisode)) ? nombre : null;
+      } catch { return null; }
+    }));
+    resultados.forEach((n) => { if (n) nombres.push(n); });
+    if (i + TAMANO_LOTE < favoritos.length) await new Promise((r) => setTimeout(r, 1500)); // TVMaze corta a ~20 pedidos / 10 s
   }
   if (!nombres.length) return;
 
