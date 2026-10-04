@@ -729,16 +729,6 @@
         <button class="ajustes-btn" onclick="pedirPermisoNotificaciones()" id="ajustesNotifBtn">
           <span id="ajustesNotifEstado">🔔 Activar avisos de estrenos</span>
         </button>
-        <div style="display:flex; align-items:center; justify-content:space-between; gap:10px; margin-top:10px;">
-          <label for="anticipacionNotifSelect" style="font-size:13px; color:var(--ink-muted);" id="ajustesAnticipacionLabel">Avisar con anticipación de</label>
-          <select id="anticipacionNotifSelect" onchange="cambiarAnticipacionNotif(this.value)" style="padding:8px; border-radius:8px; border:1px solid var(--border); background:var(--surface); color:var(--ink); font-size:13px;">
-            <option value="1">1 hora</option>
-            <option value="6">6 horas</option>
-            <option value="24">1 día</option>
-            <option value="48">2 días</option>
-            <option value="168">1 semana</option>
-          </select>
-        </div>
       </div>
 
       <div class="ajustes-seccion">
@@ -991,7 +981,7 @@
       eliminarCuentaBoton: 'Eliminar cuenta', eliminarCuentaTitulo: '¿Eliminar cuenta?', eliminarCuentaMsg: 'Se van a borrar tu cuenta y todos tus datos (favoritos, vistos) de forma permanente. Esta acción no se puede deshacer.',
       eliminarCuentaOk: '✅ Cuenta eliminada', errorEliminarCuenta: 'No se pudo eliminar la cuenta. Probá de nuevo.',
       ajustesTitle: 'Ajustes', ajustesAria: 'Ajustes', ajustesTituloCuenta: 'Cuenta', ajustesTituloIdioma: 'Idioma',
-      ajustesTituloNotif: 'Notificaciones', anticipacionLabel: 'Avisar con anticipación de',
+      ajustesTituloNotif: 'Notificaciones',
       ajustesCambiarAIngles: 'Cambiar a English →', ajustesCambiarAEspanol: 'Cambiar a Español →',
       ajustesAcercaDe: 'ℹ️ Acerca de',
       sincronizado: '☁️ Sincronizado', errorSync: '⚠️ No se pudo sincronizar',
@@ -1019,7 +1009,6 @@
       relacionado: 'Relacionado',
       recomendado: 'Recomendado',
       sinSeriesActor: 'No encontramos series con este actor en TVMaze.',
-      yaEstaDisponible: (etiqueta) => `Ya está disponible: ${etiqueta}`,
       proximoEpisodioLabel: (fecha) => `📅 Próximo episodio: ${fecha}`,
       creditosTitle: 'Acerca de',
       creditosApp: 'Hobbi: Control de Series te ayuda a seguir tus series favoritas. Es gratuita, y no reproduce ni transmite episodios — es solo para organizar qué viste, qué te falta y cuándo estrenan.',
@@ -1172,7 +1161,7 @@
       eliminarCuentaBoton: 'Delete account', eliminarCuentaTitulo: 'Delete account?', eliminarCuentaMsg: 'Your account and all your data (favorites, watched episodes) will be permanently deleted. This action cannot be undone.',
       eliminarCuentaOk: '✅ Account deleted', errorEliminarCuenta: "Couldn't delete the account. Please try again.",
       ajustesTitle: 'Settings', ajustesAria: 'Settings', ajustesTituloCuenta: 'Account', ajustesTituloIdioma: 'Language',
-      ajustesTituloNotif: 'Notifications', anticipacionLabel: 'Notify ahead of time by',
+      ajustesTituloNotif: 'Notifications',
       ajustesCambiarAIngles: 'Switch to English →', ajustesCambiarAEspanol: 'Switch to Español →',
       ajustesAcercaDe: 'ℹ️ About',
       sincronizado: '☁️ Synced', errorSync: "⚠️ Couldn't sync",
@@ -1198,7 +1187,6 @@
       relacionado: 'Related',
       recomendado: 'Recommended',
       sinSeriesActor: "Couldn't find any shows for this actor on TVMaze.",
-      yaEstaDisponible: (etiqueta) => `Now available: ${etiqueta}`,
       proximoEpisodioLabel: (fecha) => `📅 Next episode: ${fecha}`,
       creditosTitle: 'About',
       creditosApp: 'Hobbi: Series Tracker helps you keep track of your favorite shows. It\'s free, and it does not stream or play episodes — it only helps you organize what you\'ve watched, what\'s left, and when new episodes air.',
@@ -1271,14 +1259,6 @@
     document.getElementById('ajustesIdiomaActual').textContent = idioma === 'es' ? '🌐 Español' : '🌐 English';
     document.getElementById('checkIdiomaEs').textContent = idioma === 'es' ? '✓' : '';
     document.getElementById('checkIdiomaEn').textContent = idioma === 'en' ? '✓' : '';
-  }
-
-  // Configuración de notificaciones (declarado acá arriba porque aplicarIdioma()
-  // corre apenas arranca el script y ya necesita leer horasAnticipacionNotif)
-  const OPCIONES_ANTICIPACION_HORAS = [1, 6, 24, 48, 168];
-  let horasAnticipacionNotif = Number(localStorage.getItem('hobi_notif_horas')) || 48;
-  if (!OPCIONES_ANTICIPACION_HORAS.includes(horasAnticipacionNotif)) {
-    horasAnticipacionNotif = 48;
   }
 
   function aplicarIdioma() {
@@ -1446,7 +1426,6 @@
     document.querySelector('#temaSelect option[value="auto"]').textContent = t('temaAuto');
     document.getElementById('exportarCopiaBtn').textContent = t('exportarCopia');
     document.getElementById('importarCopiaBtn').textContent = t('importarCopia');
-    document.getElementById('ajustesAnticipacionLabel').textContent = t('anticipacionLabel');
     document.getElementById('menuIdioma').style.display = 'none';
     actualizarMenuIdioma();
     actualizarChipUsuario();
@@ -3066,18 +3045,9 @@
   }
 
 
-  /* ==================== NOTIFICACIONES LOCALES ====================
-     Mientras la app corre como página web, usamos la Web Notification API:
-     solo avisa si la app/pestaña sigue abierta (con setTimeout hasta la hora
-     del estreno). Cuando esto se compile como APK con Capacitor, conviene
-     reemplazar programarNotificacionEpisodio() por @capacitor/local-notifications
-     (LocalNotifications.schedule), que sí funciona con la app cerrada. */
-  let notificados = leerJSONSeguro('hobi_notificados', () => ({}), esObjetoPlano);
-  const timersNotif = {}; // episodioId -> id de setTimeout, para no programar el mismo dos veces
-
-  function guardarNotificados() {
-    localStorage.setItem('hobi_notificados', JSON.stringify(notificados));
-  }
+  /* ==================== NOTIFICACIONES ====================
+     El aviso "Hoy sale…" lo muestra el service worker (sw.js) cuando Android lo despierta, con la app
+     cerrada (ver "AVISO DIARIO" más arriba). Acá solo se maneja el permiso de notificaciones. */
 
   function notificacionesSoportadas() {
     return 'Notification' in window;
@@ -3108,7 +3078,6 @@
     if (btnAjustes) {
       btnAjustes.textContent = texto;
     }
-    actualizarSelectorAnticipacion();
   }
 
   async function pedirPermisoNotificaciones() {
@@ -3124,72 +3093,11 @@
     actualizarBotonNotif();
     if (permiso === 'granted') {
       mostrarToast(t('notifListo'), 'ok');
-      programarTodasLasPendientes();
       publicarEstadoParaSW();
       registrarAvisoDiario();
     }
   }
 
-  function dispararNotificacion(episodioId, titulo, cuerpo, icono) {
-    if (notificados[episodioId]) return; // ya avisado, no duplicar
-    notificados[episodioId] = true;
-    guardarNotificados();
-    if (notificacionesSoportadas() && Notification.permission === 'granted') {
-      try { new Notification(titulo, { body: cuerpo, icon: icono || undefined }); }
-      catch { /* algunos navegadores mobile no dejan crear Notification directo, fallback silencioso */ }
-    }
-    mostrarToast(`${titulo} — ${cuerpo}`, 'ok');
-  }
-
-  /* Programa (con setTimeout) el aviso de un episodio que estrena dentro de las próximas 48hs.
-     Solo dispara mientras la app siga abierta en el navegador/celular. */
-  function programarNotificacionEpisodio(ep) {
-    if (!ep.episodioId || notificados[ep.episodioId] || timersNotif[ep.episodioId]) return;
-    const msFaltantes = new Date(ep.airstamp).getTime() - Date.now();
-    const LIMITE_48H = 48 * 60 * 60 * 1000;
-    if (msFaltantes < 0 || msFaltantes > LIMITE_48H) return;
-
-    const etiqueta = ep.numero === 1
-      ? `Estreno de Temporada ${ep.temporada}`
-      : `T${ep.temporada}E${ep.numero}`;
-
-    timersNotif[ep.episodioId] = setTimeout(() => {
-      dispararNotificacion(ep.episodioId, `📺 ${ep.serieNombre}`, t('yaEstaDisponible')(etiqueta), ep.imagen);
-      delete timersNotif[ep.episodioId];
-    }, msFaltantes);
-  }
-
-  /* Recorre los próximos estrenos ya cargados y programa los que entren en la ventana de 48hs. */
-  function programarTodasLasPendientes() {
-    if (!notificacionesSoportadas() || Notification.permission !== 'granted') return;
-    ultimosProximos.forEach(programarNotificacionEpisodio);
-  }
-
-  // Cambiar la anticipación de aviso y reprogramar todo desde cero
-  function cambiarAnticipacionNotif(horas) {
-    horas = Number(horas);
-    if (!OPCIONES_ANTICIPACION_HORAS.includes(horas)) return;
-    horasAnticipacionNotif = horas;
-    localStorage.setItem('hobi_notif_horas', String(horas));
-    Object.values(timersNotif).forEach(id => clearTimeout(id));
-    Object.keys(timersNotif).forEach(id => delete timersNotif[id]);
-    programarTodasLasPendientes();
-    actualizarSelectorAnticipacion();
-  }
-
-  function actualizarSelectorAnticipacion() {
-    const sel = document.getElementById('anticipacionNotifSelect');
-    if (!sel) return;
-    sel.value = String(horasAnticipacionNotif);
-    // El selector solo tiene efecto real si las notificaciones están
-    // concedidas — deshabilitado (sin bloquear el valor guardado) deja claro
-    // que es parte del mismo permiso de arriba, no una opción aparte.
-    const activo = notificacionesSoportadas() && Notification.permission === 'granted';
-    sel.disabled = !activo;
-    sel.style.opacity = activo ? '1' : '0.5';
-  }
-
-  let ultimosProximos = []; // se actualiza cada vez que se carga el calendario
   let sinopsisOriginal = ''; // texto en inglés de la serie que se está viendo en el detalle
 
   /* MyMemory (API gratuita de traducción, sin key) corta en ~500 caracteres por
@@ -6055,8 +5963,6 @@
 
   function pintarCalendario(container, proximos, temporadas, sinVer, parcial = false) {
     const yAntes = calendarioYaPintado ? (window.scrollY || 0) : 0;
-    ultimosProximos = proximos;
-    if (!parcial) programarTodasLasPendientes();
     container.innerHTML = '';
 
     // Pintado parcial (todavía llegando datos): una línea arriba muestra cuánto falta.
